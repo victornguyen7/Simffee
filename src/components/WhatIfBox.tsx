@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { health, reviewRun, runScenario, whatIf } from '../api'
 import type { AIReview, Flows, Health, Runs, WhatIfAnswer } from '../types'
+import { randomMock, type MockAnswer } from '../mockAnswers'
 
 interface Props {
   runs: Runs
@@ -57,10 +58,23 @@ function FlowsPanel({ flows, shops, entrant, seed }: { flows: Flows; shops: Runs
   )
 }
 
+function MockPanel({ mock }: { mock: MockAnswer }) {
+  return (
+    <div className="flows">
+      <b>{mock.headline}</b>
+      <em>Illustrative movement sketch — the simulation API is unavailable, so this is not a simulated result.</em>
+      {mock.movements.map((line) => <span key={line}>{line}</span>)}
+      <span>Mostly driven by {mock.drivers.join(' and ')}</span>
+      <span>{mock.net}</span>
+    </div>
+  )
+}
+
 export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [answer, setAnswer] = useState<WhatIfAnswer | null>(null)
+  const [mock, setMock] = useState<MockAnswer | null>(null)
   const [api, setApi] = useState<Health | null | undefined>(undefined)
   const [submittedText, setSubmittedText] = useState('')
   const requestVersion = useRef(0)
@@ -104,27 +118,30 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const ask = async (q: string, seeds: number[] = [0]) => {
     const query = q.trim()
     if (!query || inFlight.current) return
-    if (api && api.fresh_runs !== true) {
+    if (!api || !api.llm || api.fresh_runs !== true) {
       requestVersion.current += 1
       setSubmittedText(query)
-      setAnswer({ scenario: null, request_text: query,
-        error: 'Restart the backend to load fresh-run support; the running server still has the previous code.' })
+      setAnswer({ scenario: null, request_text: query })
+      setMock(randomMock())
       return
     }
     inFlight.current = true
     const version = ++requestVersion.current
     setSubmittedText(query)
     setAnswer(null)
+    setMock(null)
     setBusy(seeds.length > 1 ? `running ${seeds.length} seeds…` : 'translating and running fresh…')
     try {
       const a = await whatIf(query, seeds)
       if (version !== requestVersion.current) return
       setAnswer(a)
+      if (a.error) setMock(randomMock())
       if (a.result && !a.fallback_used && !a.error) onAnswer(a)
       void checkAnswer(a, true, version)
-    } catch (e) {
+    } catch {
       if (version === requestVersion.current) {
-        setAnswer({ scenario: null, request_text: query, error: e instanceof Error ? e.message : String(e) })
+        setAnswer({ scenario: null, request_text: query })
+        setMock(randomMock())
       }
     } finally {
       if (version === requestVersion.current) {
@@ -141,6 +158,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     const version = ++requestVersion.current
     const seeds = runs.meta.seeds.slice(0, 3)
     setAnswer(null)
+    setMock(null)
     setBusy(`running ${seeds.length} seeds for confidence…`)
     try {
       const a = await runScenario(previous.scenario, seeds)
@@ -202,10 +220,10 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
           type="text"
           value={text}
           placeholder="describe your plan in a sentence"
-          disabled={offline || !!busy}
+          disabled={!!busy}
           onChange={(e) => setText(e.target.value)}
         />
-        <button type="submit" className="chip play" disabled={offline || !!busy || !text.trim()}>
+        <button type="submit" className="chip play" disabled={!!busy || !text.trim()}>
           {busy ? '…' : 'simulate fresh'}
         </button>
       </form>
@@ -215,7 +233,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
             key={ex}
             type="button"
             className="chip small"
-            disabled={offline || !!busy}
+            disabled={!!busy}
             onClick={() => {
               setText(ex)
               void ask(ex)
@@ -231,10 +249,11 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
 
       {a && !busy && (
         <div className="answer">
-          <p className="muted">Result for: “{a.request_text ?? submittedText}”{a.fresh ? ' · fresh run' : ''}</p>
-          {a.error && <p className="warn">{a.error}</p>}
+          <p className="muted">Result for: “{a.request_text ?? submittedText}”{a.fresh && !a.error ? ' · fresh run' : ''}</p>
+          {a.error && !mock && <p className="warn">{a.error}</p>}
+          {mock && <MockPanel mock={mock} />}
 
-          {a.scenario === null && !a.error && (
+          {a.scenario === null && !a.error && !mock && (
             <div className="unsupported">
               <b>Can't simulate that yet.</b>
               {(a.unsupported ?? []).map((u, i) => (

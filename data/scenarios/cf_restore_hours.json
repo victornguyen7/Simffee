@@ -1,0 +1,14 @@
+{
+  "id": "cf_restore_hours",
+  "description": "From day 5, reopen at 06:30 and keep the 48k latte.",
+  "parent": "baseline",
+  "overrides": [
+    {
+      "from_day": 5,
+      "shop": "simux",
+      "set": {
+        "open": "06:30"
+      }
+    }
+  ]
+}

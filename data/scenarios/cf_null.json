@@ -1,0 +1,6 @@
+{
+  "id": "cf_null",
+  "description": "Control arm: what if we had changed nothing. Days 1-3 are identical to the baseline by determinism, so no fork is needed.",
+  "parent": null,
+  "overrides": []
+}

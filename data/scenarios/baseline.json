@@ -1,0 +1,15 @@
+{
+  "id": "baseline",
+  "description": "SimuX opens 30 minutes late and raises the latte 3k, both from day 4.",
+  "parent": null,
+  "overrides": [
+    {
+      "from_day": 4,
+      "shop": "simux",
+      "set": {
+        "open": "07:00",
+        "price.latte": 48000
+      }
+    }
+  ]
+}

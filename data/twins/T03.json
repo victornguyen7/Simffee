@@ -1,0 +1,273 @@
+{
+  "id": "T03",
+  "name": "Linh",
+  "home": [
+    2,
+    1
+  ],
+  "role": "Unaffected on day 4 because she arrives after 07:00. Stays at SimuX throughout.",
+  "profile": {
+    "age": 41,
+    "occupation": "pharmacist",
+    "usual_time": "07:10",
+    "usual_order": "americano",
+    "daily_budget_vnd": 55000,
+    "walk_tolerance": 1,
+    "wait_tolerance_min": 7
+  },
+  "what_log": [
+    {
+      "day": -30,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -29,
+      "shop": "simux",
+      "time": "07:13",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -28,
+      "shop": "simux",
+      "time": "07:15",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -27,
+      "shop": "simux",
+      "time": "07:12",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -26,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -25,
+      "shop": "simux",
+      "time": "07:14",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -24,
+      "shop": "simux",
+      "time": "07:11",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -23,
+      "shop": "simux",
+      "time": "07:16",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -22,
+      "shop": "simux",
+      "time": "07:12",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -21,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -20,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -19,
+      "shop": "simux",
+      "time": "07:13",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -18,
+      "shop": "simux",
+      "time": "07:15",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -17,
+      "shop": "simux",
+      "time": "07:12",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -16,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -15,
+      "shop": "starbucks",
+      "time": "07:14",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -14,
+      "shop": "simux",
+      "time": "07:11",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -13,
+      "shop": "simux",
+      "time": "07:16",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -12,
+      "shop": null,
+      "time": null,
+      "spent": 0,
+      "abandoned": true
+    },
+    {
+      "day": -11,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -10,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -9,
+      "shop": "simux",
+      "time": "07:13",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -8,
+      "shop": "simux",
+      "time": "07:15",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -7,
+      "shop": "simux",
+      "time": "07:12",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -6,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -5,
+      "shop": "simux",
+      "time": "07:14",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -4,
+      "shop": "simux",
+      "time": "07:11",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -3,
+      "shop": "simux",
+      "time": "07:16",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -2,
+      "shop": "simux",
+      "time": "07:12",
+      "spent": 35000,
+      "abandoned": false
+    },
+    {
+      "day": -1,
+      "shop": "simux",
+      "time": "07:10",
+      "spent": 35000,
+      "abandoned": false
+    }
+  ],
+  "why_transcript": [
+    {
+      "q": "Walk me through your last coffee run. What time, where, and what did you order?",
+      "a": "7:10, SimuX, americano. It's a minute from my door, which is the entire reason."
+    },
+    {
+      "q": "When did you last pay extra just to avoid waiting?",
+      "a": "Never. If there's a queue I skip coffee. I'm not walking or waiting for it."
+    },
+    {
+      "q": "Is there anything you know is bad but you keep using it because switching is a hassle?",
+      "a": "I've used the same pharmacy supplier for eleven years. I'd rather live with a small annoyance than restructure my morning."
+    },
+    {
+      "q": "What's the last coffee place you noticed but haven't tried?",
+      "a": "I don't really notice coffee shops. I pick on bean quality, and SimuX roasts on site, so that's settled."
+    },
+    {
+      "q": "When did you last tell someone about a coffee shop, and what did you say?",
+      "a": "Rarely. Maybe twice a year, if someone asks directly."
+    }
+  ],
+  "mechanism": {
+    "habit": {
+      "simux": 0.933,
+      "starbucks": 0.033
+    },
+    "disruption_threshold": 0.6,
+    "latent_interest": {
+      "starbucks": 0.1
+    },
+    "social_links": [
+      "T07",
+      "T05"
+    ],
+    "talkativeness": 0.3,
+    "ad_sensitivity": 0.05
+  },
+  "say_do_gap": {
+    "says": "I choose a coffee shop based on the quality of the beans.",
+    "log_shows": "28 of the last 30 days at the nearest shop. The two exceptions were days it was shut.",
+    "mechanism_consequence": "walk_tolerance is 1, so no shop beyond one cell can win her. SimuX's quality marketing cannot move her; only distance and opening hours can."
+  }
+}

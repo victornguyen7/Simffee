@@ -1,0 +1,273 @@
+{
+  "id": "T08",
+  "name": "Mai",
+  "home": [
+    0,
+    0
+  ],
+  "role": "Day 4 disruption of 1.0 exceeds her threshold and she reappraises, but latent is low, so she skips coffee (`none`) via the rule in 4.2.",
+  "profile": {
+    "age": 45,
+    "occupation": "accountant",
+    "usual_time": "06:40",
+    "usual_order": "latte",
+    "daily_budget_vnd": 60000,
+    "walk_tolerance": 6,
+    "wait_tolerance_min": 7
+  },
+  "what_log": [
+    {
+      "day": -30,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -29,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -28,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -27,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -26,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -25,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -24,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -23,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -22,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -21,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -20,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -19,
+      "shop": null,
+      "time": null,
+      "spent": 0,
+      "abandoned": true
+    },
+    {
+      "day": -18,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -17,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -16,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -15,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -14,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -13,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -12,
+      "shop": null,
+      "time": null,
+      "spent": 0,
+      "abandoned": true
+    },
+    {
+      "day": -11,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -10,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -9,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -8,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -7,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -6,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -5,
+      "shop": null,
+      "time": null,
+      "spent": 0,
+      "abandoned": true
+    },
+    {
+      "day": -4,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -3,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -2,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    },
+    {
+      "day": -1,
+      "shop": "simux",
+      "time": "06:40",
+      "spent": 45000,
+      "abandoned": false
+    }
+  ],
+  "why_transcript": [
+    {
+      "q": "Walk me through your last coffee run. What time, where, and what did you order?",
+      "a": "6:40, SimuX, latte. Same as yesterday, same as the last two years."
+    },
+    {
+      "q": "When did you last pay extra just to avoid waiting?",
+      "a": "I've never had to. I arrive before everyone else."
+    },
+    {
+      "q": "Is there anything you know is bad but you keep using it because switching is a hassle?",
+      "a": "I like trying new things, actually. I'd say I switch places pretty often."
+    },
+    {
+      "q": "What's the last coffee place you noticed but haven't tried?",
+      "a": "I see the Starbucks ads but I haven't gone. Nothing about it pulls me."
+    },
+    {
+      "q": "When did you last tell someone about a coffee shop, and what did you say?",
+      "a": "I keep to myself in the mornings."
+    }
+  ],
+  "mechanism": {
+    "habit": {
+      "simux": 0.9,
+      "starbucks": 0.0
+    },
+    "disruption_threshold": 0.7,
+    "latent_interest": {
+      "starbucks": 0.15
+    },
+    "social_links": [
+      "T02",
+      "T01"
+    ],
+    "talkativeness": 0.3,
+    "ad_sensitivity": 0.05
+  },
+  "say_do_gap": {
+    "says": "I like trying new things, I switch places pretty often.",
+    "log_shows": "27 of 30 days at the same shop, same item, same time to the minute. Zero visits anywhere else.",
+    "mechanism_consequence": "disruption_threshold 0.70 and latent_interest below 0.20. The 'fall menu' marketing does not move her. On day 4 she skips coffee entirely rather than switch shops."
+  }
+}

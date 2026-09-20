@@ -1,0 +1,269 @@
+{
+  "id": "T04",
+  "name": "Tùng",
+  "home": [
+    0,
+    2
+  ],
+  "role": "No disruption of his own. Switches on day 6 purely from T02's gossip. The word-of-mouth evidence.",
+  "profile": {
+    "age": 26,
+    "occupation": "graphic designer",
+    "usual_time": "08:00",
+    "usual_order": "cold_brew",
+    "daily_budget_vnd": 75000,
+    "walk_tolerance": 4,
+    "wait_tolerance_min": 10
+  },
+  "what_log": [
+    {
+      "day": -30,
+      "shop": "simux",
+      "time": "08:00",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -29,
+      "shop": "simux",
+      "time": "08:03",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -28,
+      "shop": "simux",
+      "time": "08:05",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -27,
+      "shop": "simux",
+      "time": "08:02",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -26,
+      "shop": "starbucks",
+      "time": "08:00",
+      "spent": 70000,
+      "abandoned": false
+    },
+    {
+      "day": -25,
+      "shop": "simux",
+      "time": "08:04",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -24,
+      "shop": "simux",
+      "time": "08:01",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -23,
+      "shop": "simux",
+      "time": "08:06",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -22,
+      "shop": "simux",
+      "time": "08:02",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -21,
+      "shop": "starbucks",
+      "time": "08:00",
+      "spent": 70000,
+      "abandoned": false
+    },
+    {
+      "day": -20,
+      "shop": "simux",
+      "time": "08:00",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -19,
+      "shop": null,
+      "time": null,
+      "spent": 0,
+      "abandoned": true
+    },
+    {
+      "day": -18,
+      "shop": "simux",
+      "time": "08:05",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -17,
+      "shop": "starbucks",
+      "time": "08:02",
+      "spent": 70000,
+      "abandoned": false
+    },
+    {
+      "day": -16,
+      "shop": "simux",
+      "time": "08:00",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -15,
+      "shop": "simux",
+      "time": "08:04",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -14,
+      "shop": "simux",
+      "time": "08:01",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -13,
+      "shop": "starbucks",
+      "time": "08:06",
+      "spent": 70000,
+      "abandoned": false
+    },
+    {
+      "day": -12,
+      "shop": null,
+      "time": null,
+      "spent": 0,
+      "abandoned": true
+    },
+    {
+      "day": -11,
+      "shop": "simux",
+      "time": "08:00",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -10,
+      "shop": "simux",
+      "time": "08:00",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -9,
+      "shop": "starbucks",
+      "time": "08:03",
+      "spent": 70000,
+      "abandoned": false
+    },
+    {
+      "day": -8,
+      "shop": "simux",
+      "time": "08:05",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -7,
+      "shop": "simux",
+      "time": "08:02",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -6,
+      "shop": "simux",
+      "time": "08:00",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -5,
+      "shop": null,
+      "time": null,
+      "spent": 0,
+      "abandoned": true
+    },
+    {
+      "day": -4,
+      "shop": "starbucks",
+      "time": "08:01",
+      "spent": 70000,
+      "abandoned": false
+    },
+    {
+      "day": -3,
+      "shop": "simux",
+      "time": "08:06",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -2,
+      "shop": "simux",
+      "time": "08:02",
+      "spent": 50000,
+      "abandoned": false
+    },
+    {
+      "day": -1,
+      "shop": "simux",
+      "time": "08:00",
+      "spent": 50000,
+      "abandoned": false
+    }
+  ],
+  "why_transcript": [
+    {
+      "q": "Walk me through your last coffee run. What time, where, and what did you order?",
+      "a": "8:00, SimuX, cold brew. I start late so I'm never in the rush."
+    },
+    {
+      "q": "When did you last pay extra just to avoid waiting?",
+      "a": "Sure, I'll pay a bit more for a seat and good wifi. I work from cafés two days a week."
+    },
+    {
+      "q": "Is there anything you know is bad but you keep using it because switching is a hassle?",
+      "a": "Not really. I change design tools every year. I like trying things."
+    },
+    {
+      "q": "What's the last coffee place you noticed but haven't tried?",
+      "a": "Starbucks, but only because of the ads. Haven't been. If someone I trust told me it was good I'd go tomorrow."
+    },
+    {
+      "q": "When did you last tell someone about a coffee shop, and what did you say?",
+      "a": "I listen more than I talk. Hà tells me where to go, mostly, and she's usually right."
+    }
+  ],
+  "mechanism": {
+    "habit": {
+      "simux": 0.7,
+      "starbucks": 0.2
+    },
+    "disruption_threshold": 0.5,
+    "latent_interest": {
+      "starbucks": 0.25
+    },
+    "social_links": [
+      "T01",
+      "T06"
+    ],
+    "talkativeness": 0.4,
+    "ad_sensitivity": 0.35
+  },
+  "say_do_gap": null
+}

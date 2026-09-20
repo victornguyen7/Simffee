@@ -1,467 +1,552 @@
-# Simffee Market Simulation — Specification v2
+# SimuX — Spec: Coffee What-If Machine
 
-> **v2 changes the world model from a 1-D street to a 2-D Stardew-Valley-style tile town with player-placed structures, walkable A\* pathfinding, real-time agent movement, and enterable shop interiors whose furnishing drives capacity and quality.**
->
-> **Data files are stale against this spec.** `data/agents.json` and `data/world.json` still encode v1 (`home_location` on a 1-D street, hardcoded `quality`/`capacity`, `need_window` enum). `data/town.json` exists and already conforms to §2.6. Re-deriving the data files against v2 is the next task and has not been done.
+2026-09-19 · @Someone
 
-## 1. Goal
+## 1. The demo thesis
 
-Answer one question:
+Simulation has to answer a question that static analysis cannot: **which mechanism caused sales to drop, and which intervention actually targets that mechanism.** Everything in this spec serves one moment: the judges watch the obvious reading (price) get refuted by the simulation, and then watch two what-if branches diverge.
 
-> **Given a town the player laid out and a fixed 7-day window, which levers should the Simffee startup change — price, product quality, novelty, interior build-out, or siting — to win sustainable repeat demand away from the incumbent?**
+This is a miniature clone of the Simile argument from *Building the What-If Machine*: behavior (what) + motivation (why) combine into mechanism; either one alone leads to the wrong decision. Their Isabella/Baskin-Robbins example is our demo scenario, with ice cream swapped for coffee.
 
-The run is not a forecast. It is a lever-attribution instrument. Success is a report that ranks candidate changes by evidence in the day-by-day agent record, not a revenue number.
+Three fixed constraints:
 
-v2 adds two levers the player can physically manipulate: **where a shop sits** (§2) and **what is inside it** (§3).
+- **Every twin has two data layers**: a 30-day behavior log (what) and an interview transcript (why). A descriptive persona alone is not enough.
+- **The final output is mechanism attribution + counterfactual**, not "strengths and weaknesses." An LLM can write the latter without any simulation.
+- **All user data is synthetic and labeled as such in the UI.** Hardcoding the scenario is legitimate; fabricating data about real people is not.
 
-## 2. World model
+| Item | Value |
+| --- | --- |
+| Twins | 10 |
+| Grid | 5×5, Manhattan distance |
+| Shops | 2 (SimuX Coffee at (1,1), Starbucks at (3,3)) |
+| Simulated days | 7 |
+| Scenarios | 1 baseline + 2 counterfactuals |
+| Seeds per scenario | 5 (for computing confidence) |
+| Max LLM calls | 10 twins × 7 days × 3 scenarios × 5 seeds = 1,050; in practice \~40% because autopilot makes no LLM call |
 
-### 2.1 Grid
+## 2. The four mechanism variables
 
-The town is a 2-D tile grid rendered as 16×16-pixel pixel art. `data/town.json` declares `grid.width`, `grid.height`, and `tile_size_px`. Origin `(0,0)` is top-left; `x` increases east, `y` increases south. Reference town is 40×30.
+These four numbers are the entire "physics" of the simulation. The LLM only makes a decision when the mechanism opens the door for it; the rest is pure arithmetic — no tokens spent, and fully explainable.
 
-### 2.2 Terrain and movement cost
+| Variable | Type | Derived from | Meaning |
+| --- | --- | --- | --- |
+| `habit[shop]` | float 0–1, one value per shop | what-log: share of the last 30 days spent at that shop | Inertia. High = autopilot, no deliberation |
+| `disruption_threshold` | float 0–1 | why-transcript: tolerance for change | This twin's own habit-breaking threshold |
+| `latent_interest[shop]` | float 0–1, per non-regular shop | why-transcript: heard of / tried / curious about it | Smoldering curiosity, activated only when habit breaks |
+| `social_links` | 2–3 twin ids adjacent on the grid + `talkativeness` 0–1 | home position | The word-of-mouth channel |
 
-Every tile has exactly one terrain type. `default_terrain` fills the grid; `terrain_overrides` is an ordered list of `{type, rect:[x,y,w,h]}` applied in sequence, last write wins.
+### 2.1 habit — inertia
 
-| Terrain | Walkable | `move_cost` | Notes |
-|---|---|---|---|
-| `road` | yes | 1.00 | paved; fastest |
-| `dirt` | yes | 1.10 | worn path |
-| `grass` | yes | 1.30 | default fill; crossable but slow |
-| `water` | no | — | |
-| `stone` | no | — | cliff / boulder field |
+Rises with repetition, decays with absence. Each day, after a twin picks shop `s`:
 
-**Movement cost is the point of the road network.** Grass is 30% slower than road, so laying a path to a shop door is a real, measurable lever the report can recommend (§10, "Improve reach"). A town with no roads is playable but every trip is slow.
-
-### 2.3 Props
-
-`props` is a list of `{type, x, y}` decorations occupying one tile. `tree` and `rock` are **blocking**. All other prop types are walkable decoration and never affect pathfinding.
-
-### 2.4 Structures
-
-`structures` is a list of placed buildings:
-
-| Field | Type | Meaning |
-|---|---|---|
-| `id` | string | unique key |
-| `type` | enum | `house` \| `coffee_shop` \| `tower` |
-| `x`, `y`, `w`, `h` | int | footprint rectangle, top-left anchored |
-| `door` | `[x, y]` | the single tile agents enter and exit from |
-| `occupant` | string \| null | agent `id` for a `house`; `null` otherwise |
-
-Every tile of a footprint is **blocking**. The `door` tile is *outside* the footprint and must be walkable — it is the only point of contact between a building and the street. All distances in this model are measured **door to door**, never centre to centre.
-
-`tower` is a landmark with no simulation effect in v2. It exists so the editor has a non-functional structure to place, which keeps the editor's validation rules honest.
-
-### 2.5 Pathfinding
-
-Agent→shop distance is the **A\* least-cost walkable path from the agent's house `door` to the shop's `door`**, 4-directional (no diagonals). Path cost is the sum of `move_cost` of every tile *entered* (the start tile is not counted).
-
-```
-path_cost(i, s) = Σ move_cost(tile) over the least-cost door-to-door route
-travel_time(i, s) = path_cost(i, s) / walk_speed_i      [minutes]
+```latex
+h_s \leftarrow h_s + \alpha(1 - h_s), \quad h_o \leftarrow h_o(1 - \delta) \ \forall o \ne s
 ```
 
-**Obstacles genuinely block.** Placing a house, pond, or tree line can lengthen or sever a route. This is what makes the town editor strategic rather than cosmetic.
+With α = 0.15 and δ = 0.05. That means roughly 4 consecutive days for a new shop to cross the 0.6 threshold, and 6–8 days for the old shop to fall below 0.5 if unvisited. This asymmetry is deliberate: new habits form faster than old habits dissolve, so **one week of broken habit is enough to lose a customer**.
 
-Path costs are **static for a whole run** — the town cannot be edited mid-simulation (§11) — so all 10×2 agent→shop costs are computed once at load and cached. A path of `None` (unreachable) removes that shop from the agent's option set permanently and MUST be surfaced as a load-time warning, not a silent zero.
+The regular shop `current` = argmax habit. If `habit[current] ≥ 0.6` and there is no disruption → **autopilot**: the twin goes to the regular shop, no LLM call. The log records `mode: autopilot`.
 
-### 2.6 Reference town — "Marrow Hollow"
+### 2.2 disruption — what breaks a habit
 
-Shipped in `data/town.json` as the default layout and the basis for every worked number in this spec. 40×30 grid; Main Street runs east–west at `y = 14–15`; Mill Lane runs north–south at `x = 18–19`; Hollow Pond occupies `[4,22,6,5]`; 13 trees and 1 rock block scattered tiles; ten houses, two coffee shops, one clock tower.
+Each day, for the regular shop, compute a disruption score from the gap between **expectation** (drawn from the what-log) and **today's reality** (from the scenario):
 
-Verified door-to-door path costs (§2.5):
+| Source | Score | Condition |
+| --- | --- | --- |
+| Opening hours | 1.0 | Shop is closed at the twin's `usual_time` |
+| Price | min(1, Δprice / old price × 4) | Increase ≥ 5% |
+| Usual item unavailable | 0.7 | `usual_order` no longer in `products` |
+| Long wait | min(1, (wait − tolerance) / 10) | Exceeds `wait_tolerance` |
+| Permanently closed | 1.0 |  |
 
-| Agent | House | → `brewhouse` | → `simffee` |
-|---|---|---:|---:|
-| A01 | house_maya | 29.40 | 9.30 |
-| A02 | house_devon | 29.40 | 11.30 |
-| A03 | house_harriet | 8.10 | 24.00 |
-| A04 | house_jonas | 22.00 | 12.30 |
-| A05 | house_priya | 18.40 | 10.30 |
-| A06 | house_tom | 7.20 | 17.10 |
-| A07 | house_ingrid | 12.00 | 30.40 |
-| A08 | house_marcus | 9.60 | 18.30 |
-| A09 | house_lena | 29.80 | 13.10 |
-| A10 | house_rafael | 38.60 | 18.50 |
+`disruption = max` over the sources (not a sum — take the largest shock). If `disruption > disruption_threshold` → habit is **suspended** for today → the twin enters **reappraisal**: call the LLM, consciously weigh every option.
 
-The layout is deliberately lopsided: Brewhouse sits west of centre among the older houses, Simffee sits east on Main Street. Six of ten agents are closer to Simffee. That asymmetry is the experiment — a startup that cannot win on a friendly map has a product problem, not a siting problem.
+This is exactly the Isabella mechanism: a 9% price increase does not make her angry, it makes her **stop and look at the shelf**. What she picks while looking at the shelf is the job of the next variable.
 
-### 2.7 The two shops
+### 2.3 latent\_interest — smoldering curiosity
 
-Both are `coffee_shop` structures. Simulation-relevant shop fields live in `data/world.json`; placement lives in `data/town.json`, keyed by the same `id`.
+Rises from three sources, each day:
 
-| Field | `brewhouse` | `simffee` |
-|---|---|---|
-| `name` | Brewhouse Corner | Simffee |
-| `role` | incumbent | startup |
-| `price` | 3.50 | 4.25 |
-| `base_craft` | 0.29 | 0.34 |
-| `novelty_base` | 0.00 | 1.00 |
-| `novelty_decay` | 0.00 | 0.25 |
-| `opens_on_day` | 1 (pre-existing) | 1 |
+- Word of mouth: a neighbor reports a good experience at shop `o` → `+0.10 × valence`; a bad experience → `−0.10`
+- Marketing: `+ reach[o] × ad_sensitivity`, capped at +0.05/day
+- First-hand experience: after visiting `o` for the first time, `latent_interest[o] ← 0` and `habit[o]` starts accumulating in its place
 
-`quality`, `capacity`, `ambience`, `service_slots`, and `service_time_minutes` are **no longer authored** — they are derived from the interior (§3). `base_craft` is barista skill: the quality floor the shop achieves before any equipment.
+The most important rule: **latent\_interest can only be acted on when habit is suspended** (reappraisal), or when `latent_interest[o] > habit[current] + 0.3` (rare — this models the person who actively seeks change). Outside those two gates, it just accumulates silently. This is why marketing alone barely pulls a competitor's regulars, but marketing + a shock does.
 
-### 2.8 Novelty
+### 2.4 social\_links — word of mouth
 
-Novelty is a single shop-level decaying scalar:
+Each twin has 2–3 neighbors (adjacent grid cells). At the end of each day, with probability `talkativeness`, the twin tells each neighbor about their experience. The content is `(shop, valence)`, with `valence` ∈ \[−1, 1\] taken from the LLM output (or a default of +0.3 for an uneventful autopilot day). Neighbors update `latent_interest` per 2.3.
 
-```
-novelty(s, d) = novelty_base_s * exp(-novelty_decay_s * (d - 1))
-```
+One day of lag: what is said today affects tomorrow's decision. Fast enough to spread within 7 days, not so fast as to be unrealistic.
 
-Simffee: 1.000, 0.779, 0.607, 0.472, 0.368, 0.287, 0.223 across days 1–7. Brewhouse: 0.000 throughout.
+### 2.5 How the four variables compose into a mechanism
 
-`menu` in `world.json` flags each item `novel: true|false` for report readability only. No item-level flag ever enters a calculation. Simffee's novel line (cold-brew flight, oat cortado, seasonal syrup bar) is the *reason* `novelty_base = 1.00`, not an input to it.
-
-### 2.9 Global weights and constants
-
-Declared in `data/world.json` under `weights` and `dynamics`.
-
-| Constant | Value | Meaning |
-|---|---|---|
-| `w_quality` | 1.00 | scales the quality term |
-| `w_novelty` | 0.80 | scales the novelty term |
-| `w_habit` | 1.20 | scales the loyalty term |
-| `w_perception` | 0.60 | scales the perception term |
-| `w_price` | 1.00 | scales the price penalty |
-| `w_distance` | 1.00 | scales the travel-time penalty |
-| `w_wait` | 0.30 | scales the queue-wait satisfaction penalty |
-| `reservation_utility` | 0.35 | utility of buying nothing |
-| `habit_gain` | 0.25 | loyalty formed per visit |
-| `habit_visit_base` | 0.50 | loyalty credit for a merely-neutral visit |
-| `loyalty_decay` | 0.10 | fractional loyalty lost per day not visited |
-| `expectation_base` | 0.40 | expectation intercept |
-| `expectation_slope` | 0.40 | expectation gain per unit `quality_sensitivity` |
-| `ambience_cap` | 0.15 | max satisfaction bonus from decor |
-| `wom_threshold` | 0.15 | \|satisfaction\| needed to talk about a shop |
-| `wom_transmission` | 0.15 | perception shift per word-of-mouth event |
-| `day_start` / `day_end` | 06:00 / 18:00 | 720-minute trading day |
-| `tick_minutes` | 1.0 | simulation step |
-| `seed` | 20260919 | RNG seed |
-
-## 3. Shop interiors
-
-Clicking a `coffee_shop` on the town map enters its interior (§11.2). The interior is **not decoration** — its contents derive five of the shop's simulation parameters.
-
-### 3.1 Interior grid
-
-Each shop carries an `interior` object: `{ grid: {width, height}, items: [{type, x, y}] }`. Interior grids are independent of the town grid and of the building's exterior footprint; a 5×4 exterior may hold a 12×9 interior. Interior tiles have no movement cost — agents inside are abstract occupants, not pathfinding bodies (§11.2).
-
-### 3.2 Furniture catalog
-
-Declared once in `world.json` as `furniture_catalog`. Every item contributes to at most a few of five channels:
-
-| Item | `capacity` | `quality` | `ambience` | `service_slots` | `prep_minutes` |
-|---|---:|---:|---:|---:|---:|
-| `seat` | 1 | — | — | — | — |
-| `window_seat` | 1 | — | 0.05 | — | — |
-| `table` | — | — | 0.02 | — | — |
-| `counter` | — | — | — | 1 | — |
-| `drip_brewer` | — | 0.05 | — | — | 1.5 |
-| `espresso_machine` | — | 0.18 | 0.01 | — | 3.0 |
-| `pour_over_bar` | — | 0.06 | — | — | 4.0 |
-| `cold_brew_tap` | — | 0.12 | — | — | 1.0 |
-| `grinder` | — | 0.10 | — | — | — |
-| `plant` | — | — | 0.03 | — | — |
-| `art` | — | — | 0.04 | — | — |
-
-An item with `prep_minutes` is a **brew device**. `grinder` is not — it raises quality without being a station an order occupies.
-
-### 3.3 Derived shop parameters
-
-```
-capacity_s            = Σ capacity over items                    [max concurrent customers inside]
-quality_s             = clamp(0, 1, base_craft_s + Σ quality over items)
-ambience_s            = min(ambience_cap, Σ ambience over items)
-service_slots_s       = Σ service_slots over items               [concurrent orders in progress]
-service_time_minutes_s = mean(prep_minutes) over brew devices
+```mermaid
+flowchart TD
+  A[New day] --> B{habit[current] ≥ 0.6?}
+  B -- no --> R[Reappraisal: LLM call]
+  B -- yes --> C{disruption > threshold?}
+  C -- no --> P[Autopilot: go to regular shop]
+  C -- yes --> R
+  R --> D[Pick a shop / skip]
+  P --> U[Update habit]
+  D --> U
+  U --> S[Tell neighbors → latent_interest]
+  S --> A
 ```
 
-`service_time_minutes` is the **mean** of the installed brew devices, not the minimum. Installing a slow prestige device (`pour_over_bar`, 4.0 min) raises quality *and* slows every order, because staff split across the menu. This is the interior's central trade-off and the reason the report can recommend removing equipment.
+Read it as: a twin only "thinks" when the habit is weak or shocked. Inside reappraisal, `latent_interest` is what decides where they turn. So the same price increase applied to two twins with identical price sensitivity but different `latent_interest` produces two different outcomes — and a discount cannot reverse a twin who has already left.
 
-Shop throughput is `service_slots / service_time_minutes` customers per minute. A shop may be quality-rich and throughput-poor; §9 tracks both so §10 can tell them apart.
+## 3. Data model
 
-### 3.4 Validation
+Three static JSON files (twins, shops, scenarios) and one state file generated at runtime. No database; everything lives in `/data`.
 
-A `coffee_shop` interior MUST contain at least one `counter` and at least one brew device, or the shop cannot trade and load fails with a named error. `capacity_s = 0` is legal but means every arriving agent is turned away and logged as capacity-blocked demand — a real, diagnosable configuration, not an error.
+### 3.1 Twin
 
-## 4. Agent model
+Each twin is a file `data/twins/T01.json`. Both the what/why layers are mandatory; `say_do_gap` is present on only 3 twins.
 
-Ten agents. Every agent carries exactly these fields — no more, no fewer.
-
-| Field | Type | Range | Meaning |
-|---|---|---|---|
-| `id` | string | `A01`–`A10` | stable key |
-| `name` | string | — | display name |
-| `archetype` | string | — | one-line label for the report |
-| `home_building_id` | string | — | must match a `house` structure in `town.json` whose `occupant` is this agent |
-| `price_sensitivity` | float | 0.0–1.0 | how much cost hurts |
-| `quality_sensitivity` | float | 0.0–1.0 | how much quality is valued *and* how high expectations run (§7.1) |
-| `novelty_seeking` | float | 0.0–1.0 | pull of a new product |
-| `loyalty_strength` | float | 0.0–1.0 | how strongly accumulated habit steers choice |
-| `walk_speed` | float | 1.2–3.0 | tiles (cost units) per minute |
-| `distance_tolerance` | float | 3.0–30.0 | travel minutes before the trip feels costly |
-| `patience_minutes` | float | 2.0–30.0 | queue wait tolerated before abandoning |
-| `daily_budget` | float | 2.50–12.00 | max spend per day; also the denominator for price pain |
-| `visit_frequency` | float | 0.0–1.0 | daily probability of wanting coffee at all |
-| `social_susceptibility` | float | 0.0–1.0 | how much others' perception moves this agent |
-| `need_time` | string | `HH:MM` in 06:00–18:00 | when the agent leaves home wanting coffee |
-| `wom_propensity` | float | 0.0–1.0 | how loudly this agent broadcasts an opinion |
-| `initial_loyalty` | object | each 0.0–1.0 | `{brewhouse, simffee}` habit at Day-1 start |
-| `initial_perception` | object | each −1.0–1.0 | `{brewhouse, simffee}` signed awareness×sentiment at Day-1 start |
-| `notes` | string | — | the one market behavior this agent is designed to expose |
-
-**Changed from v1:** `home_location` (float on a 1-D street) → `home_building_id`; `need_window` (morning/afternoon enum) → `need_time` (clock time, because arrival order is now emergent); `distance_tolerance` rebased from street units to **minutes**. **Added:** `walk_speed`, `patience_minutes`.
-
-**On `walk_speed`.** The 1.2–3.0 tiles/minute band is deliberately slow. Faster speeds compress every trip in Marrow Hollow into a 1–7 minute range, and distance stops discriminating between agents at all — the model then cannot distinguish a siting problem from a price problem, which defeats §1.
-
-**On `perception`.** A single signed scalar, not separate awareness and sentiment. `0.0` = never heard of the shop; `+1.0` = knows and loves it; `−1.0` = knows it and has been warned off. This collapse is what lets negative word-of-mouth be modeled without a second field (§7.3).
-
-## 5. Utility function
-
-### 5.1 Form
-
-For agent *i*, shop *s*, day *d*:
-
-```
-U(i,s,d) =  w_quality    * quality_sensitivity_i   * quality_s
-          + w_novelty    * novelty_seeking_i       * novelty(s,d)
-          + w_habit      * loyalty_strength_i      * loyalty_i,s(d)
-          + w_perception * social_susceptibility_i * perception_i,s(d)
-          - w_price      * price_sensitivity_i     * (price_s / daily_budget_i)
-          - w_distance   * (travel_time(i,s) / distance_tolerance_i)
+```json
+{
+  "id": "T01",
+  "name": "Minh",
+  "home": [0, 1],
+  "profile": {
+    "age": 29, "occupation": "software engineer",
+    "usual_time": "06:45", "usual_order": "latte",
+    "daily_budget_vnd": 60000, "walk_tolerance": 3, "wait_tolerance_min": 6
+  },
+  "what_log": [
+    {"day": -30, "shop": "simux", "time": "06:45", "spent": 45000, "abandoned": false},
+    {"day": -29, "shop": "simux", "time": "06:50", "spent": 45000, "abandoned": false}
+  ],
+  "why_transcript": [
+    {"q": "When did you last pay extra just to avoid waiting?", "a": "Last week — 25k for express delivery..."},
+    {"q": "Is there anything you know is bad but keep using because switching is a hassle?", "a": "My mobile carrier. Three years now."}
+  ],
+  "mechanism": {
+    "habit": {"simux": 0.82, "starbucks": 0.08},
+    "disruption_threshold": 0.45,
+    "latent_interest": {"starbucks": 0.35},
+    "social_links": ["T02", "T04"],
+    "talkativeness": 0.5,
+    "ad_sensitivity": 0.2
+  },
+  "say_do_gap": null
+}
 ```
 
-Buying nothing has fixed utility `reservation_utility = 0.35`.
+Rules for deriving `mechanism` from the two layers above, so the four variables are not arbitrary invented numbers:
 
-Every term is a trait × world-fact product, so zeroing any global weight cleanly removes that lever from the run. That property is what §10's attribution depends on.
+| Variable | Derived from |
+| --- | --- |
+| `habit[s]` | `count(what_log where shop == s) / 30` |
+| `disruption_threshold` | why-transcript: a long, specific answer to the "switching is a hassle" question → 0.55–0.7; an answer like "I switch constantly" → 0.25–0.4 |
+| `latent_interest[o]` | why-transcript mentions shop `o` (heard about it from a friend, saw an ad, tried it once) → 0.3–0.5; no mention → 0.05–0.15 |
+| `talkativeness` | the "when did you last tell someone about a coffee shop" question |
 
-**Wait time is deliberately absent from choice.** Agents cannot see the queue from home. A bad queue is punished after the fact through satisfaction (§7.1), and only reaches other agents through loyalty and word-of-mouth. This is what lets the report distinguish "nobody comes" from "they come once and never return."
+### 3.2 Shop
 
-### 5.2 Choice rule
+`data/shops.json`, two entries. Every field can be overridden per day by a scenario.
 
-1. Drop any shop that is unreachable (§2.5) or whose `price_s > daily_budget_i`.
-2. Compute `U` for each surviving shop.
-3. Rank all options including no-purchase; the agent walks to its top-ranked shop.
-
-### 5.3 Tie-breaking
-
-Ties within `1e-9` resolve in order: **higher `quality_s`** → **lower `price_s`** → **shorter `travel_time`** → **lexicographic `shop_id`**. A tie against `reservation_utility` resolves to no-purchase.
-
-### 5.4 Worked example — A01, Day 1
-
-**A01 Maya Okonkwo**, in `house_maya`: `quality_sensitivity` 0.90, `price_sensitivity` 0.25, `novelty_seeking` 0.60, `loyalty_strength` 0.35, `walk_speed` 2.2, `distance_tolerance` 14.0, `patience_minutes` 12.0, `daily_budget` 8.00, `social_susceptibility` 0.45, `initial_loyalty` {brewhouse 0.50, simffee 0.00}, `initial_perception` {brewhouse 0.85, simffee 0.15}.
-
-Path costs from §2.6: brewhouse 29.40, simffee 9.30. At `walk_speed` 2.2 → travel 13.3636 min and 4.2273 min.
-
-**Brewhouse** (quality 0.62, price 3.50, novelty 0.00):
-
-| Term | Arithmetic | Value |
-|---|---|---|
-| quality | 1.00 × 0.90 × 0.62 | +0.5580 |
-| novelty | 0.80 × 0.60 × 0.00 | +0.0000 |
-| habit | 1.20 × 0.35 × 0.50 | +0.2100 |
-| perception | 0.60 × 0.45 × 0.85 | +0.2295 |
-| price | −1.00 × 0.25 × (3.50 / 8.00) | −0.1094 |
-| distance | −1.00 × (13.3636 / 14.0) | −0.9545 |
-| **U** | | **−0.0664** |
-
-**Simffee** (quality 0.80, price 4.25, novelty 1.00):
-
-| Term | Arithmetic | Value |
-|---|---|---|
-| quality | 1.00 × 0.90 × 0.80 | +0.7200 |
-| novelty | 0.80 × 0.60 × 1.00 | +0.4800 |
-| habit | 1.20 × 0.35 × 0.00 | +0.0000 |
-| perception | 0.60 × 0.45 × 0.15 | +0.0405 |
-| price | −1.00 × 0.25 × (4.25 / 8.00) | −0.1328 |
-| distance | −1.00 × (4.2273 / 14.0) | −0.3019 |
-| **U** | | **+0.8057** |
-
-No-purchase: 0.3500. **Choice: Simffee** (0.8057 > 0.3500 > −0.0664).
-
-She leaves home at her `need_time`, walks 4.23 minutes, and queues 4.0 minutes behind earlier arrivals. Post-visit, by §7.1:
-
-```
-expected_quality = 0.40 + 0.40 × 0.90              = 0.7600
-price_pain       = 0.25 × (4.25 / 8.00)            = 0.1328
-ambience         (Simffee interior, §3.3)          = 0.1200
-wait_penalty     = 0.30 × (4.0 / 12.0)             = 0.1000
-satisfaction     = (0.80 − 0.76) − 0.1328 + 0.1200 − 0.1000 = −0.0728
+```json
+{
+  "simux": {
+    "name": "SimuX Coffee", "position": [1, 1],
+    "price": {"latte": 45000, "americano": 35000, "cold_brew": 50000},
+    "open": "06:30", "close": "20:00",
+    "products": ["latte", "americano", "cold_brew"],
+    "quality": 0.78, "avg_wait_min": 4,
+    "marketing": {"reach": 0.15, "message": "Roasted on site every morning"}
+  },
+  "starbucks": {
+    "name": "Starbucks", "position": [3, 3],
+    "price": {"latte": 65000, "americano": 50000, "cold_brew": 70000},
+    "open": "06:00", "close": "22:00",
+    "products": ["latte", "americano", "cold_brew", "frappuccino"],
+    "quality": 0.70, "avg_wait_min": 7,
+    "marketing": {"reach": 0.40, "message": "Fall menu is here"}
+  }
+}
 ```
 
-By §7.2: `loyalty(simffee) = clamp01(0.00 + 0.25 × (0.50 − 0.0728)) = 0.1068`; `loyalty(brewhouse) = 0.50 × 0.90 = 0.4500`.
+### 3.3 Scenario
 
-By §7.3: `|−0.0728| < 0.15`, so she says nothing.
+A scenario = a name + a list of per-day overrides. The baseline has an override on day 4; counterfactuals inherit the baseline and add overrides from day 5.
 
-Read that last line carefully. The most winnable agent on the map — lives beside Simffee, can afford it, values quality most — buys it decisively and walks out with *net-negative* satisfaction, because a 4-minute queue and a 4.25 price cancel a genuinely better cup against her own high expectations. She forms weak habit and generates no word-of-mouth. Surfacing exactly that cell is why this model exists.
-
-## 6. Real-time day loop
-
-v2 replaces v1's fixed morning/afternoon service ordering. **Arrival order, queueing, and contention are emergent** — they fall out of where agents live, how fast they walk, and when they leave.
-
-Each day runs `day_start` → `day_end` (06:00–18:00) in `tick_minutes` = 1-minute steps. Agent states: `idle` → `deciding` → `walking` → `queued` → `served` → `returning` → `idle`.
-
-### 6.1 Day setup (before the first tick)
-
-1. Recompute `novelty(s, d)` for both shops.
-2. For each agent, draw `r = rng(seed, d, id)`; the agent will seek coffee this day iff `r < visit_frequency_i`. Agents that will not are `idle` all day and take no further part.
-3. Reset per-shop occupancy and queues to empty.
-
-### 6.2 Per-tick sequence
-
-At each minute `t`, in this order:
-
-1. **Departures.** Every agent whose `need_time == t` and who is seeking coffee enters `deciding`, evaluates §5 against the *current* state of loyalty and perception, and either enters `walking` toward its chosen shop's door or, if no option beats `reservation_utility`, is logged as `below_reservation` unmet demand and returns to `idle`.
-2. **Movement.** Every `walking` agent advances `walk_speed_i` cost-units along its cached path. On reaching the door it enters `queued` with `queue_entry_time = t`.
-3. **Admission.** For each shop, while `occupants < capacity_s` and the queue is non-empty, admit the longest-waiting agent (ties by `id`). An admitted agent records `wait_minutes = t − queue_entry_time` and begins service.
-4. **Service.** Each shop serves at most `service_slots_s` orders concurrently; each order takes `service_time_minutes_s`. On completion the agent is `served`, satisfaction resolves (§7.1), the seat frees, and the agent enters `returning`.
-5. **Abandonment.** Any `queued` agent whose `t − queue_entry_time > patience_minutes_i` abandons. It is logged as `capacity_blocked` unmet demand against that shop and returns home. **An abandoning agent does not re-choose**; a wasted trip is a wasted trip. It still updates perception downward (§7.3) exactly as if it had been dissatisfied, with `satisfaction = −wom_threshold` assigned for broadcast purposes only.
-6. **Return.** `returning` agents walk home and become `idle`. Arriving home has no effect; it exists so the replay view (§11.1) shows a complete day.
-
-### 6.3 End of day
-
-After the last tick, in order: word-of-mouth propagates (§7.3), loyalty updates apply (§7.2), day metrics (§9) are written, and state freezes as Day `d+1` input. Agents still walking or queued at `day_end` are force-abandoned and logged as `closed_before_served`.
-
-**Determinism.** The only stochastic element is the §6.1 need draw, keyed on `(seed, day, agent_id)`. Every other rule is a total order. Two runs of the same town, same data, same seed are byte-identical.
-
-## 7. Feedback loops
-
-### 7.1 Satisfaction
-
-```
-expected_quality_i = expectation_base + expectation_slope * quality_sensitivity_i
-price_pain_i,s     = price_sensitivity_i * (price_s / daily_budget_i)
-wait_penalty_i     = w_wait * (wait_minutes_i / patience_minutes_i)
-satisfaction_i,s   = clamp(-1, 1, (quality_s - expected_quality_i)
-                                  - price_pain_i,s + ambience_s - wait_penalty_i)
+```json
+{
+  "id": "baseline",
+  "parent": null,
+  "overrides": [
+    {"from_day": 4, "shop": "simux", "set": {"open": "07:00", "price.latte": 48000}}
+  ]
+}
 ```
 
-Expectations scale with `quality_sensitivity`, so a discerning agent is harder to delight with the same cup. This is what lets the model conclude "high quality is not sufficient" rather than only "high quality wins."
-
-`ambience_s` and `wait_penalty_i` are new in v2 and are the two channels through which the **interior** reaches the simulation: a well-furnished room raises satisfaction, an under-staffed one destroys it. Both are invisible to choice (§5.1) and act only after the visit.
-
-### 7.2 Loyalty / habit
-
-```
-chosen shop:      loyalty ← clamp01(loyalty + habit_gain * (habit_visit_base + satisfaction))
-every other shop: loyalty ← clamp01(loyalty * (1 - loyalty_decay))
+```json
+{"id": "cf_discount", "parent": "baseline",
+ "overrides": [{"from_day": 5, "shop": "simux", "set": {"price.latte": 38000}}]}
 ```
 
-Agents that abandoned a queue (§6.2 step 5) count as having chosen **no** shop: every loyalty decays, including toward the shop they failed to reach. The `habit_visit_base` term means a merely-neutral visit still builds habit; only real dissatisfaction (`satisfaction < −0.50`) erodes it.
-
-### 7.3 Word-of-mouth
-
-After the last tick, each agent *i* that visited (or abandoned) a shop *s* with `|satisfaction_i,s| ≥ wom_threshold` broadcasts. For every other agent *j*:
-
-```
-Δperception_j,s = wom_transmission * wom_propensity_i * social_susceptibility_j * sign(satisfaction_i,s)
-perception_j,s  ← clamp(-1, 1, perception_j,s + Δperception_j,s)
+```json
+{"id": "cf_restore_hours", "parent": "baseline",
+ "overrides": [{"from_day": 5, "shop": "simux", "set": {"open": "06:30"}}]}
 ```
 
-All deltas are computed from the pre-step snapshot and applied simultaneously, so ordering within the step cannot matter. Broadcasts do not reach the broadcaster. Perception of shops not visited that day is untouched.
+The engine resolves shop state for day `d` by applying the parent's overrides and then its own, ordered by `from_day`.
 
-This is the **only** channel by which a startup reaches agents who have never visited it, and it is signed — a bad first week actively poisons reach rather than merely failing to build it.
+### 3.4 Trajectory (output)
 
-## 8. Competitor behavior
+One row per twin per day per scenario per seed, written to `runs/{scenario}/{seed}.jsonl`. This is what the Analyzer reads and the UI displays.
 
-**Brewhouse is static for v1 and v2.** Its price, `base_craft`, interior, and siting never change during a run.
+```json
+{
+  "scenario": "baseline", "seed": 2, "day": 4, "twin": "T01",
+  "mode": "reappraisal",
+  "disruption": {"score": 1.0, "source": "hours"},
+  "state_before": {"habit": {"simux": 0.82, "starbucks": 0.08}, "latent_interest": {"starbucks": 0.41}},
+  "choice": "starbucks", "spent": 65000, "abandoned": false,
+  "primary_driver": "hours", "secondary_driver": "curiosity",
+  "valence": 0.4,
+  "reasoning": "My usual place wasn't open at 6:45. I had to go somewhere else anyway, and Starbucks has that fall cold brew Linh raved about yesterday.",
+  "state_after": {"habit": {"simux": 0.78, "starbucks": 0.22}, "latent_interest": {"starbucks": 0.0}},
+  "told": ["T02"]
+}
+```
 
-*Why:* with 10 agents over 7 days, a reactive competitor makes every delta jointly caused. The run would show that something moved without being able to say which lever moved it, which defeats §1. A static incumbent makes Simffee's parameters and placement the only independent variables.
+The `primary_driver` field is mandatory and drawn from a closed set: `habit | hours | price | distance | wait | product | curiosity | social | quality`. It is what lets the attribution in section 6 run by counting rather than by having an LLM re-read everything.
 
-*What it would take to change:* a `reactions` block in `world.json` (trigger condition → parameter delta → response lag in days), plus a paired-run harness that executes the same seed with reactions off and on and reports only the difference. Do not add reactive behavior without that paired-run comparison, or §10's attribution claims become unsupportable.
+## 4. The 7-day loop and the decision function
 
-## 9. Metrics tracked per day
+Each day is one pass over the 10 twins in a fixed order, followed by one word-of-mouth pass. Nothing runs concurrently within a day, so results are reproducible for a given seed.
 
-- `visits` — count per shop.
-- `revenue` — `visits × price` per shop, plus cumulative.
-- `choices` — per agent: `{agent_id, sought_coffee, chosen, utilities:{brewhouse, simffee, none}, travel_minutes, wait_minutes, outcome}` where `outcome` ∈ `served | abandoned | below_reservation | closed_before_served | stayed_home`.
-- `switch_events` — agents whose served shop differs from their previous *served* day: `{agent_id, from, to, day}`.
-- `satisfaction` — per served agent, plus mean / min / max per shop.
-- `queue_profile` — per shop per hour: arrivals, mean wait, max wait, peak occupancy, and minutes spent at full `capacity_s`.
-- `unmet_demand` — count and agent ids by cause: `capacity_blocked`, `below_reservation`, `closed_before_served`, `unreachable`.
-- `state_snapshot` — every agent's `loyalty` and `perception` for both shops at end of day.
-- `derived_shop_stats` — `quality_s`, `capacity_s`, `ambience_s`, `service_slots_s`, `service_time_minutes_s` and throughput, recorded once per run so the report can cite the interior that produced them.
+### 4.1 The loop
 
-## 10. Output report format
+```python
+def run(scenario, seed, twins, shops, days=7):
+    rng = random.Random(seed)
+    state = init_state(twins)          # habit, latent_interest from mechanism
+    for day in range(1, days + 1):
+        shops_today = resolve(shops, scenario, day)
+        inbox = {t.id: [] for t in twins}   # yesterday's gossip already applied to state
+        for t in twins:
+            s = state[t.id]
+            current = argmax(s.habit)
+            disr = disruption(t, shops_today[current], s)
+            if s.habit[current] >= 0.6 and disr.score <= t.disruption_threshold:
+                rec = autopilot(t, current, shops_today)
+            else:
+                rec = reappraise(t, s, shops_today, disr, rng)   # LLM call
+            apply_habit(s, rec.choice)
+            log(rec)
+        gossip(twins, state, rng)      # update latent_interest for tomorrow
+```
 
-1. **Headline** — one sentence: did Simffee end Day 7 with more repeat demand than it started, and is the trend rising or decaying.
-2. **Seven-day trace** — day × shop table of visits, revenue, mean satisfaction, mean wait.
-3. **Trial vs. retention split** — of all Simffee visits, how many were first-time (novelty-driven) vs repeat (loyalty-driven), per day. The core diagnostic: novelty decays on a known curve (§2.8), so a visit count falling at that same rate means nothing converted.
-4. **Agent ledger** — one row per agent: archetype, visits to each shop, mean travel and wait, end-state loyalty and perception, and whether the agent was ever won.
-5. **Loss analysis** — for every agent that never bought from Simffee, the single term in §5.1 with the largest negative contribution to its Simffee utility, averaged over the run. This names the blocking lever per agent.
-6. **Throughput analysis** — for each shop, `service_slots / service_time_minutes` against peak arrival rate, plus minutes at full capacity. Separates "nobody wanted it" from "we could not serve them."
-7. **Word-of-mouth map** — which agents broadcast, in which direction, and the net perception shift caused per shop.
-8. **Unmet demand** — by cause, by day.
-9. **Recommendations** — ranked changes. Each states the lever, the direction, the agents it would flip, and the counter-cost, and MUST cite the section and figure supporting it. A recommendation with no citation into §§2–8 must not be emitted.
+`resolve()` applies the parent scenario's overrides, then the child's. `disruption()` is the table in 2.2. `gossip()` is 2.4.
 
-**Evidence rules for §10.9:**
+### 4.2 Autopilot
 
-| Recommendation | Only valid if |
-|---|---|
-| Lower price | §10.5 names the price term as top blocker for ≥2 agents |
-| Raise quality (add equipment) | §10.5 names quality as top blocker, **or** §10.2 mean satisfaction < 0 while visits hold |
-| Extend / refresh novelty | §10.3 shows visits tracking the novelty decay curve with repeat share flat |
-| Improve siting or paths | §10.5 names the distance term as top blocker for ≥2 agents |
-| Improve reach | §10.5 names the perception term as top blocker for ≥2 agents |
-| Add seats | §10.8 shows `capacity_blocked` demand on ≥2 days |
-| Add a counter / drop a slow brew device | §10.6 shows mean wait > 0.5 × mean `patience` **or** throughput below peak arrival rate |
-| Improve ambience | §10.2 mean satisfaction < 0 while §10.5 names no single dominant blocker |
+No LLM call. Records `mode: autopilot`, `choice: current`, `primary_driver: habit`, `valence: +0.3`, `reasoning: "Same as every day."`. If the regular shop is closed today or out of the usual item but disruption still falls below the threshold (a twin with a very high threshold), the twin **skips** (`choice: none`) instead of automatically walking to the competitor. This is the real behavior of a high-inertia person: they go without rather than switch.
 
-## 11. Presentation layer
+### 4.3 Reappraisal — the LLM call
 
-Rendering is specified here because siting and interiors are now player-editable inputs. **No rendering code is in scope for the current task** (§12).
+One call per twin per day in this mode. Cheap model, `temperature 0.7`, `max_tokens 300`, JSON required.
 
-### 11.1 Town view
+The prompt has four blocks, in order:
 
-Top-down 2-D pixel-art tile map, Stardew-Valley-styled: 16×16 tiles, nearest-neighbour upscaling, no smoothing. Renders terrain, props, structures, and agent sprites. Controls: pan, zoom, day scrubber, play/pause, speed multiplier.
+1. **Identity** — profile + the 3 most relevant why-transcript lines (selected by keyword match against `disruption.source`; no embeddings needed).
+2. **Today** — the time, money left for the day, the disruption and its source.
+3. **Options** — for each shop: distance, price of the usual item, opening time, wait, plus `habit` and `latent_interest` rendered into words ("you've been here 24 of the last 30 days", "your neighbor Linh praised the cold brew here yesterday").
+4. **3-day memory** — choice + valence + condensed reasoning for the last 3 days.
 
-Playback is a **replay of an already-resolved day**, not a live authority. The simulation (§6) resolves a full day deterministically; the view animates the recorded state. Pausing, scrubbing, or closing the window cannot alter an outcome.
+Output schema, mandatory:
 
-Hovering an agent shows name, archetype, current state, and destination. Selecting one draws its cached path and pins its utility breakdown for the current day.
+```json
+{
+  "choice": "simux | starbucks | none",
+  "primary_driver": "habit | hours | price | distance | wait | product | curiosity | social | quality",
+  "secondary_driver": "...",
+  "valence": -1.0,
+  "reasoning": "≤ 40 words, first person"
+}
+```
 
-### 11.2 Interior view
+Three constraints in the system prompt:
 
-Clicking a `coffee_shop` enters its interior: a separate tile view of the room, its furniture, the agents currently inside, and the queue outside the door. A live panel shows the five derived parameters (§3.3) with the contributing items itemised, so the player can see that removing the `pour_over_bar` trades −0.06 quality for −0.5 mean prep minutes.
+- Answer **as this person**, not as an assistant. Never say "as an AI."
+- `primary_driver` must be the **real** reason present in the reasoning, not the flattering one. If the reason is "I had to go somewhere else anyway, might as well try it," the drivers are `hours` + `curiosity`, not `price`.
+- For twins with a `say_do_gap`: the Identity block contains both the stated claim and a summary of the what-log. The system prompt states: *"The behavior in the log matters more than what you say about yourself. When the two conflict, act according to the log."*
 
-Agents inside are rendered as occupants at seats, **not** as pathfinding bodies — there is no interior navigation, no interior collision, and no walking-to-the-counter simulation. Seats are a counter, rendered as furniture.
+Validating output: parse the JSON, check the enums; on failure → retry once at `temperature 0.3`; on a second failure → fall back to autopilot and flag `llm_failed: true` so the row is excluded from confidence.
 
-### 11.3 Town editor
+### 4.4 Cost
 
-The player builds the town before a run: place and remove `house`, `tower`, and `coffee_shop` structures, paint terrain, and furnish shop interiors. Editing writes `data/town.json` and the `interior` blocks of `data/world.json`.
+Estimate for one baseline seed: days 1–3 are nearly all autopilot (≈ 3 calls), day 4 has six twins in reappraisal, days 5–7 taper off as new habits form. About 25 calls per seed per scenario, \~400 calls for all 3 scenarios × 5 seeds. At cheap-model pricing, under 1 USD. Run it all before the demo and cache everything.
 
-Placement is rejected, with a named reason, unless all hold:
+## 5. The three What-If questions → implementation
 
-1. Footprint is fully in bounds and overlaps no other footprint.
-2. The `door` tile is in bounds, outside the footprint, orthogonally adjacent to it, and on walkable terrain.
-3. No blocking prop occupies the `door` tile.
-4. A `house` has exactly one `occupant`, and every agent in `agents.json` owns exactly one house.
-5. Every house door can reach every `coffee_shop` door by some walkable path (§2.5).
-6. Every `coffee_shop` interior satisfies §3.4.
+Bernstein named the What-If Machine after three questions: *what if we shipped this? what if we shipped a weirder version? and what if we hadn't?* All three are **one mechanism**: re-run from the same snapshot with a different scenario, then compare trajectories. There is no per-question logic.
 
-Rule 5 is the one that bites: walling off a shop with houses or trees is a legal-looking layout that silently destroys the experiment, so it is rejected at edit time rather than discovered as a run of zeroes.
+| Question | In the system | Scenario | Compared against |
+| --- | --- | --- | --- |
+| What if we ship X? | Baseline: apply the change from day 4 | `baseline` | Days 1–3 (before the change) |
+| What if we ship a weirder version? | Same day-4 snapshot, a different change | `cf_*` with `parent: baseline`, overrides from day 5 | `baseline` days 5–7 |
+| What if we hadn't? | Same day-4 snapshot, **without** the change | `cf_null`: empty overrides, inherits day-3 state | `baseline` days 4–7 |
 
-**The editor is unavailable while a run is in progress.** Path costs are cached at load (§2.5) and a mid-run edit would silently invalidate every cached route and every day already simulated.
+### 5.1 Snapshot and fork
 
-## 12. Non-goals and known simplifications
+After each day, the engine writes `state` (habit, latent\_interest, inbox) to `runs/{scenario}/{seed}/state_day{d}.json`. A counterfactual does not re-run from day 1; it **loads the parent's snapshot for day `from_day − 1`** and continues with its own overrides. Same seed → same random stream for gossip → the only difference between the two branches is the override.
 
-Recorded so v3 knows what it inherited.
+```python
+def run_counterfactual(cf, seed):
+    parent_state = load(f"runs/{cf.parent}/{seed}/state_day{cf.from_day - 1}.json")
+    return run(cf, seed, start_day=cf.from_day, state=parent_state)
+```
 
-1. **No rendering, editor, or engine code exists.** This document and `data/town.json` are the only v2 artifacts. `agents.json` and `world.json` are still v1-shaped.
-2. **One purchase per agent per day, max.** No second cup, no group orders. `daily_budget` is therefore a price-pain scale more than a real constraint.
-3. **Single price point per shop.** `menu` is report decoration; no item-level choice, no attach rate, no food.
-4. **Static homes, single destination.** Agents go home → shop → home. No workplace, no commute that happens to pass a door, no errands.
-5. **The town cannot be edited mid-run** (§11.3).
-6. **Novelty is shop-level on a global clock**, not per-agent-exposure. An agent who never visits still "uses up" the novelty window. This understates how new a late discoverer finds Simffee.
-7. **No price-quality inference.** Agents do not read a high price as a quality signal.
-8. **No interior navigation.** Seats are a capacity counter (§11.2).
-9. **No staffing model.** `service_slots` comes from counters, not from hired baristas with wages, shifts, or skill.
-10. **Wait time is invisible to choice** (§5.1). Agents never learn to avoid a peak hour; they only sour on the shop overall.
-11. **No time-of-day supply effects.** Price, quality, and staffing are constant across the 12-hour day.
-12. **Static competitor** (§8).
-13. **No agent entry or exit, no tourists, no weather, no weekday/weekend effect.** Day 3 is structurally identical to Day 6.
-14. **Word-of-mouth is a fully-connected broadcast.** No social graph; every talker reaches all nine others, damped only by their own `wom_propensity` and the listener's `social_susceptibility`.
-15. **7 days is short for habit formation.** With `habit_gain = 0.25`, loyalty saturates slowly by design; read the direction of the trend, not its level.
+This is what makes the comparison **fair**: both branches share three identical opening days, so every divergence in days 5–7 is attributable to the intervention.
+
+### 5.2 "What if we hadn't" is the control arm
+
+`cf_null` is the most important scenario and the easiest to forget. It answers: *did sales drop because of our change, or were they going to drop anyway?* If `cf_null` also loses 2 customers because Starbucks' marketing is strong right now, then our change caused only 2 of the 4 lost customers — and the attribution in section 6 has to subtract that portion out.
+
+The UI shows `cf_null` as a faint line on the sales chart, labeled *"if unchanged"*. The gap between the faint line and the baseline line = the true impact of the decision.
+
+### 5.3 Pairwise comparison
+
+Every comparison is **twin-paired**, never aggregate. For each twin, for each day from `from_day`: `choice_A` vs `choice_B`. The result table for one scenario pair:
+
+| Twin | Day 5 | Day 6 | Day 7 | Conclusion |
+| --- | --- | --- | --- | --- |
+| T01 | starbucks → starbucks | starbucks → simux | starbucks → simux | Returns in branch B |
+| T03 | simux → simux | simux → simux | simux → simux | Unaffected |
+
+Count the twins whose outcome changes between the two branches. That is the number shown next to each what-if button: *"Restore opening hours: 3 of 4 lost customers return. Cut prices 15%: 1 of 4."*
+
+### 5.4 User-typed what-ifs
+
+A slot for the live demo if time allows: a text box reading *"What if we..."*. The LLM translates free-form input into an override JSON (schema 3.3), the engine forks from the day-4 snapshot, runs 1 seed, and shows the result in \~20 seconds. Not required; the three pre-cached scenarios are enough for the pitch.
+
+## 6. Analyzer: mechanism attribution + confidence
+
+The Analyzer is arithmetic over trajectories. The LLM appears only at the last step, to write two sentences of prose; it is never allowed to produce a number.
+
+### 6.1 Finding the break
+
+Daily sales = the sum of `spent` for twins who chose `simux`. The break = the first day sales fall ≥ 25% below the trailing 3-day average, **and** `cf_null` does not fall similarly. In the demo scenario, that is day 4.
+
+### 6.2 Naive read vs actual driver
+
+Two independent steps, then a comparison.
+
+**Naive read** = what a person looking at the scenario table would blame. Take the override with the highest `magnitude` per this table:
+
+| Override | Magnitude |
+| --- | --- |
+| Price change | Δ% × 5 |
+| Hours change | 0.3 fixed |
+| Item removed | 0.5 |
+| Marketing change | Δreach |
+
+Price is deliberately given a high coefficient: price is the first thing a founder looks at when sales drop. In the demo scenario, price +6.7% → 0.33 > hours 0.3. Naive read = **price**.
+
+**Actual driver** = count the `primary_driver` values of the twins who **changed their choice** on the break day versus the previous day. Add `secondary_driver` at weight 0.5.
+
+```python
+switchers = [r for r in day_rows if r.choice != prev_choice[r.twin]]
+hist = Counter()
+for r in switchers:
+    hist[r.primary_driver] += 1
+    hist[r.secondary_driver] += 0.5
+actual = hist.most_common(1)[0][0]
+```
+
+If `actual != naive` → **mechanism surprise** → red panel in the UI. If they match → grey panel, *"the obvious reading was right"*, and the counterfactual is still shown.
+
+### 6.3 Evidence
+
+Pick 2 trajectories as evidence: the switcher whose `primary_driver == actual` and whose `reasoning` is longest; and one twin who did **not** switch despite facing the same disruption (proving that disruption alone is not enough — latent\_interest is required). Show the `reasoning` verbatim alongside `state_before`.
+
+### 6.4 Subtracting cf\_null
+
+`impact = switchers(baseline) − switchers(cf_null)`, twin by twin. Only a twin who switches in the baseline and does not switch in cf\_null counts as "lost because of our decision." That number leads the panel: *"4 customers lost — 3 from the hours change, 1 would have been lost anyway."*
+
+### 6.5 Confidence score
+
+Simile trains a confidence model alongside the simulation model. We substitute two measurable components:
+
+```latex
+c = 0.7 \cdot \text{stability} + 0.3 \cdot \text{support}
+```
+
+- **stability** = for each twin, the fraction of seeds (out of 5) producing the same `choice` on the break day; averaged over the 10 twins. Autopilot counts as stability 1.0.
+- **support** = for twins in reappraisal, the number of why-transcript lines with a keyword matching `primary_driver`, divided by 3, capped at 1. A twin who switches out of `curiosity` whose transcript never mentions Starbucks → low support.
+
+Displayed as `Confidence 0.78` next to each conclusion, with a tooltip breaking out the two components. Conclusions with `c < 0.5` are italicized and labeled *"low confidence — not actionable"*. This line exists so judges can see the system knows when it does not know.
+
+### 6.6 Narration
+
+One final LLM call: the input is the computed JSON (naive, actual, impact, the 2 pieces of evidence, c), the output is 2 sentences for the panel. The prompt forbids citing any number not present in the input.
+
+## 7. The reverse-engineered demo scenario
+
+The target: on day 4, SimuX sales drop \~40%, the naive read is price, the real mechanism is opening hours, and the two what-if branches diverge clearly. Tune the twin parameters until this outcome appears reliably in ≥ 4 of 5 seeds, then cache it. This is staging a scenario, not fabricating data — every number lives in a twin file that anyone can read.
+
+### 7.1 Target sequence of events
+
+| Day | Event | Desired outcome |
+| --- | --- | --- |
+| 1–3 | Stable | 7 of 10 twins go to SimuX on autopilot; 3 twins are Starbucks regulars |
+| 4 | SimuX opens late at 07:00 (instead of 06:30), latte +3k | 6 twins with `usual_time` < 07:00 hit disruption = 1.0 → reappraisal. 4 of them have `latent_interest[starbucks] ≥ 0.3` → they switch. 2 twins with high thresholds skip coffee entirely (`none`) |
+| 5 | No change | The 4 who switched: habit\[starbucks\] ≈ 0.22, still in reappraisal. 3 stay at Starbucks because yesterday's valence was positive and the hours are still late; 1 returns |
+| 6–7 | Word of mouth | 1 more twin switches because a neighbor praised it. Final outcome: 4 customers lost — 3 due to hours, 1 due to gossip |
+
+`cf_null` (keep 06:30, keep the price): loses 1 customer on day 6 to Starbucks marketing. So the true impact = 3.
+
+### 7.2 The two what-if branches
+
+| Branch | Override from day 5 | Desired outcome | Why |
+| --- | --- | --- | --- |
+| `cf_discount` | latte 38k (−15% from 45k) | 1 of 4 return | 3 of the twins who switched have `primary_driver` of hours/curiosity; price never appears in their reasoning. The 4th is genuinely price-sensitive and returns |
+| `cf_restore_hours` | reopen at 06:30, keep 48k | 3 of 4 return | habit\[simux\] is still ≈ 0.7 after one day away; once the door opens on time, autopilot switches back on. The 4th has already formed a new habit after 3 days |
+
+The two numbers **1/4** and **3/4** are the entire point of the demo. If they come out close together after a run, adjust: raise `latent_interest[starbucks]` for the 3 switching twins to 0.4–0.5 and lower `ad_sensitivity` for the 4th.
+
+### 7.3 The knob on the 48k price
+
+The 3k price increase is deliberately small: enough for the naive read (×5 coefficient) to point at price, not enough for the LLM to actually use it as a reason. If the LLM still records `primary_driver: price` for more than 1 twin, drop it to 47k. If the naive read stops pointing at price, raise the price coefficient in 6.2.
+
+### 7.4 The three say-do gap twins
+
+Each of these twins has a `say_do_gap` field with three parts: the stated claim, the behavior, and the mechanism consequence. The system prompt tells the LLM to act according to the log.
+
+| Twin | Says | 30-day log shows | Consequence in the sim |
+| --- | --- | --- | --- |
+| T03 Linh | "I pick a shop based on bean quality" | 28 of 30 days at the nearest shop; the other 2 days were when it was closed | `walk_tolerance` 1. SimuX's quality marketing cannot pull her. Only distance and hours can |
+| T06 Đức | "I'm pretty frugal" | 65k/day, buys the most expensive cold brew on the menu | Low `ad_sensitivity` to discounts. `cf_discount` does not bring him back |
+| T08 Mai | "I love trying new things, I switch shops often" | 30 of 30 days at the same shop, same item, same time | `disruption_threshold` 0.7. The "fall menu" marketing does not move her. On day 4 she **skips coffee** rather than switch shops |
+
+All three appear in the evidence panel where relevant. T06 is the evidence for why `cf_discount` fails; T08 is the evidence that disruption is not enough without latent\_interest.
+
+### 7.5 Mandatory UI label
+
+Bottom corner of every screen, small type, not dismissible: *"Synthetic seed population — 10 synthetic twins, not real people. Results are a pre-testing signal, not a prediction."* The conclusion panel has a link, *"Protocol for replacing twins with real people"*, opening a static page describing: 15-minute interviews, a sealed out-of-domain quiz, and a paired sign test.
+
+## 8. The 10-twin table
+
+Starting parameters that make the scenario in section 7 happen. The "Role" column states what this twin exists to prove; every twin must have a role, otherwise cut it.
+
+Grid: SimuX (1,1), Starbucks (3,3). Manhattan distance; `walk_tolerance` is the maximum number of cells a twin will walk.
+
+| ID | Name | Home | Time | habit simux / sbux | latent sbux | threshold | talk | Say-do | Role |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T01 | Minh | (0,1) | 06:45 | 0.82 / 0.08 | 0.35 | 0.45 | 0.5 | — | Switches on day 4 due to hours; drivers hours+curiosity. Returns under cf\_restore |
+| T02 | Hà | (1,0) | 06:40 | 0.80 / 0.10 | 0.40 | 0.40 | 0.7 | — | Switches on day 4. The main storyteller; pulls T04 on day 6 |
+| T03 | Linh | (2,1) | 07:10 | 0.93 / 0.03 | 0.10 | 0.60 | 0.3 | Says quality, acts nearest | Unaffected on day 4 (arrives after 07:00). Stays throughout |
+| T04 | Tùng | (0,2) | 08:00 | 0.70 / 0.20 | 0.25 | 0.50 | 0.4 | — | No disruption. Switches on day 6 purely from T02's gossip. The word-of-mouth evidence |
+| T05 | Ngọc | (2,2) | 06:30 | 0.75 / 0.15 | 0.45 | 0.35 | 0.6 | — | Switches on day 4, forms a new habit fastest. Does **not** return in either branch |
+| T06 | Đức | (1,2) | 06:50 | 0.77 / 0.13 | 0.30 | 0.45 | 0.4 | Says frugal, spends 65k/day | Switches on day 4. cf\_discount doesn't bring him back; cf\_restore does |
+| T07 | Vy | (2,0) | 06:35 | 0.85 / 0.05 | 0.05 | 0.50 | 0.2 | — | Switches on day 4 due to hours but latent is low → negative valence at Starbucks → returns on her own on day 5 |
+| T08 | Mai | (0,0) | 06:40 | 0.90 / 0.00 | 0.15 | 0.70 | 0.3 | Says novelty-seeking, acts identically every day | Day 4 disruption of 1.0 exceeds her threshold → reappraisal, but latent is low so she **skips coffee** via the rule in 4.2: high threshold + low latent → `none` |
+| T09 | Khoa | (3,2) | 07:30 | 0.20 / 0.75 | — | 0.50 | 0.5 | — | Starbucks regular. The control showing SimuX marketing pulls nobody from Starbucks without a disruption on that side |
+| T10 | An | (4,3) | 08:15 | 0.10 / 0.85 | — | 0.55 | 0.5 | — | Starbucks regular. Genuinely price-sensitive: the only twin `cf_discount` pulls in (from Starbucks), so cf\_discount = +1 new customer, −3 old customers who never return |
+
+Tuning notes:
+
+- T08 needs a dedicated rule, not just a threshold: add to 4.2 the condition *in reappraisal but `max(latent_interest) < 0.2` and `disruption.source == hours` → choose `none`*. This is the "go without rather than switch" behavior of a high-inertia person, and it is the evidence that disruption ≠ switching.
+- T07 is the key twin for confidence: she switches and then returns on her own, so her day-4 `choice` is stable across seeds while day 5 fluctuates. Stability will be lower on day 5, and that is **correct**.
+- T09 and T10 are controls: without them, SimuX marketing has no one to act on and the gossip table has no reverse direction.
+- Starting SimuX customers = 8 (T01–T08), Starbucks = 2. Baseline day-7 outcome: SimuX 4, Starbucks 5, 1 skipping.
+
+## 9. UI: 5 screens, a 90-second flow
+
+A static web page reading cached JSON. No backend in the demo; the "live what-if" button (5.4) is the only one that calls an API.
+
+```mermaid
+flowchart LR
+  S[1 Setup] --> R[2 Town run]
+  R --> T[3 Timeline]
+  T --> M[4 Mechanism]
+  M --> W[5 What-if]
+  W -. re-run .-> R
+```
+
+| # | Screen | What you see | Seconds |
+| --- | --- | --- | --- |
+| 1 | Setup | The 5×5 grid with 10 homes and 2 shops. Right panel: price, hours, menu, and marketing for both shops. A **Run 7 days** button | 0–20 |
+| 2 | Town run | 7 days play at 2 seconds per day. Each home changes color by the shop visited (blue SimuX, green Starbucks, grey skipped). Faint lines show gossip between adjacent homes. Below the grid: the two sales lines | 20–45 |
+| 3 | Timeline | On day 4 the SimuX line breaks, marked with a red dot. The faint `cf_null` line runs parallel above it. Click the dot → screen 4 | 45–50 |
+| 4 | Mechanism | Left: **The obvious reading** — "Price +3k". Right, red border: **The real mechanism** — "Opened 30 minutes late → 6 twins lost their habit → 4 turned toward the place they were already curious about". Two verbatim evidence cards. `Confidence 0.78` | 50–70 |
+| 5 | What-if | Two buttons side by side: **Cut prices 15%** and **Reopen at 06:30**. Click → the timeline draws an extra branch, and 1/4 and 3/4 appear under the respective buttons. A "What if we..." text box below | 70–90 |
+
+### Screen 4 detail — the only thing that needs to look good
+
+Two equal columns. Left column, grey background, heading *Naive read*, one large line. Right column, pale red background, heading *Mechanism*, three lines: disruption → reappraisal → latent interest, each with a twin count. Below, two cards:
+
+- Card 1 (T01 Minh, day 4): `state_before` as two small bars (habit 0.82 / latent 0.41), `reasoning` verbatim in italics, tags `hours` `curiosity`.
+- Card 2 (T08 Mai, day 4): same disruption, chose `none`, tag `habit`. Caption: *"Same shock, no switch — because there was nothing to be curious about."*
+
+Bottom corner: confidence with a stability/support tooltip. The synthetic-data label line (7.5).
+
+### Twin inspector
+
+Click any home on screen 2 → right-hand drawer: profile, 3 why-transcript lines, a 7-day habit sparkline, and a 7-row table of choice/driver/reasoning. T03/T06/T08 get a **say-do gap** badge and two lines showing says/does. This is the screen judges will click through on their own after the pitch, so it has to work for all 10 twins.
+
+### Not doing
+
+- No movement animation on the grid; color changes are enough.
+- No dark mode, no responsive layout; the demo runs on one laptop.
+- No auth, no session persistence.
+
+## 10. Caching, determinism, build order
+
+The demo makes no LLM calls. Every trajectory is computed ahead of time and cached by key; the frontend only reads files.
+
+### 10.1 Cache
+
+The key for an LLM call = `sha1(twin_id, day, scenario_id, seed, hash(state_before), hash(shops_today))`. Store the JSON response in `cache/{key}.json`. Re-running the same input → no API call. Changing one twin parameter → only the days after it are invalidated. That makes tuning the scenario (7.2) cheap: each adjustment costs a few dozen calls, not 400.
+
+Output for the frontend: a single `public/runs.json` bundling every trajectory + state snapshot + analyzer result for the 3 scenarios × 5 seeds. The frontend has no idea the cache exists.
+
+### 10.2 Determinism
+
+- Twin order within a day is fixed by ID.
+- Gossip uses its own `random.Random(seed)`, never the global `random`.
+- The LLM is the only source of nondeterminism; the 5 seeds exist to measure it, not to hide it.
+- The frontend shows seed 0 by default; a dropdown selects seeds 1–4 so judges can check stability themselves.
+
+### 10.3 Build order
+
+Build in this order, because each step produces what the next one needs — and step 1 requires no code.
+
+| Hour | Task | Output | Who |
+| --- | --- | --- | --- |
+| 0–2 | Write the 10 twin files per the table in section 8, `shops.json`, and the 3 scenarios | A complete `/data` | Content writer |
+| 0–2 | Engine: `resolve`, `disruption`, `apply_habit`, `gossip`, and the loop with a stub autopilot (no LLM yet) | A 7-day run producing an all-autopilot log | Backend 1 |
+| 2–4 | `reappraise()`: prompt, JSON validation, cache | Baseline runs for 1 seed | Backend 1 |
+| 2–5 | Frontend screens 1–3 reading a fake `runs.json` | Grid colors change, sales lines draw | Frontend |
+| 4–6 | Run the baseline for 5 seeds. Tune twins until the day-4 break is stable | A real `runs.json` | Backend 1 + content |
+| 6–8 | Snapshot/fork; run `cf_null`, `cf_discount`, `cf_restore_hours` | 3 cached scenarios | Backend 1 |
+| 6–9 | Analyzer: break detection, naive/actual, impact, confidence, narration | Results inside `runs.json` | Backend 2 |
+| 8–11 | Frontend screens 4–5, twin inspector | A clickable demo | Frontend |
+| 11–13 | Record the backup video, write slides, rehearse 3 times | Video + slides | Whole team |
+| 13+ | Buffer. The live "What if we..." button only gets built if there's time left from here |  |  |
+
+Decision point at hour 6: if the day-4 break still isn't happening through the right mechanism after 3 rounds of tuning, **subtract** rather than add — drop the 3k price increase, keep only the hours change, and the naive read becomes "Starbucks marketing got stronger" (Δreach). The mechanism is still a broken habit, and the demo still stands.
+
+### 10.4 Repo
+
+```
+simux/
+  data/twins/T01..T10.json
+  data/shops.json
+  data/scenarios/{baseline,cf_null,cf_discount,cf_restore_hours}.json
+  engine/{loop,disruption,habit,gossip,reappraise,cache}.py
+  analyzer/{breakpoint,attribution,confidence,narrate}.py
+  runs/                      # gitignore
+  cache/                     # committed — this is the demo
+  web/public/runs.json
+  web/src/...
+  PROTOCOL.md                # replacing synthetic twins with real people
+```
+
+`cache/` is committed deliberately: anyone who clones the repo can run the demo without an API key.

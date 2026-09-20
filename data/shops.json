@@ -1,0 +1,53 @@
+{
+  "simux": {
+    "name": "SimuX Coffee",
+    "position": [
+      1,
+      1
+    ],
+    "price": {
+      "latte": 45000,
+      "americano": 35000,
+      "cold_brew": 50000
+    },
+    "open": "06:30",
+    "close": "20:00",
+    "products": [
+      "latte",
+      "americano",
+      "cold_brew"
+    ],
+    "quality": 0.78,
+    "avg_wait_min": 4,
+    "marketing": {
+      "reach": 0.15,
+      "message": "Roasted on site every morning"
+    }
+  },
+  "starbucks": {
+    "name": "Starbucks",
+    "position": [
+      3,
+      3
+    ],
+    "price": {
+      "latte": 65000,
+      "americano": 50000,
+      "cold_brew": 70000
+    },
+    "open": "06:00",
+    "close": "22:00",
+    "products": [
+      "latte",
+      "americano",
+      "cold_brew",
+      "frappuccino"
+    ],
+    "quality": 0.7,
+    "avg_wait_min": 7,
+    "marketing": {
+      "reach": 0.4,
+      "message": "Fall menu is here"
+    }
+  }
+}

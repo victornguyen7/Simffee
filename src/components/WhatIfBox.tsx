@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { health, reviewRun, runScenario, tailorSketch, whatIf } from '../api'
-import type { AIReview, Flows, Health, Runs, WhatIfAnswer } from '../types'
-import { randomMock, type MockAnswer } from '../mockAnswers'
+import { focusShopOf, type AIReview, type Flows, type Health, type Runs, type WhatIfAnswer } from '../types'
+import { pickMock, POOL_SIZE, SHORTLIST, type MockAnswer, type Picked } from '../mockAnswers'
 
 interface Props {
   runs: Runs
@@ -62,16 +62,21 @@ interface Sketch {
   mock: MockAnswer
   /** 'pending' while the model is rewording it, 'yes' once it has, 'no' if it could not. */
   tailored: 'pending' | 'yes' | 'no'
+  picked: Picked
 }
 
-function MockPanel({ mock, tailored }: Sketch) {
+function MockPanel({ mock, tailored, picked }: Sketch) {
   const note = tailored === 'yes' ? 'Illustrative movement sketch, reworded by the model to fit this plan and shop set-up — not a simulated result.'
     : tailored === 'pending' ? 'Illustrative movement sketch — fitting it to your plan…'
     : 'Illustrative movement sketch — the simulation is unavailable, so this is not a simulated result.'
+  const how = picked.shortlisted
+    ? `best of ${picked.shortlisted} sketches (of ${POOL_SIZE}) at ≥70% match to this plan and set-up · ${Math.round(picked.relevance * 100)}% match`
+    : `nothing in the ${POOL_SIZE}-sketch pool matched this plan at 70%; showing one of the ${SHORTLIST} closest`
   return (
     <div className="flows">
       <b>{mock.headline}</b>
       <em>{note}</em>
+      <em>{how}</em>
       {mock.movements.map((line) => <span key={line}>{line}</span>)}
       <span>Mostly driven by {mock.drivers.join(' and ')}</span>
       <span>{mock.net}</span>
@@ -124,17 +129,18 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     }
   }
 
-  /** Show a random canned sketch right away, then swap in the model's reworded one if the backend can. */
+  /** Pick the most relevant unseen sketch right away, then swap in the model's reworded one if the backend can. */
   const showMock = (query: string, version: number, live: Health | null | undefined = api) => {
-    const raw = randomMock()
+    const picked = pickMock(query, { focus: focusShopOf(runs), shops: runs.shops })
+    const raw = picked.mock
     if (!live) {
-      setMock({ mock: raw, tailored: 'no' })
+      setMock({ mock: raw, tailored: 'no', picked })
       return
     }
-    setMock({ mock: raw, tailored: 'pending' })
+    setMock({ mock: raw, tailored: 'pending', picked })
     void tailorSketch(query, raw).then((fitted) => {
       if (version !== requestVersion.current) return
-      setMock(fitted ? { mock: fitted, tailored: 'yes' } : { mock: raw, tailored: 'no' })
+      setMock(fitted ? { mock: fitted, tailored: 'yes', picked } : { mock: raw, tailored: 'no', picked })
     })
   }
 

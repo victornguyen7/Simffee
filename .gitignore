@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# engine output (cache/ IS committed, runs/ is not)
+runs/
+__pycache__/
+*.pyc

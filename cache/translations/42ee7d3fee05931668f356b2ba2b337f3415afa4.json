@@ -1,0 +1,22 @@
+{
+  "situation": "incumbent_change",
+  "focus_shop": "simffee",
+  "label": "Put everything back the way it was",
+  "actions": [
+    {
+      "action": "restore",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": null,
+      "value": "open"
+    },
+    {
+      "action": "restore",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": null,
+      "value": "price.latte"
+    }
+  ],
+  "unsupported": []
+}

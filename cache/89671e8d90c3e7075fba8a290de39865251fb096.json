@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.6",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1657,
+    "output_tokens": 5131
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "I leave for a latte at 08:15 as normal. Simffee was good yesterday, they are open, the wait is four minutes, 45k fits, and five blocks is my limit.",
+  "secondary_driver": "quality",
+  "valence": 0.6
+}

@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from unittest.mock import patch  # noqa: E402
 
+from analyzer.flows import flows  # noqa: E402
 from api.service import WhatIfService  # noqa: E402
 from engine import llm, loop  # noqa: E402
 from engine.loader import discover_scenarios  # noqa: E402
@@ -100,6 +101,11 @@ def main():
         check("cost row present with a habit count", out["cost"]["on_habit"] > 0, True)
         a = out["analysis"]
         check("analysis complete", a["complete"], True)
+        check("movement summary uses the requested what-if rows", out.get("flows"),
+              flows(out["result"]["0"]["rows"], "simffee", 7))
+        check("reopening tracks returns instead of copying baseline losses",
+              bool(out.get("flows", {}).get("totals", {}).get("returned")), True)
+        check("what-if flows are not baseline flows", out.get("flows") != a["flows"], True)
         check("analysis is against the root baseline: break day 4", a["break_day"], 4)
         check("single what-if in the answer", [w["scenario"] for w in a["whatif"]], ["u_reopen"])
         check("everyone lost comes back when the door reopens", a["whatif"][0]["returns"] == a["whatif"][0]["of"] > 0, True)
@@ -129,12 +135,15 @@ def main():
         out = svc_off.run(KEEP_SHUT, seeds=[0])
         check("coverage incomplete (fallbacks)", out["result"]["0"]["coverage"]["complete"], False)
         check("analysis withheld, reason given", (out["analysis"]["complete"], bool(out["analysis"]["reason"])), (False, True))
+        check("fallback choices cannot be advertised as customer movements",
+              (out.get("flows"), bool(out.get("flows_reason"))), (None, True))
         svc_off._pool.shutdown(wait=True)
 
         print("\nrun: longer than the library -> 10-day grid complete, analysis window 7")
         out = svc.run(LONGER, seeds=[0])
         check("100 rows", len(out["result"]["0"]["rows"]), 100)
         check("10-day coverage complete", out["result"]["0"]["coverage"]["complete"], True)
+        check("movement summary covers the entire what-if, not the baseline window", out.get("flows", {}).get("days"), 10)
         check("analysis still complete over the shared window", out["analysis"]["complete"], True)
 
         print("\nfork a live run from a live run")

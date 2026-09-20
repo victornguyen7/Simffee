@@ -100,12 +100,17 @@ class Handler(BaseHTTPRequestHandler):
                 if not text:
                     return self._send(400, {"error": "text is required"})
                 out = SERVICE.whatif(text, parent=body.get("parent") or "baseline",
-                                     seeds=parse_seeds(body.get("seeds")))
+                                     seeds=parse_seeds(body.get("seeds")), fresh=body.get("fresh") is True)
             elif self.path == "/run":
                 sc = body.get("scenario")
                 if not isinstance(sc, dict) or "id" not in sc or "overrides" not in sc:
                     return self._send(400, {"error": "scenario with id and overrides is required"})
                 out = SERVICE.run(sc, seeds=parse_seeds(body.get("seeds")))
+            elif self.path == "/review":
+                run_id = body.get("run_id")
+                if not isinstance(run_id, str) or not run_id:
+                    return self._send(400, {"error": "run_id is required"})
+                out = SERVICE.review(run_id, refresh=body.get("refresh") is True)
             else:
                 return self._send(404, {"error": "unknown path"})
         except Exception as exc:  # never leak a traceback to the demo screen; log it

@@ -19,6 +19,7 @@ import copy
 import hashlib
 import json
 import re
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -427,14 +428,14 @@ def _changed_fields(chain: list[Scenario], shop: str) -> set[str]:
 
 def _cache_key(text: str, parent_id: str | None, shops: dict, actions: dict) -> str:
     payload = json.dumps({"v": 1, "text": text.strip().lower(), "parent": parent_id,
-                          "shops": shops, "actions": actions, "model": llm.MODEL},
+                          "shops": shops, "actions": actions, "model": llm.MODEL, **llm.inference_options("high")},
                          sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
 def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
               complete_json=None, cache_dir: Path = TRANSLATION_CACHE,
-              scenario_id: str | None = None, retries: int = 1) -> dict[str, Any]:
+              scenario_id: str | None = None, retries: int = 1, refresh: bool = False) -> dict[str, Any]:
     """Sentence -> {"scenario": {...} | None, "unsupported": [...], "problems": [...],
     "reply": raw, "cached": bool, "attempts": int}.
 
@@ -452,14 +453,14 @@ def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
 
     key = _cache_key(text, parent_id, shops, actions)
     cpath = cache_dir / f"{key}.json"
-    if cpath.exists():
+    if cpath.exists() and not refresh:
         reply = json.loads(cpath.read_text(encoding="utf-8"))
         scenario, problems = compile_actions(reply, chain, shops, actions, sid, text)
         return {"scenario": scenario, "unsupported": reply.get("unsupported", []),
                 "problems": problems, "reply": reply, "cached": True, "attempts": 0}
 
     if complete_json is None:
-        complete_json = llm.complete_json
+        complete_json = partial(llm.complete_json, reasoning_effort="high") if llm.inference_options("high") else llm.complete_json
     schema = response_schema(list(shops), list(actions["actions"]))
     user = user_message(text, shops_now, focus, default_day, days, actions,
                         changes_in_effect(chain, shops, default_day - 1) if chain else [])
@@ -479,8 +480,9 @@ def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
                     "reply": {}, "cached": False, "attempts": attempts}
         scenario, problems = compile_actions(reply, chain, shops, actions, sid, text)
         if scenario and not problems:
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            cpath.write_text(json.dumps(reply, ensure_ascii=False, indent=2), encoding="utf-8")
+            if not refresh:
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                cpath.write_text(json.dumps(reply, ensure_ascii=False, indent=2), encoding="utf-8")
             return {"scenario": scenario, "unsupported": reply.get("unsupported", []),
                     "problems": [], "reply": reply, "cached": False, "attempts": attempts}
         last_problems = problems

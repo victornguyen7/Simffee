@@ -1,0 +1,15 @@
+{
+  "situation": "incumbent_change",
+  "focus_shop": "simffee",
+  "label": "Cut latte price to 40k",
+  "actions": [
+    {
+      "action": "set_price",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "latte",
+      "value": 40000
+    }
+  ],
+  "unsupported": []
+}

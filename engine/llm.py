@@ -21,6 +21,8 @@ import re
 import shlex
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +31,8 @@ def load_environment(path: Path | None = None) -> None:
     path = path if path is not None else Path(__file__).resolve().parent.parent / ".env"
     if not path.exists():
         return
-    allowed = {"XAI_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL"}
+    allowed = {"XAI_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL",
+               "SIMFFEE_TIMEOUT_S", "SIMFFEE_REASONING_EFFORT", "SIMFFEE_DECISION_MODEL"}
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         key, separator, raw = line.strip().removeprefix("export ").partition("=")
         key = key.strip()
@@ -48,12 +51,13 @@ load_environment()
 # Defaults MUST match what cache/ was filled with: both are part of the cache key, so a
 # fresh clone with no .env replays the committed demo only if these agree (RUN_PLAN D2/D3).
 MODEL = os.environ.get("SIMFFEE_MODEL", "qwen/qwen3.8-27b")
+DECISION_MODEL = os.environ.get("SIMFFEE_DECISION_MODEL", "").strip() or None
 # SPEC 4.3 says 300. Reasoning models spend their budget thinking before they
 # emit the object, so a 300-500 cap truncates the JSON and the reply is thrown
 # away as invalid -- which shows up as retries and fallbacks, not as an error.
 MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", "400"))
 BASE_URL = "https://api.x.ai/v1"
-TIMEOUT_S = 60.0          # reasoning models think before they answer
+TIMEOUT_S = float(os.environ.get("SIMFFEE_TIMEOUT_S", "180"))          # reasoning models think before they answer
 
 # Providers cap requests and tokens per minute. A bulk run is ~350 calls, so without
 # pacing a good share come back 429 -- and a 429 that reaches decide.py becomes a
@@ -71,6 +75,17 @@ _last_call_at = 0.0
 _tokens_remaining: int | None = None
 _tokens_reset_at = 0.0
 STATS = {"attempts": 0, "responses": 0, "input_tokens": 0, "output_tokens": 0, "quota_failures": 0}
+_local_stats: ContextVar[dict[str, int] | None] = ContextVar("llm_stats", default=None)
+
+
+@contextmanager
+def isolated_stats():
+    counters = {key: 0 for key in STATS}
+    token = _local_stats.set(counters)
+    try:
+        yield counters
+    finally:
+        _local_stats.reset(token)
 
 
 def reset_stats() -> None:
@@ -184,12 +199,13 @@ def _create_with_backoff(request: dict[str, Any]):
     that one propagates so the run reports it honestly.
     """
     last: Exception | None = None
+    stats = _local_stats.get() or STATS
     need = _estimate_tokens(request)
     for attempt in range(RATE_LIMIT_RETRIES):
         _pace(need)
         try:
             transport = client().responses
-            STATS["attempts"] += 1
+            stats["attempts"] += 1
             raw = getattr(transport, "with_raw_response", None)
             if raw is None:                 # a stubbed transport in tests
                 return transport.create(**request)
@@ -230,11 +246,33 @@ def _output_text(response) -> str | None:
     return "".join(parts) if parts else None
 
 
+def decision_model() -> str:
+    return DECISION_MODEL or ("grok-4.3" if MODEL in {"grok-4.5", "grok-4.6"} else MODEL)
+
+
+def inference_options(reasoning_effort: str | None = None, *, model: str | None = None) -> dict[str, Any]:
+    model = model or MODEL
+    if model not in {"grok-4.3", "grok-4.5", "grok-4.6"}:
+        return {}
+    default_effort = "none" if model == "grok-4.3" else "low"
+    effort = (reasoning_effort if reasoning_effort is not None else
+              os.environ.get("SIMFFEE_REASONING_EFFORT", default_effort)).strip().lower()
+    allowed = {"low", "medium", "high"} | ({"xhigh"} if model != "grok-4.5" else set())
+    if model == "grok-4.3":
+        allowed.add("none")
+    if effort not in allowed:
+        raise ValueError("SIMFFEE_REASONING_EFFORT must be one of " + ", ".join(sorted(allowed)))
+    return {"reasoning": {"effort": effort}}
+
+
 def complete_json(
     system: str,
     user: str,
     schema: dict[str, Any],
     temperature: float,
+    *,
+    reasoning_effort: str | None = None,
+    model: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, int]]:
     """One call. Returns (parsed object, token usage).
 
@@ -243,9 +281,11 @@ def complete_json(
     not a transport one.
     """
     global _temperature_ok, _structured_ok, _capability_model
-    if _capability_model != MODEL:
+    stats = _local_stats.get() or STATS
+    model = model or MODEL
+    if _capability_model != model:
         _temperature_ok = _structured_ok = None
-        _capability_model = MODEL
+        _capability_model = model
 
     for _ in range(3):          # at most one drop of each unsupported feature
         messages = [
@@ -253,7 +293,8 @@ def complete_json(
             {"role": "user", "content": user},
         ]
         request: dict[str, Any] = {
-            "model": MODEL,
+            "model": model,
+            **inference_options(reasoning_effort, model=model),
             "max_output_tokens": MAX_TOKENS,
             "input": messages,
             "store": False,             # nothing about a twin is kept server-side
@@ -289,12 +330,14 @@ def complete_json(
             # matters operationally: it is not a bug and it will not fix itself in a retry.
             if "rate_limit" in message or "429" in message:
                 kind = "quota: daily token limit" if "per day" in message or "tpd" in message else "rate limit"
-                STATS["quota_failures"] = STATS.get("quota_failures", 0) + 1
+                stats["quota_failures"] = stats.get("quota_failures", 0) + 1
                 raise RuntimeError(f"LLM transport failed ({kind})") from None
             if "401" in message or "api key" in message or "authentication" in message:
                 raise RuntimeError("LLM transport failed (authentication)") from None
             if "404" in message and "model" in message:
                 raise RuntimeError("LLM transport failed (model not found)") from None
+            if isinstance(exc, TimeoutError) or type(exc).__name__ == "APITimeoutError":
+                raise RuntimeError("LLM transport failed (timeout)") from None
             raise RuntimeError("LLM transport failed") from None
     else:
         raise ValueError("could not find a request shape this model accepts")
@@ -303,9 +346,9 @@ def complete_json(
         "input_tokens": int(getattr(response.usage, "input_tokens", 0) or 0),
         "output_tokens": int(getattr(response.usage, "output_tokens", 0) or 0),
     }
-    STATS["responses"] += 1
+    stats["responses"] += 1
     for key, value in usage.items():
-        STATS[key] += value
+        stats[key] += value
     text = _output_text(response)
     if not isinstance(text, str):
         raise ValueError("reply did not contain text")

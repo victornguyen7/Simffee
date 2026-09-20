@@ -105,9 +105,8 @@ def daily_sales(rows, shops, days=DAYS):
 
 
 def from_day(scenario):
-    if not scenario["overrides"]:
-        return 1
-    return min(o["from_day"] for o in scenario["overrides"])
+    from engine.loader import scenario_from_dict
+    return scenario_from_dict(scenario).from_day
 
 
 def build_twins():

@@ -25,6 +25,24 @@ class EnvironmentLoading(unittest.TestCase):
             self.assertEqual(os.environ['SIMFFEE_MODEL'], 'test-model')
             self.assertEqual(os.environ['SIMFFEE_MAX_TOKENS'], '900')
 
+    def test_loads_request_timeout(self):
+        self.path.write_text('SIMFFEE_TIMEOUT_S=180\n')
+        with patch.dict(os.environ, {}, clear=True):
+            llm.load_environment(self.path)
+            self.assertEqual(os.environ.get('SIMFFEE_TIMEOUT_S'), '180')
+
+    def test_loads_reasoning_effort(self):
+        self.path.write_text('SIMFFEE_REASONING_EFFORT=low\n')
+        with patch.dict(os.environ, {}, clear=True):
+            llm.load_environment(self.path)
+            self.assertEqual(os.environ.get('SIMFFEE_REASONING_EFFORT'), 'low')
+
+    def test_loads_decision_model(self):
+        self.path.write_text('SIMFFEE_DECISION_MODEL=test-fast-model\n')
+        with patch.dict(os.environ, {}, clear=True):
+            llm.load_environment(self.path)
+            self.assertEqual(os.environ.get('SIMFFEE_DECISION_MODEL'), 'test-fast-model')
+
     def test_existing_environment_takes_precedence(self):
         self.path.write_text('SIMFFEE_MODEL=file-model\n')
         with patch.dict(os.environ, {'SIMFFEE_MODEL': 'shell-model'}, clear=True):

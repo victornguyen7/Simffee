@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.6",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1836,
+    "output_tokens": 435
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is shut until 07:00 so I cannot keep my 6:45 latte. Starbucks is five blocks and would blow standup. I skip like last time.",
+  "secondary_driver": "distance",
+  "valence": -1.0
+}

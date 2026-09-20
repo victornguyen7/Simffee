@@ -1,0 +1,28 @@
+{
+  "situation": "mixed",
+  "focus_shop": "simffee",
+  "label": "We open at 6 am and add pastries, while Starbucks arrives on day 4.",
+  "actions": [
+    {
+      "action": "shop_enters",
+      "shop": "starbucks",
+      "from_day": 4,
+      "item": null,
+      "value": 4
+    },
+    {
+      "action": "set_open",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": null,
+      "value": "06:00"
+    }
+  ],
+  "unsupported": [
+    {
+      "text": "add pastries",
+      "reason": "price not specified for the new item",
+      "nearest": "add_item"
+    }
+  ]
+}

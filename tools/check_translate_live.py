@@ -34,7 +34,7 @@ CASES = [
     ("Starbucks raises their latte to 70k", {"starbucks": {"price.latte": 70000}}),
     ("Starbucks closes down", {"starbucks": {"permanently_closed": True}}),
     ("add a loyalty card", "unsupported"),
-    ("a new competitor opens across the street", "unsupported"),
+    ("Starbucks opens across the street on day 4", {"starbucks": {"exists_from_day": 4}}),
     ("host live music on friday nights", "unsupported"),
 ]
 

@@ -123,6 +123,7 @@ export interface WhatIf {
   revenue?: Revenue
   confidence: number | null
   confidence_detail: Confidence
+  flows?: Flows
 }
 
 /** `complete: false` means fallbacks or no measured break; every causal field is then null. */
@@ -276,6 +277,8 @@ export interface WhatIfAnswer {
   unsupported?: Unsupported[]
   problems?: string[]
   translation?: { cached: boolean; attempts: number }
+  fresh?: boolean
+  request_text?: string
   took_ms?: number
   // present when a run happened
   run_id?: string
@@ -284,6 +287,10 @@ export interface WhatIfAnswer {
   chip?: string
   result?: Record<string, SeedRun>
   analysis?: Analysis
+  flows?: Flows | null
+  flows_seed?: number
+  flows_reason?: string | null
+  review?: AIReview
   cost?: CostRow
   warning?: string | null
   fallback_reasons?: Record<string, number> | null
@@ -293,11 +300,23 @@ export interface WhatIfAnswer {
   pending_run_id?: string
 }
 
+export interface AIReview {
+  status: 'reviewing' | 'consistent' | 'needs_attention' | 'unavailable'
+  summary: string
+  issues: string[]
+  model?: string
+  cached?: boolean
+  usage?: { input_tokens: number; output_tokens: number }
+}
+
 export interface Health {
   ok: boolean
   offline: boolean
   llm: boolean
   model: string
+  translator_model?: string
+  reasoning_effort?: string | null
+  fresh_runs?: boolean
   library_seeds: number[]
   cache_files: number
   live_runs: number

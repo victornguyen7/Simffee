@@ -9,6 +9,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -16,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 import build_runs  # noqa: E402
 from analyzer import flows, narrate  # noqa: E402
 from analyzer.templates import question_for  # noqa: E402
-from engine import loop, translate  # noqa: E402
+from engine import decide, llm, loop, translate  # noqa: E402
 from engine.disruption import with_new_entrant  # noqa: E402
 from engine.gossip import apply_opening  # noqa: E402
 from engine.habit import regular_shop  # noqa: E402
@@ -71,6 +72,78 @@ class ExistsFromDay(unittest.TestCase):
         self.assertNotIn("starbucks", state["visited"]["T10"])
         v1 = loop.init_state(twins)
         self.assertEqual(v1["habit"]["T10"]["starbucks"], TWINS["T10"].mechanism["habit"]["starbucks"])
+
+
+class LiveAuditRegressions(unittest.TestCase):
+    def test_existence_change_reruns_prefix_even_in_a_late_block(self):
+        sc = scenario_from_dict({'id': 'late_entry', 'parent': 'baseline', 'overrides': [
+            {'from_day': 4, 'shop': 'starbucks', 'set': {'exists_from_day': 4}}]})
+        self.assertEqual(sc.from_day, 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            rows = loop.run(sc.id, 0, out=pathlib.Path(tmp), offline=True,
+                            cache_dir=pathlib.Path(tmp) / 'cache', extra={sc.id: sc})
+        self.assertTrue(all(r['choice'] != 'starbucks' for r in rows if r['day'] < 4))
+
+    def test_existence_unset_restores_base_value_and_reruns_prefix(self):
+        shops = {**SHOPS, 'starbucks': {**SHOPS['starbucks'], 'exists_from_day': 3}}
+        sc = scenario_from_dict({'id': 'restore_entry', 'parent': 's2_entrant', 'overrides': [
+            {'from_day': 6, 'shop': 'starbucks', 'unset': ['exists_from_day']}]})
+        self.assertEqual(sc.from_day, 1)
+        self.assertNotIn('starbucks', resolve(shops, S2 + [sc], 2))
+        self.assertIn('starbucks', resolve(shops, S2 + [sc], 3))
+
+    def test_opening_day_visits_use_scenario_state_not_original_log(self):
+        state = loop.init_state(list(TWINS.values()), present=resolve(SHOPS, S2, 1))
+        for twin in TWINS.values():
+            view = loop._twin_view(state, twin.id)
+            options = decide.options_block(twin, view, resolve(SHOPS, S2, 4), 4)
+            entrant = next(o for o in options if o['shop'] == 'starbucks')
+            self.assertFalse(entrant['visited'], twin.id)
+            view['visited'].append('starbucks')
+            self.assertIn('starbucks', decide.experienced_shops(twin, view))
+
+    def test_rename_transport_hides_brand_and_maps_choices_back(self):
+        requests = []
+
+        def transport(system, user, schema, temperature, **kwargs):
+            requests.append((system, user, schema))
+            options = schema['properties']['choice']['enum']
+            chosen = next((o for o in options if o not in ('simffee', 'none')), 'simffee')
+            return {'choice': chosen, 'primary_driver': 'curiosity', 'secondary_driver': None,
+                    'valence': 0.4, 'reasoning': 'I want to try the new place.'}, {'input_tokens': 0, 'output_tokens': 0}
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(llm, 'complete_json', side_effect=transport):
+            rows = loop.run('abl_rename', 0, out=pathlib.Path(tmp), cache_dir=pathlib.Path(tmp) / 'cache')
+        self.assertTrue(requests)
+        for request in requests:
+            self.assertNotIn('starbucks', json.dumps(request).lower())
+        self.assertTrue(any('Shop B' in user for _, user, _ in requests))
+        self.assertTrue(any(r['choice'] == 'starbucks' and not r['llm_failed'] for r in rows))
+        self.assertTrue(all(not r['llm_failed'] for r in rows))
+
+    def test_named_and_renamed_entrant_use_the_same_schema_ids(self):
+        from engine import prompt
+        named = resolve(SHOPS, S2, 4)
+        renamed = resolve(SHOPS, load_chain('abl_rename'), 4)
+        self.assertEqual(prompt.choice_ids(named), prompt.choice_ids(renamed))
+        self.assertNotEqual(prompt.choice_ids(named)['starbucks'], 'starbucks')
+        self.assertEqual(prompt.choice_ids(SHOPS), {})
+
+    def test_s2_prompt_does_not_claim_preopening_visits(self):
+        from engine import prompt
+        seen = []
+        build = prompt.build
+
+        def capture(*args):
+            text = build(*args)
+            if '## Your options' in text and '- **Starbucks' not in text:
+                seen.append(text)
+            return text
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(prompt, 'build', side_effect=capture):
+            loop.run('s2_entrant', 0, out=pathlib.Path(tmp), offline=True, cache_dir=pathlib.Path(tmp) / 'cache')
+        self.assertTrue(seen)
+        self.assertTrue(all('starbucks' not in text.lower() for text in seen))
 
 
 class NewEntrant(unittest.TestCase):

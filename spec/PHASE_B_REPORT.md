@@ -154,3 +154,104 @@ Live against xAI (`grok-4.6`)
 5. Retune `SIMFFEE_MIN_INTERVAL` / `SIMFFEE_MAX_TOKENS` for the xAI tier once a full run's
    ledger exists (reasoning output is long; 1600 is the current cap).
 6. Decide on S2-specific twin variants for T09/T10 (section 2, design call).
+
+---
+
+## 6. Follow-up: verified speed improvement (2026-09-20)
+
+This section supersedes the earlier in-progress testing status above. The implementation
+and transport fixes preceding this speed change have since been committed by the user.
+The additional speed change described here is not committed.
+
+### What the continued testing established
+
+- The old Phase B job finished in **759 seconds**, with three transport-failed decisions.
+  It was not a passing live result, even though customer flows were produced.
+- A new instrumented baseline request reproduced a **60.232-second SDK read timeout**.
+  With the configurable 180-second request timeout, baseline seed 0 completed with 21
+  successful model calls, zero fallbacks, and 803.734 seconds of elapsed time. Successful
+  calls just over 60 seconds confirmed why the former client timeout was too short.
+- Offline audits exposed brand leakage in the rename test, pre-opening visits resurfacing
+  from the original what-log, and late existence overrides inheriting impossible prefix
+  rows. Regressions and fixes were added before further live testing. They preserve the
+  original Phase A cache replay. Historical statements in section 2 about retained
+  pre-opening visits no longer describe the corrected engine.
+- The larger three-seed live matrix was paused to prioritize the requested speed change.
+  Saved trajectories and ledgers remain under `runs/phase-ab-check/`; partial results are
+  not promoted to the demo and are not claimed as completed B4/B6 evidence.
+
+### Smallest speed change selected
+
+The xAI documentation confirms that Grok 4.6 defaults to **high reasoning effort**.
+Instead of changing providers or restructuring the simulation, the engine now explicitly
+uses `reasoning={"effort":"low"}` for customer decisions on `grok-4.5` and `grok-4.6`.
+The existing model, API key, pacing, output cap, simulation mechanics and frontend remain
+unchanged.
+
+A matched T01 day-4 decision probe returned valid JSON in **9.025 seconds**, versus
+**60.135 seconds** in the preceding high-effort baseline run. Output usage fell from
+**3,508 to 413 tokens** (reasoning tokens: **3,446 to 349**). This is an observed sample,
+not a guaranteed latency or a full behavioral-quality evaluation.
+
+Applying low effort globally initially missed the entrant clause in a mixed request.
+That configuration was rejected. **Translation retains high effort**, while the many
+customer decisions use low effort. Both decision and translation cache identities include
+the effective inference options, preventing the failed low-effort translation or old
+high-effort decisions from being silently reused in the new mode. Unsupported model IDs
+omit the option, preserving the committed Qwen cache.
+
+Files changed for this speed improvement:
+- `engine/llm.py`: `inference_options()`, an optional per-call effort override, and support
+  for `SIMFFEE_REASONING_EFFORT` in the environment loader.
+- `engine/decide.py`: effective inference options included in decision cache identity.
+- `engine/translate.py`: high-effort translation and matching cache identity.
+- `tests/test_environment.py`, `tests/test_repairs.py`: setting loading, request shape,
+  invalid-setting rejection, role-specific effort, and cache separation regressions.
+- `engine/README.md`: configuration and restart instructions.
+
+### Live HTTP verification of the final configuration
+
+Real xAI calls were exercised through `POST /whatif`, plus `GET /health`, `GET /library`
+and `GET /runs/<id>`. The test used an isolated copy of the previously completed
+single-seed Grok library, not the fallback-filled promoted library. This measures new
+what-if work, not the cost of initially generating that baseline.
+
+| Case | Elapsed | New model calls | Result |
+| --- | ---: | ---: | --- |
+| A: open at 6, croissants at 30k | 11.888 s | 1 translation | Complete analysis, no fallbacks |
+| Same A request, cached | 0.013 s | 0 | Complete analysis |
+| B: entrant on day 4, open at 6, pastries at 30k | 183.134 s | 1 high-effort translation + 16 low-effort decisions | Complete analysis, correct S2 template, no visits to the entrant before day 4, no fallbacks |
+| Same B request, cached | 0.020 s | 0 | Complete analysis |
+
+The B result includes all requested actions and no unsupported clauses. It completed
+within the unchanged 240-second server deadline. The earlier 759-second result is a
+historical comparison, not a controlled performance benchmark: prompt repairs and model
+sampling also affect the trajectory.
+
+Artifacts:
+- `runs/phase-ab-check/quick-speed-probe.json`
+- `runs/quick-whatif-ets35hwi/verification.json`
+- `runs/quick-whatif-ets35hwi/calls.json`
+- `runs/quick-whatif-ets35hwi/A-False-answer.json`
+- `runs/quick-whatif-ets35hwi/B-False-answer.json`
+
+Verification: **77 unit tests pass**, the standalone translator and API suites pass,
+frontend build and lint pass, and the committed-cache pipeline passes (1,400 stubbed
+rows, fork fairness, deterministic replay, and the three-seed Qwen bundle). No credentials
+were read into output and no promoted library, frontend bundle source, or model setting
+was overwritten for this speed change.
+
+### Using it
+
+Restart the backend to load the updated code. No `.env` edit is necessary for the speed
+setting with the existing `SIMFFEE_MODEL=grok-4.6` configuration:
+
+```bash
+python3 -m api.server --library runs/library
+```
+
+To restore deeper customer reasoning, set `SIMFFEE_REASONING_EFFORT=high` before starting
+the server. Translation remains high effort either way. The first run in a new decision
+mode needs its own cache entries. This speed fix does not repair incomplete trajectories
+already stored in `runs/library`; full library regeneration and the three-seed B4/B6
+verification remain separate pending work.

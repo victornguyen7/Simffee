@@ -7,7 +7,7 @@
  * instead of reading as a table.
  */
 
-import { BUILDINGS, ROAD_BOTTOM, ROAD_TOP, T, WORLD_H, WORLD_W } from './town'
+import { BUILDINGS, PENS, ROAD_BOTTOM, ROAD_TOP, T, WORLD_H, WORLD_W, type Rect } from './town'
 
 export type CritterKind = 'chicken' | 'duck' | 'cat' | 'dog' | 'sheep' | 'cow'
 
@@ -26,6 +26,8 @@ export interface Critter {
   anim: number
   pause: number
   variant: number
+  /** Livestock never leave their paddock. Pets have no pen. */
+  pen?: Rect
 }
 
 export type CarKind = 'van' | 'car' | 'truck' | 'bike'
@@ -74,10 +76,11 @@ export function createCritters(): Critter[] {
   const rand = mulberry(77021)
   const out: Critter[] = []
 
-  const add = (kind: CritterKind, x: number, y: number, roam: number, speed: number): void => {
+  const add = (kind: CritterKind, x: number, y: number, roam: number, speed: number, pen?: Rect): void => {
     if (insideBuilding(x, y) || onRoad(y)) return
     if (x < T || x > WORLD_W - T || y < T || y > WORLD_H - T) return
     out.push({
+      pen,
       kind,
       x,
       y,
@@ -94,32 +97,36 @@ export function createCritters(): Critter[] {
     })
   }
 
-  // chickens and ducks pecking around the front yards
+  // pets: a cat or dog in most front yards, free to wander the whole village
   for (const b of BUILDINGS) {
     if (b.kind !== 'home') continue
     const yardY = b.box.y + b.box.h + T * 1.5
-    const n = 2 + Math.floor(rand() * 3)
-    for (let i = 0; i < n; i++) {
-      const kind: CritterKind = rand() < 0.22 ? 'duck' : 'chicken'
-      add(kind, b.box.x + (rand() - 0.2) * b.box.w * 1.4, yardY + rand() * T * 1.6, T * 2.2, 0.16)
-    }
-    if (rand() < 0.45) {
+    if (rand() < 0.6) {
       add(rand() < 0.5 ? 'cat' : 'dog', b.box.x + rand() * b.box.w, yardY + rand() * T, T * 3.2, 0.22)
     }
   }
-
-  // a little livestock paddock feel in the open ground at the edges
-  for (let i = 0; i < 14; i++) {
-    add('sheep', T * 4 + rand() * (WORLD_W - T * 8), WORLD_H - T * (4 + rand() * 7), T * 3, 0.1)
-  }
-  for (let i = 0; i < 4; i++) {
-    add('cow', T * 6 + rand() * (WORLD_W - T * 12), WORLD_H - T * (5 + rand() * 5), T * 2.6, 0.07)
-  }
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 6; i++) {
     add('cat', T * 3 + rand() * (WORLD_W - T * 6), T * 2 + rand() * (ROAD_TOP - T * 5), T * 3, 0.2)
   }
 
+  // livestock, penned on the farm south of town
+  for (const pen of PENS) {
+    const inner = { x: pen.box.x + T, y: pen.box.y + T, w: pen.box.w - T * 2, h: pen.box.h - T * 1.6 }
+    const spot = (): [number, number] => [inner.x + rand() * inner.w, inner.y + rand() * inner.h]
+    if (pen.kind === 'sheep') {
+      for (let i = 0; i < 9; i++) add('sheep', ...spot(), T * 3, 0.1, inner)
+    } else if (pen.kind === 'cow') {
+      for (let i = 0; i < 5; i++) add('cow', ...spot(), T * 3, 0.07, inner)
+    } else {
+      for (let i = 0; i < 9; i++) add(rand() < 0.3 ? 'duck' : 'chicken', ...spot(), T * 2.5, 0.16, inner)
+    }
+  }
+
   return out
+}
+
+function clampTo(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v))
 }
 
 export function stepCritters(list: Critter[]): void {
@@ -140,8 +147,12 @@ export function stepCritters(list: Critter[]): void {
       c.pause = 40 + Math.floor(Math.random() * 160)
       const a = Math.random() * Math.PI * 2
       const r = Math.random() * c.roam
-      const nx = c.homeX + Math.cos(a) * r
-      const ny = c.homeY + Math.sin(a) * r * 0.7
+      let nx = c.homeX + Math.cos(a) * r
+      let ny = c.homeY + Math.sin(a) * r * 0.7
+      if (c.pen) {
+        nx = clampTo(nx, c.pen.x, c.pen.x + c.pen.w)
+        ny = clampTo(ny, c.pen.y, c.pen.y + c.pen.h)
+      }
       if (!insideBuilding(nx, ny) && !onRoad(ny)) {
         c.tx = nx
         c.ty = ny

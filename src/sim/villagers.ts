@@ -61,7 +61,7 @@ const LINES = [
   'I heard good things'
 ]
 
-const SPEED = 0.55
+const SPEED = 0.32
 
 /** How much space each kind of scenery takes up on the ground. */
 const BLOCK_SIZE: Partial<Record<DecorKind, [number, number]>> = {
@@ -75,7 +75,13 @@ const BLOCK_SIZE: Partial<Record<DecorKind, [number, number]>> = {
   lamp: [T * 0.18, T * 0.18],
   mailbox: [T * 0.22, T * 0.18],
   bistro: [T * 1.0, T * 0.4],
-  fence: [T * 1.35, T * 0.3]
+  fence: [T * 1.35, T * 0.3],
+  rail: [T * 1.0, T * 0.3],
+  post: [T * 0.18, T * 0.2],
+  gate: [T * 0.6, T * 0.3],
+  trough: [T * 0.6, T * 0.25],
+  coop: [T * 0.8, T * 0.4],
+  barn: [T * 1.2, T * 0.5]
 }
 
 interface Blocker {

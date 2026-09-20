@@ -46,7 +46,7 @@ export default function WhatIf() {
     <div className="whatif-page">
       <header className="whatif-page__head">
         <h2>Ask the simulation</h2>
-        <p className="dim">Needs the local API: <code>python -m api.server --library runs/library --cache cache --offline</code></p>
+        <p className="dim">Needs the local API: run <code>bash tools/serve_demo.sh</code> in another terminal.</p>
       </header>
       <WhatIfBox runs={runs} current={current} onAnswer={setCurrent} />
     </div>

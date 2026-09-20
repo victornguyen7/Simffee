@@ -111,6 +111,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(run_id, str) or not run_id:
                     return self._send(400, {"error": "run_id is required"})
                 out = SERVICE.review(run_id, refresh=body.get("refresh") is True)
+            elif self.path == "/sketch":
+                sketch = body.get("sketch")
+                if not isinstance(sketch, dict) or not {"headline", "movements", "drivers", "net"} <= sketch.keys():
+                    return self._send(400, {"error": "sketch with headline, movements, drivers and net is required"})
+                out = SERVICE.sketch((body.get("text") or "").strip(), sketch)
             else:
                 return self._send(404, {"error": "unknown path"})
         except Exception as exc:  # never leak a traceback to the demo screen; log it

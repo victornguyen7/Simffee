@@ -172,6 +172,40 @@ class WhatIfService:
         return reviewer.evaluate(scenario, rows, focus, days, self.cache_dir,
                                  refresh=refresh, offline=self.offline)
 
+    def sketch(self, text: str, sketch: dict[str, Any]) -> dict[str, Any]:
+        """Reword a canned F&B movement sketch so it reads against the user's plan and
+        the shop set-up. One model call, no simulation; the untouched sketch comes back
+        (`tailored: false`) when the model is not reachable."""
+        from engine import llm
+        untouched = {"sketch": sketch, "tailored": False, "request_text": text}
+        if self.offline or not llm.available():
+            return untouched
+        focus_id = next(iter(self.shops))
+        setup = {"focus_shop": focus_id, "shops": self.shops}
+        system = ("You rewrite a short illustrative sketch of how coffee-shop customers move "
+                  "between shops so it fits the owner's plan and the shops described. Keep the "
+                  "same structure, length and direction of movement; do not invent numbers or "
+                  "claim a simulation ran. Refer to shops, prices, hours and products by the "
+                  "names given. Plain, concrete sentences.")
+        user = json.dumps({"owner_plan": text, "setup": setup, "sketch": sketch}, indent=1)
+        schema = {"type": "object", "additionalProperties": False,
+                  "required": ["headline", "movements", "drivers", "net"],
+                  "properties": {"headline": {"type": "string"},
+                                 "movements": {"type": "array", "items": {"type": "string"},
+                                               "minItems": 1, "maxItems": 4},
+                                 "drivers": {"type": "array", "items": {"type": "string"},
+                                             "minItems": 1, "maxItems": 3},
+                                 "net": {"type": "string"}}}
+        try:
+            out, _usage = llm.complete_json(system, user, schema, temperature=0.4)
+        except Exception as exc:
+            return {**untouched, "detail": str(exc)[:200]}
+        if not all(isinstance(out.get(k), str) and out[k] for k in ("headline", "net")) \
+                or not all(isinstance(out.get(k), list) and out[k] for k in ("movements", "drivers")):
+            return untouched
+        return {"sketch": {k: out[k] for k in ("headline", "movements", "drivers", "net")},
+                "tailored": True, "request_text": text}
+
     def run(self, scenario: dict[str, Any], seeds: list[int] | None = None,
             deadline: float | None = None) -> dict[str, Any]:
         """A structured scenario (already translated or hand-built) -> run -> analysis."""

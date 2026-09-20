@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { health, reviewRun, runScenario, whatIf } from '../api'
+import { health, reviewRun, runScenario, tailorSketch, whatIf } from '../api'
 import type { AIReview, Flows, Health, Runs, WhatIfAnswer } from '../types'
 import { randomMock, type MockAnswer } from '../mockAnswers'
 
@@ -58,11 +58,20 @@ function FlowsPanel({ flows, shops, entrant, seed }: { flows: Flows; shops: Runs
   )
 }
 
-function MockPanel({ mock }: { mock: MockAnswer }) {
+interface Sketch {
+  mock: MockAnswer
+  /** 'pending' while the model is rewording it, 'yes' once it has, 'no' if it could not. */
+  tailored: 'pending' | 'yes' | 'no'
+}
+
+function MockPanel({ mock, tailored }: Sketch) {
+  const note = tailored === 'yes' ? 'Illustrative movement sketch, reworded by the model to fit this plan and shop set-up — not a simulated result.'
+    : tailored === 'pending' ? 'Illustrative movement sketch — fitting it to your plan…'
+    : 'Illustrative movement sketch — the simulation is unavailable, so this is not a simulated result.'
   return (
     <div className="flows">
       <b>{mock.headline}</b>
-      <em>Illustrative movement sketch — the simulation API is unavailable, so this is not a simulated result.</em>
+      <em>{note}</em>
       {mock.movements.map((line) => <span key={line}>{line}</span>)}
       <span>Mostly driven by {mock.drivers.join(' and ')}</span>
       <span>{mock.net}</span>
@@ -74,7 +83,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [answer, setAnswer] = useState<WhatIfAnswer | null>(null)
-  const [mock, setMock] = useState<MockAnswer | null>(null)
+  const [mock, setMock] = useState<Sketch | null>(null)
   const [api, setApi] = useState<Health | null | undefined>(undefined)
   const [submittedText, setSubmittedText] = useState('')
   const requestVersion = useRef(0)
@@ -115,6 +124,20 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     }
   }
 
+  /** Show a random canned sketch right away, then swap in the model's reworded one if the backend can. */
+  const showMock = (query: string, version: number, live: Health | null | undefined = api) => {
+    const raw = randomMock()
+    if (!live) {
+      setMock({ mock: raw, tailored: 'no' })
+      return
+    }
+    setMock({ mock: raw, tailored: 'pending' })
+    void tailorSketch(query, raw).then((fitted) => {
+      if (version !== requestVersion.current) return
+      setMock(fitted ? { mock: fitted, tailored: 'yes' } : { mock: raw, tailored: 'no' })
+    })
+  }
+
   const ask = async (q: string, seeds: number[] = [0]) => {
     const query = q.trim()
     if (!query || inFlight.current) return
@@ -128,10 +151,10 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     }
     if (!live || !live.llm || live.fresh_runs !== true) {
       setBusy(null)
-      requestVersion.current += 1
+      const version = ++requestVersion.current
       setSubmittedText(query)
       setAnswer({ scenario: null, request_text: query })
-      setMock(randomMock())
+      showMock(query, version, live)
       return
     }
     inFlight.current = true
@@ -144,13 +167,13 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
       const a = await whatIf(query, seeds)
       if (version !== requestVersion.current) return
       setAnswer(a)
-      if (a.error) setMock(randomMock())
+      if (a.error) showMock(query, version)
       if (a.result && !a.fallback_used && !a.error) onAnswer(a)
       void checkAnswer(a, true, version)
     } catch {
       if (version === requestVersion.current) {
         setAnswer({ scenario: null, request_text: query })
-        setMock(randomMock())
+        showMock(query, version)
       }
     } finally {
       if (version === requestVersion.current) {
@@ -177,11 +200,11 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
       setAnswer(next)
       if (a.result && !a.fallback_used && !a.error) onAnswer(next)
       void checkAnswer(next, true, version)
-      if (a.error) setMock(randomMock())
+      if (a.error) showMock(previous.request_text ?? submittedText, version)
     } catch {
       if (version === requestVersion.current) {
         setAnswer({ scenario: null, request_text: previous.request_text })
-        setMock(randomMock())
+        showMock(previous.request_text ?? submittedText, version)
       }
     } finally {
       if (version === requestVersion.current) {
@@ -262,7 +285,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         <div className="answer">
           <p className="muted">Result for: “{a.request_text ?? submittedText}”{a.fresh && !a.error ? ' · fresh run' : ''}</p>
           {a.error && !mock && <p className="warn">{a.error}</p>}
-          {mock && <MockPanel mock={mock} />}
+          {mock && <MockPanel {...mock} />}
 
           {a.scenario === null && !a.error && !mock && (
             <div className="unsupported">

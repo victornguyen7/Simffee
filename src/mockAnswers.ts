@@ -64,7 +64,7 @@ const singular = (w: string) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1
 /** "open at 6", "close at 9pm", "opening 10:30" -> minutes since midnight, or null. Bare hours 1-6
  *  after "close" are read as afternoon. */
 function requestedTime(lower: string, verb: 'open' | 'clos'): number | null {
-  const m = new RegExp(`\\b${verb}\\w*\\s+(?:at\\s+|until\\s+|till\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b`).exec(lower)
+  const m = new RegExp(`\\b(?:re)?${verb}\\w*\\s+(?:at\\s+|until\\s+|till\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b`).exec(lower)
   if (!m) return null
   let h = Number(m[1])
   const minutes = Number(m[2] ?? 0)
@@ -78,6 +78,12 @@ function requestedTime(lower: string, verb: 'open' | 'clos'): number | null {
     if (verb === 'clos' && h <= 6) h += 12
   }
   return h * 60 + minutes
+}
+
+/** Whole-word match of a shop name inside the plan ("Bean" must not match "beans"). */
+const namedIn = (lower: string, name: string) => {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^a-z0-9])${escaped}(?![a-z0-9])`).test(lower)
 }
 
 const clock = (hhmm: string | undefined): number | null => {
@@ -102,9 +108,9 @@ function features(text: string, setup: SketchSetup | null): Features {
     f.add(singular(w))
   }
   if (/\b\d+\s*k\b|\bprice|\bcost|\bcharge|\bvnd\b|\$/.test(lower)) f.add('price')
-  if (/\b\d{1,2}\s*(am|pm)\b|\bat\s+\d{1,2}\b|\bopen|\bclos|\bhour/.test(lower)) f.add('hours')
-  if (/\bopen/.test(lower)) f.add('opening')
-  if (/\bclos/.test(lower)) f.add('closing')
+  if (/\b\d{1,2}\s*(am|pm)\b|\bat\s+\d{1,2}\b|\b(re)?open|\b(re)?clos|\bhour/.test(lower)) f.add('hours')
+  if (/\b(re)?open/.test(lower)) f.add('opening')
+  if (/\b(re)?clos/.test(lower)) f.add('closing')
   const focus = setup?.shops[setup.focus]
   const wantOpen = requestedTime(lower, 'open')
   const wantClose = requestedTime(lower, 'clos')
@@ -121,7 +127,7 @@ function features(text: string, setup: SketchSetup | null): Features {
   for (const [id, shop] of Object.entries(setup.shops)) {
     const name = shop.name.toLowerCase()
     if (id !== setup.focus) {
-      if (lower.includes(name)) {
+      if (namedIn(lower, name)) {
         if (name.length > rivalLen) [rival, rivalLen] = [id, name.length]
       } else if (name.split(/\s+/).some((part) => part.length > 3 && f.has(part))) {
         partial.push(id)

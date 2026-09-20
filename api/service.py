@@ -63,7 +63,8 @@ class WhatIfService:
         self.live_dir.mkdir(parents=True, exist_ok=True)
         self.registry_path = self.live_dir / "registry.json"
         self.registry: dict[str, dict[str, Any]] = (
-            json.loads(self.registry_path.read_text()) if self.registry_path.exists() else {})
+            json.loads(self.registry_path.read_text(encoding="utf-8"))
+            if self.registry_path.exists() else {})
         self._library_bundle: dict[str, Any] | None = None
 
     # --- library ---------------------------------------------------------------------
@@ -216,7 +217,8 @@ class WhatIfService:
             entry = {"scenario": scenario, "run_dir": str(out), "seeds": seeds,
                      "at": ledger["at"], "days": days}
             self.registry[run_id] = entry
-            self.registry_path.write_text(json.dumps(self.registry, ensure_ascii=False, indent=1))
+            self.registry_path.write_text(
+                json.dumps(self.registry, ensure_ascii=False, indent=1), encoding="utf-8")
 
             per_seed = {str(s): {"rows": rs, "daily_sales": build_runs.daily_sales(rs, self.shops, days),
                                  "coverage": coverage(rs, days)} for s, rs in zip(seeds, rows_by_seed)}

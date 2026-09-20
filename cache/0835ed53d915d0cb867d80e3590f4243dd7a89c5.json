@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.3",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1360,
+    "output_tokens": 63
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee closed till 7, Starbucks 5 blocks and 7-minute queue risks missing 7:15 standup.",
+  "secondary_driver": "wait",
+  "valence": -1.0
+}

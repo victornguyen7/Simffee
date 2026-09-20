@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.3",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1312,
+    "output_tokens": 57
+  },
+  "_version": 2,
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee shut, Starbucks is the only one open and I need coffee before standup.",
+  "secondary_driver": "habit",
+  "valence": -1.0
+}

@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.6",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1586,
+    "output_tokens": 3362
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "curiosity",
+  "reasoning": "I keep meaning to try Simffee. It's 08:15, they're open, the queue is only four minutes, and 45k fits my budget so I'll make the five-block walk.",
+  "secondary_driver": "wait",
+  "valence": 0.4
+}

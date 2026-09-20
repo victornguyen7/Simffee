@@ -19,6 +19,7 @@ import copy
 import hashlib
 import json
 import re
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -426,7 +427,7 @@ def _changed_fields(chain: list[Scenario], shop: str) -> set[str]:
 
 def _cache_key(text: str, parent_id: str | None, shops: dict, actions: dict) -> str:
     payload = json.dumps({"v": 1, "text": text.strip().lower(), "parent": parent_id,
-                          "shops": shops, "actions": actions, "model": llm.MODEL},
+                          "shops": shops, "actions": actions, "model": llm.MODEL, **llm.inference_options("high")},
                          sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
@@ -458,7 +459,7 @@ def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
                 "problems": problems, "reply": reply, "cached": True, "attempts": 0}
 
     if complete_json is None:
-        complete_json = llm.complete_json
+        complete_json = partial(llm.complete_json, reasoning_effort="high") if llm.inference_options("high") else llm.complete_json
     schema = response_schema(list(shops), list(actions["actions"]))
     user = user_message(text, shops_now, focus, default_day, days, actions,
                         changes_in_effect(chain, shops, default_day - 1) if chain else [])

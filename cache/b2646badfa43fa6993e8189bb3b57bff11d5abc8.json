@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.6",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1816,
+    "output_tokens": 494
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is shut until seven and I am standing here at 6:40. Last time it could not serve me I just skipped, so I will do that again.",
+  "secondary_driver": "habit",
+  "valence": 0.0
+}

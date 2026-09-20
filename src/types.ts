@@ -298,6 +298,8 @@ export interface Health {
   offline: boolean
   llm: boolean
   model: string
+  translator_model?: string
+  reasoning_effort?: string | null
   library_seeds: number[]
   cache_files: number
   live_runs: number

@@ -105,7 +105,7 @@ class LiveAuditRegressions(unittest.TestCase):
     def test_rename_transport_hides_brand_and_maps_choices_back(self):
         requests = []
 
-        def transport(system, user, schema, temperature):
+        def transport(system, user, schema, temperature, **kwargs):
             requests.append((system, user, schema))
             options = schema['properties']['choice']['enum']
             chosen = next((o for o in options if o not in ('simffee', 'none')), 'simffee')

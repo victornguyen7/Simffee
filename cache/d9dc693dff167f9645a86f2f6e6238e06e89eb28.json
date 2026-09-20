@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.6",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1940,
+    "output_tokens": 346
+  },
+  "_version": 2,
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is still shut at 06:50. Starbucks is open now three blocks away. I have been there before and the fall menu caught my eye.",
+  "secondary_driver": "product",
+  "valence": 0.6
+}

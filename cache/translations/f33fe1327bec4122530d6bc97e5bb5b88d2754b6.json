@@ -1,0 +1,28 @@
+{
+  "situation": "mixed",
+  "focus_shop": "simffee",
+  "label": "Open at 6 as Starbucks opens",
+  "actions": [
+    {
+      "action": "shop_enters",
+      "shop": "starbucks",
+      "from_day": 4,
+      "item": null,
+      "value": 4
+    },
+    {
+      "action": "set_open",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": null,
+      "value": "06:00"
+    }
+  ],
+  "unsupported": [
+    {
+      "text": "add pastries",
+      "reason": "add_item needs a specific item slug and a VND price, which were not given.",
+      "nearest": "add_item"
+    }
+  ]
+}

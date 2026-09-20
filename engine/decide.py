@@ -223,16 +223,18 @@ def reappraise(
     choice_ids = prompt.choice_ids(shops_today)
     decoded_choices = {value: key for key, value in choice_ids.items()}
     schema = prompt.response_schema([choice_ids.get(s, s) for s in shops_today])
+    model = llm.decision_model()
     context = {
         "twin": asdict(twin), "regular": regular, "disruption": disr.to_dict(),
         "system": prompt.SYSTEM, "user": user, "schema": schema,
-        "model": llm.MODEL, "max_tokens": llm.MAX_TOKENS,
+        "model": model, "max_tokens": llm.MAX_TOKENS,
+        **llm.inference_options(model=model),
         "temperatures": [0.7, 0.3], "transport_version": 2,
     }
     cache_key = cache.key(twin.id, day, scenario_id, seed, state, shops_today, context)
-    provenance = {"decision_source": "llm", "llm_model": llm.MODEL, "llm_cache_key": cache_key}
+    provenance = {"decision_source": "llm", "llm_model": model, "llm_cache_key": cache_key}
     hit = cache.get(cache_key, cache_dir)
-    if hit is not None and hit.get("_model") == llm.MODEL and hit.get("_version") == 2:
+    if hit is not None and hit.get("_model") == model and hit.get("_version") == 2:
         try:
             decision = _validate(hit, twin, shops_today)
             if hit.get("llm_failed") is not False or len(hit["reasoning"].split()) > MAX_REASONING_WORDS:
@@ -249,14 +251,15 @@ def reappraise(
     last_error = "unknown"
     for attempt, temperature in ((1, 0.7), (2, 0.3)):     # SPEC 4.3
         try:
-            raw, usage = llm.complete_json(prompt.SYSTEM, user, schema, temperature)
+            options = {"model": model} if model != llm.MODEL else {}
+            raw, usage = llm.complete_json(prompt.SYSTEM, user, schema, temperature, **options)
             if isinstance(raw, dict) and isinstance(raw.get("choice"), str) and raw["choice"] in decoded_choices:
                 raw = {**raw, "choice": decoded_choices[raw["choice"]]}
             STATS["llm_calls"] += 1
             STATS["input_tokens"] += usage["input_tokens"]
             STATS["output_tokens"] += usage["output_tokens"]
             decision = _validate(raw, twin, shops_today)
-            cache.put(cache_key, {**decision, "_model": llm.MODEL, "_version": 2,
+            cache.put(cache_key, {**decision, "_model": model, "_version": 2,
                                   "_temperature": temperature, "_usage": usage}, cache_dir)
             return Decision(**decision, **provenance)
         except llm.LLMUnavailable as exc:

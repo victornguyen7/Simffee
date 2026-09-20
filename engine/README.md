@@ -9,8 +9,8 @@ Spec: [../spec/SPEC.md](../spec/SPEC.md) · Plan: [../spec/BACKEND_PLAN.md](../s
 Python 3.11+, stdlib plus `openai` (used against xAI's Responses API) for live requests (`pip install -r requirements.txt`).
 Offline replay, validation, analysis, narration, and stubbed tests need no credentials.
 The engine automatically reads the repository's private `.env` for `XAI_API_KEY`,
-`SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`, `SIMFFEE_MIN_INTERVAL`, and `SIMFFEE_TIMEOUT_S`. Existing shell
-variables take precedence, and `--model` takes precedence over both. Values may
+`SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`, `SIMFFEE_MIN_INTERVAL`, `SIMFFEE_TIMEOUT_S`, and
+`SIMFFEE_REASONING_EFFORT`. Existing shell variables take precedence, and `--model` takes precedence over both. Values may
 be quoted; shell commands and variable expansion are never evaluated. `.env`
 and `.env.*` are Git-ignored. Keep the file owner-readable/writable only (`600`),
 enter keys locally, and never use a `VITE_` prefix for a server credential.
@@ -42,6 +42,14 @@ committed `cache/` was filled with; both are in the cache key, so change them on
 refill. Override with `SIMFFEE_MODEL` / `--model` and `SIMFFEE_MAX_TOKENS`. No embedded credential fallback
 exists. The CLI reports request attempts and response token usage, including
 invalid JSON responses; it does not invent a dollar estimate for unknown pricing.
+
+For `grok-4.5` and `grok-4.6`, customer decisions explicitly use low reasoning effort
+instead of the provider's high default. The translator keeps high effort to interpret
+multi-part situations correctly. Set `SIMFFEE_REASONING_EFFORT=high` to restore deeper
+customer deliberation; `medium` is also accepted (`xhigh` only for `grok-4.6`). The effort
+is part of cache identity, so changing it does not reuse decisions from another mode.
+Other models omit this option, preserving the committed Qwen replay. Restart the backend
+after changing code or environment settings; no frontend changes are required.
 
 ## Modules and spec mapping
 

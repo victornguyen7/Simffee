@@ -86,13 +86,14 @@ def main() -> int:
     ap.add_argument("--cache", type=Path, default=CACHE)
     ap.add_argument("--offline", action="store_true",
                     help="never call the API; uncached reappraisals fall back and flag the row")
-    ap.add_argument("--model", default=None, help=f"override the model (default {llm.MODEL})")
+    ap.add_argument("--model", default=None, help=f"override the decision model (default {llm.decision_model()})")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--require-complete", action="store_true", help="exit 2 on fallbacks or missing/mixed model provenance")
     args = ap.parse_args()
 
     if args.model:
         llm.MODEL = args.model
+        llm.DECISION_MODEL = args.model
     decide.reset_stats()
     llm.reset_stats()
 
@@ -138,7 +139,7 @@ def main() -> int:
     transport = llm.STATS
     report = overall_coverage(all_rows, days_by_scenario)
     print(
-        f"\nconfigured model {llm.MODEL}; response models {report['models']}\n"
+        f"\nconfigured model {llm.decision_model()}; response models {report['models']}\n"
         f"API attempts {transport['attempts']}  responses {transport['responses']}  "
         f"cache hits {stats['cache_hits']}  retries {stats['retries']}  fallbacks {stats['failures']}\n"
         f"reported tokens in {transport['input_tokens']:,} out {transport['output_tokens']:,}; "

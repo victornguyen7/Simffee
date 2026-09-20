@@ -100,7 +100,9 @@ class WhatIfService:
         except Exception:      # a forbidden/broken transport is "no", not a crash
             llm_ok = False
         return {"ok": True, "offline": self.offline, "llm": llm_ok,
-                "model": llm.MODEL, "library": str(self.library), "library_seeds": self.library_seeds,
+                "model": llm.decision_model(), "translator_model": llm.MODEL,
+                "reasoning_effort": llm.inference_options(model=llm.decision_model()).get("reasoning", {}).get("effort"),
+                "library": str(self.library), "library_seeds": self.library_seeds,
                 "cache_dir": str(self.cache_dir), "cache_files": len(list(self.cache_dir.glob("*.json"))),
                 "live_runs": len(self.registry)}
 
@@ -201,7 +203,7 @@ class WhatIfService:
             took_ms = int((time.monotonic() - t0) * 1000)
             counters = cost_report.delta(before, cost_report.snapshot())
             from engine import llm
-            ledger = cost_report.row([r for rs in rows_by_seed for r in rs], counters, llm.MODEL,
+            ledger = cost_report.row([r for rs in rows_by_seed for r in rs], counters, llm.decision_model(),
                                      label=scenario.get("label", run_id), seeds=seeds,
                                      scenarios=[run_id], took_ms=took_ms)
             cost_report.record(run_root, ledger)

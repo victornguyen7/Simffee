@@ -109,13 +109,18 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const offline = api === null
   const a = answer
   const w = a?.analysis?.whatif?.[0]
+  const onlyOfflineCacheMisses = Object.keys(a?.fallback_reasons ?? {}).length === 1
+    && (a?.fallback_reasons?.['offline, not cached'] ?? 0) > 0
   const isShown = !!current && !!a?.run_id && current.run_id === a.run_id
 
   return (
     <section className="whatif-box">
       <div className="whatif-head">
         <h3>what if we…</h3>
-        <span className={`dot ${api === undefined ? 'unknown' : offline ? 'off' : api.llm ? 'on' : 'cached'}`}>
+        <span
+          className={`dot ${api === undefined ? 'unknown' : offline ? 'off' : api.llm ? 'on' : 'cached'}`}
+          title={api?.translator_model ? `Decisions: ${api.model}; translation: ${api.translator_model}; reasoning: ${api.reasoning_effort ?? 'model default'}` : undefined}
+        >
           {api === undefined
             ? 'checking the local API'
             : offline
@@ -160,7 +165,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         ))}
       </div>
 
-      {busy && <p className="muted">{busy} — every reappraisal is one model call, paced ~2 s.</p>}
+      {busy && <p className="muted">{busy} — new scenarios may need multiple customer decisions; identical requests reuse cached decisions.</p>}
 
       {a && !busy && (
         <div className="answer">
@@ -193,7 +198,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
             </p>
           )}
 
-          {a.warning && <p className="warn">{a.warning}</p>}
+          {a.warning && !onlyOfflineCacheMisses && <p className="warn">{a.warning}</p>}
 
           {(a.unsupported ?? []).length > 0 && a.scenario && (
             <p className="muted">

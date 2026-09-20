@@ -1,0 +1,15 @@
+{
+  "situation": "incumbent_change",
+  "focus_shop": "simffee",
+  "label": "Raise wait to 10 minutes",
+  "actions": [
+    {
+      "action": "set_wait",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": null,
+      "value": 10
+    }
+  ],
+  "unsupported": []
+}

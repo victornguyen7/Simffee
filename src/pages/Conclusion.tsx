@@ -47,6 +47,7 @@ export default function Conclusion() {
   const confidence = analysis.confidence
   const footerLow = lowConfidence(confidence)
   const complete = analysis.complete ?? analysis.break_day != null
+  const pct = analysis.drop == null ? null : Math.round(Math.abs(analysis.drop) * 100)
 
   return (
     <div className="conclusion">
@@ -64,7 +65,7 @@ export default function Conclusion() {
           <section className="conclusion__headline">
             <h1>
               Sales broke on day {analysis.break_day}
-              {analysis.drop != null && <span> — −{Math.round(analysis.drop * 100)}% vs trailing average</span>}
+              {analysis.drop != null && <span> — {analysis.drop < 0 ? `+${pct}% rise` : `−${pct}%`} vs trailing average</span>}
             </h1>
             {analysis.narration != null && <p className="conclusion__narration">{analysis.narration}</p>}
           </section>

@@ -31,6 +31,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import build_runs  # noqa: E402
+from analyzer import review as reviewer
+from analyzer.flows import flows  # noqa: E402
 from engine import loop, translate  # noqa: E402
 from engine.cache import CACHE  # noqa: E402
 from engine.loader import DATA, Scenario, load_chain, load_shops, scenario_from_dict  # noqa: E402
@@ -99,7 +101,7 @@ class WhatIfService:
             llm_ok = (not self.offline) and llm.available()
         except Exception:      # a forbidden/broken transport is "no", not a crash
             llm_ok = False
-        return {"ok": True, "offline": self.offline, "llm": llm_ok,
+        return {"ok": True, "offline": self.offline, "llm": llm_ok, "fresh_runs": True,
                 "model": llm.decision_model(), "translator_model": llm.MODEL,
                 "reasoning_effort": llm.inference_options(model=llm.decision_model()).get("reasoning", {}).get("effort"),
                 "library": str(self.library), "library_seeds": self.library_seeds,
@@ -125,21 +127,49 @@ class WhatIfService:
 
     # --- the two entry points --------------------------------------------------------
 
-    def whatif(self, text: str, parent: str = "baseline", seeds: list[int] | None = None) -> dict[str, Any]:
+    def whatif(self, text: str, parent: str = "baseline", seeds: list[int] | None = None,
+               fresh: bool = False) -> dict[str, Any]:
         """Free text -> translated scenario -> run -> analysis. SPEC_FUNCTIONAL 5."""
         t0 = time.monotonic()
+        if fresh and self.offline:
+            return {"error": "Fresh simulation requires live mode; the API is offline.",
+                    "scenario": None, "fresh": True, "request_text": text, "took_ms": 0}
         if parent not in self.scenario_files and parent not in self.registry:
             return {"error": f"unknown parent {parent!r}", "took_ms": 0}
-        tr = self.translator(text, parent_id=parent, data=self.data)
+        run_id = f"user_{uuid.uuid4().hex}" if fresh else None
+        options = {"refresh": True, "scenario_id": run_id} if fresh else {}
+        tr = self.translator(text, parent_id=parent, data=self.data, **options)
         if tr["scenario"] is None:
             return {"scenario": None, "unsupported": tr["unsupported"], "problems": tr["problems"],
                     "translation": {"cached": tr["cached"], "attempts": tr["attempts"]},
+                    "fresh": fresh, "request_text": text,
                     "took_ms": int((time.monotonic() - t0) * 1000)}
-        result = self.run(tr["scenario"], seeds=seeds, deadline=t0 + self.timeout_s)
+        scenario = {**tr["scenario"], "id": run_id} if fresh else tr["scenario"]
+        result = self.run(scenario, seeds=seeds, deadline=t0 + self.timeout_s)
+        result["fresh"] = fresh
+        result["request_text"] = text
         result["translation"] = {"cached": tr["cached"], "attempts": tr["attempts"]}
         result["unsupported"] = tr["unsupported"]
         result["took_ms"] = int((time.monotonic() - t0) * 1000)
         return result
+
+    def review(self, run_id: str, refresh: bool = False) -> dict[str, Any]:
+        if not self._lock.acquire(blocking=False):
+            return reviewer.unavailable("A simulation is running. Recheck once it finishes.")
+        try:
+            entry = self.registry.get(run_id)
+            if entry is None:
+                return reviewer.unavailable("This run is not available for review yet.")
+            scenario = copy.deepcopy(entry["scenario"])
+            seed = 0 if 0 in entry["seeds"] else entry["seeds"][0]
+            rows = build_runs.load_rows(pathlib.Path(entry["run_dir"]), run_id, seed)
+            chain = load_chain(run_id, self.data, self._extra())
+            focus = next((sc.focus_shop for sc in reversed(chain) if sc.focus_shop), next(iter(self.shops)))
+            days = entry["days"]
+        finally:
+            self._lock.release()
+        return reviewer.evaluate(scenario, rows, focus, days, self.cache_dir,
+                                 refresh=refresh, offline=self.offline)
 
     def run(self, scenario: dict[str, Any], seeds: list[int] | None = None,
             deadline: float | None = None) -> dict[str, Any]:
@@ -222,6 +252,10 @@ class WhatIfService:
 
             per_seed = {str(s): {"rows": rs, "daily_sales": build_runs.daily_sales(rs, self.shops, days),
                                  "coverage": coverage(rs, days)} for s, rs in zip(seeds, rows_by_seed)}
+            flow_seed = 0 if 0 in seeds else seeds[0]
+            flow_run = per_seed[str(flow_seed)]
+            focus = next((sc.focus_shop for sc in reversed(chain) if sc.focus_shop), next(iter(self.shops)))
+            flow_summary = flows(flow_run["rows"], focus, days) if flow_run["coverage"]["complete"] else None
             fallback_reasons: dict[str, int] = {}
             for rs in rows_by_seed:
                 for r in rs:
@@ -238,6 +272,9 @@ class WhatIfService:
                 "warning": warning, "fallback_reasons": fallback_reasons or None,
                 "run_id": run_id, "scenario": scenario, "days": days, "seeds": seeds,
                 "chip": self.chip(scenario), "result": per_seed, "analysis": analysis,
+                "flows": flow_summary, "flows_seed": flow_seed,
+                "flows_reason": None if flow_summary is not None else
+                    "Movement summary unavailable: this run contains fallback or missing decisions.",
                 "cost": {k: ledger[k] for k in ("reasoned", "on_habit", "responses", "cache_hits",
                                                 "fallbacks", "tokens_in", "tokens_out", "took_ms", "cost")},
                 "fallback_used": False,

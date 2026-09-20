@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { health, runScenario, whatIf } from '../api'
-import type { Flows, Health, Runs, WhatIfAnswer } from '../types'
+import { useEffect, useRef, useState } from 'react'
+import { health, reviewRun, runScenario, whatIf } from '../api'
+import type { AIReview, Flows, Health, Runs, WhatIfAnswer } from '../types'
 
 interface Props {
   runs: Runs
@@ -26,7 +26,7 @@ const topDriver = (drivers: Record<string, number>) =>
   Object.entries(drivers).sort((x, y) => y[1] - x[1])[0]?.[0]
 
 /** ROADMAP B3 — who left for whom, who came back, who never moved. */
-function FlowsPanel({ flows, shops, entrant }: { flows: Flows; shops: Runs['shops']; entrant: string | null }) {
+function FlowsPanel({ flows, shops, entrant, seed }: { flows: Flows; shops: Runs['shops']; entrant: string | null; seed: number }) {
   const name = (id: string) => (id === 'none' ? 'skipping coffee' : shops[id]?.name ?? id)
   const lostTo = Object.entries(flows.totals.lost_to)
   const drivers: Record<string, Record<string, number>> = {}
@@ -35,22 +35,24 @@ function FlowsPanel({ flows, shops, entrant }: { flows: Flows; shops: Runs['shop
       for (const [k, n] of Object.entries(g.drivers)) (drivers[o] ??= {})[k] = (drivers[o][k] ?? 0) + n
   return (
     <div className="flows">
-      <b>{entrant ? `Since ${name(entrant)} opened` : 'Who moved'}</b>
+      <b>Who moved in this what-if</b>
+      <em>Days 1–{flows.days} · seed {seed}</em>
       {lostTo.length === 0 && <span>nobody left the shop.</span>}
       {lostTo.map(([o, twins]) => (
         <span key={o} className={o === entrant ? 'flow-entrant' : undefined}>
-          lost {twins.length} to {name(o)}
+          {twins.length} {o === 'none' ? 'skipped coffee' : `left for ${name(o)}`} at least once
           {names(twins)}
           {topDriver(drivers[o] ?? {}) ? ` — mostly ${topDriver(drivers[o])}` : ''}
         </span>
+      ))}
+      {Object.entries(flows.end.gained).map(([origin, twins]) => (
+        <span key={origin}>{twins.length} new customers from {name(origin)}{names(twins)}</span>
       ))}
       <span>
         {flows.totals.returned.length} came back{names(flows.totals.returned)} · {flows.end.kept.length} never left
         {names(flows.end.kept)}
       </span>
-      {flows.totals.fallback_moves > 0 && (
-        <em>{flows.totals.fallback_moves} of these moves were fallback decisions, not model decisions.</em>
-      )}
+      <span>Net customers on the final day: {flows.end.net > 0 ? '+' : ''}{flows.end.net} vs day 1</span>
     </div>
   )
 }
@@ -60,55 +62,114 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [answer, setAnswer] = useState<WhatIfAnswer | null>(null)
   const [api, setApi] = useState<Health | null | undefined>(undefined)
+  const [submittedText, setSubmittedText] = useState('')
+  const requestVersion = useRef(0)
+  const reviewVersion = useRef(0)
+  const inFlight = useRef(false)
 
   useEffect(() => {
     let alive = true
+    inFlight.current = false
     const poll = async () => {
       const h = await health()
-      if (alive) setApi(h)
+      if (alive) {
+        setApi(h)
+        if (!inFlight.current) setBusy(null)
+      }
     }
     void poll()
     const id = setInterval(poll, 15_000)
     return () => {
       alive = false
+      requestVersion.current += 1
+      reviewVersion.current += 1
       clearInterval(id)
     }
   }, [])
 
+  const checkAnswer = async (target: WhatIfAnswer, refresh = false, version = requestVersion.current) => {
+    if (!target.run_id || !target.result || target.fallback_used || target.error) return
+    const reviewId = ++reviewVersion.current
+    const update = (review: AIReview) => setAnswer((prev) =>
+      version === requestVersion.current && reviewId === reviewVersion.current
+        && prev && prev.run_id === target.run_id && prev.result === target.result ? { ...prev, review } : prev)
+    update({ status: 'reviewing', summary: 'Checking the request, plan, and recorded customer movements…', issues: [] })
+    try {
+      update(await reviewRun(target.run_id, refresh))
+    } catch {
+      update({ status: 'unavailable', summary: 'AI review unavailable. Restart the backend if it has not loaded the latest code.', issues: [] })
+    }
+  }
+
   const ask = async (q: string, seeds: number[] = [0]) => {
     const query = q.trim()
-    if (!query || busy) return
-    setBusy(seeds.length > 1 ? `running ${seeds.length} seeds…` : 'translating and running…')
+    if (!query || inFlight.current) return
+    if (api && api.fresh_runs !== true) {
+      requestVersion.current += 1
+      setSubmittedText(query)
+      setAnswer({ scenario: null, request_text: query,
+        error: 'Restart the backend to load fresh-run support; the running server still has the previous code.' })
+      return
+    }
+    inFlight.current = true
+    const version = ++requestVersion.current
+    setSubmittedText(query)
+    setAnswer(null)
+    setBusy(seeds.length > 1 ? `running ${seeds.length} seeds…` : 'translating and running fresh…')
     try {
       const a = await whatIf(query, seeds)
+      if (version !== requestVersion.current) return
       setAnswer(a)
-      if (a.result && !a.fallback_used) onAnswer(a)
+      if (a.result && !a.fallback_used && !a.error) onAnswer(a)
+      void checkAnswer(a, true, version)
     } catch (e) {
-      setAnswer({ scenario: null, error: e instanceof Error ? e.message : String(e) })
+      if (version === requestVersion.current) {
+        setAnswer({ scenario: null, request_text: query, error: e instanceof Error ? e.message : String(e) })
+      }
     } finally {
-      setBusy(null)
+      if (version === requestVersion.current) {
+        inFlight.current = false
+        setBusy(null)
+      }
     }
   }
 
   const moreSeeds = async () => {
-    if (!answer?.scenario || busy) return
+    const previous = answer
+    if (!previous?.scenario || inFlight.current) return
+    inFlight.current = true
+    const version = ++requestVersion.current
     const seeds = runs.meta.seeds.slice(0, 3)
+    setAnswer(null)
     setBusy(`running ${seeds.length} seeds for confidence…`)
     try {
-      const a = await runScenario(answer.scenario, seeds)
-      const merged = { ...answer, ...a, translation: answer.translation, unsupported: answer.unsupported }
-      setAnswer(merged)
-      if (a.result && !a.fallback_used) onAnswer(merged)
+      const a = await runScenario(previous.scenario, seeds)
+      if (version !== requestVersion.current) return
+      const next = { ...a, scenario: a.scenario ?? null, request_text: previous.request_text,
+        translation: previous.translation, unsupported: a.unsupported ?? previous.unsupported }
+      setAnswer(next)
+      if (a.result && !a.fallback_used && !a.error) onAnswer(next)
+      void checkAnswer(next, true, version)
     } catch (e) {
-      setAnswer({ ...answer, error: e instanceof Error ? e.message : String(e) })
+      if (version === requestVersion.current) {
+        setAnswer({ scenario: null, request_text: previous.request_text, error: e instanceof Error ? e.message : String(e) })
+      }
     } finally {
-      setBusy(null)
+      if (version === requestVersion.current) {
+        inFlight.current = false
+        setBusy(null)
+      }
     }
   }
 
   const offline = api === null
   const a = answer
-  const w = a?.analysis?.whatif?.[0]
+  const w = a?.analysis?.whatif?.find((item) => item.scenario === (a.run_id ?? a.scenario?.id))
+  const flowSeed = a?.flows_seed ?? (a?.seeds?.includes(0) ? 0 : a?.seeds?.[0] ?? 0)
+  const flowRun = a?.result?.[String(flowSeed)]
+  const flowComplete = flowRun?.coverage?.complete && flowRun.rows.every((row) => !row.llm_failed)
+  const answerFlows = a?.flows !== undefined ? a.flows
+    : w?.flows ?? (a?.scenario?.parent === null ? a.analysis?.flows : undefined)
   const onlyOfflineCacheMisses = Object.keys(a?.fallback_reasons ?? {}).length === 1
     && (a?.fallback_reasons?.['offline, not cached'] ?? 0) > 0
   const isShown = !!current && !!a?.run_id && current.run_id === a.run_id
@@ -145,7 +206,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
           onChange={(e) => setText(e.target.value)}
         />
         <button type="submit" className="chip play" disabled={offline || !!busy || !text.trim()}>
-          {busy ? '…' : 'simulate'}
+          {busy ? '…' : 'simulate fresh'}
         </button>
       </form>
       <div className="examples">
@@ -165,10 +226,12 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         ))}
       </div>
 
-      {busy && <p className="muted">{busy} — new scenarios may need multiple customer decisions; identical requests reuse cached decisions.</p>}
+      <p className="muted">New submissions run fresh and may use additional model calls. Identical plans can still produce the same behavior.</p>
+      {busy && <p className="muted">{busy} — previous output has been cleared.</p>}
 
       {a && !busy && (
         <div className="answer">
+          <p className="muted">Result for: “{a.request_text ?? submittedText}”{a.fresh ? ' · fresh run' : ''}</p>
           {a.error && <p className="warn">{a.error}</p>}
 
           {a.scenario === null && !a.error && (
@@ -190,11 +253,10 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
 
           {a.fallback_used && (
             <p className="warn">
-              Live run unavailable ({a.reason}). Showing the closest cached scenario instead:{' '}
-              <b>{a.served?.label}</b>
-              {a.served?.whatif && a.served.whatif.returns != null
-                ? ` — wins back ${a.served.whatif.returns} of ${a.served.whatif.of}.`
-                : '.'}
+              {a.reason === 'timeout'
+                ? 'This simulation is still running in the background. No completed result is available for this request yet.'
+                : `No new result is available (${a.reason ?? 'run unavailable'}).`}
+              {' '}A previous or cached scenario has not been substituted.
             </p>
           )}
 
@@ -229,14 +291,35 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
           {a.analysis && !a.analysis.complete && !a.fallback_used && (
             <p className="muted">Analysis withheld: {a.analysis.reason}</p>
           )}
-          {a.analysis?.flows && !a.fallback_used &&
-            (a.analysis.question?.situation === 'competitor_enters' || a.analysis.flows.totals.moves > 0) && (
+          {a.result && !a.fallback_used && (
+            flowComplete && answerFlows && answerFlows.totals.fallback_moves === 0 ? (
               <FlowsPanel
-                flows={a.analysis.flows}
+                flows={answerFlows}
                 shops={runs.shops}
-                entrant={a.analysis.question?.entrant?.shop ?? null}
+                entrant={a.analysis?.question?.entrant?.shop ?? null}
+                seed={flowSeed}
               />
-            )}
+            ) : (
+              <p className="muted">{a.flows_reason ?? 'Movement summary unavailable: a complete what-if trajectory is required; fallback choices are not customer behavior.'}</p>
+            )
+          )}
+
+          {a.review && (
+            <section className="flows">
+              <b>Independent AI review{a.review.cached ? ' · cached' : ''}</b>
+              <span className={a.review.status === 'needs_attention' ? 'warn' : undefined}>{a.review.summary}</span>
+              {a.review.issues.length > 0 && <ul>{a.review.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul>}
+              <em>{a.review.model ? `${a.review.model} · ` : ''}Sanity check only; recorded decisions and computed counts are unchanged.</em>
+              <button
+                type="button"
+                className="chip small"
+                disabled={!!busy || a.review.status === 'reviewing'}
+                onClick={() => void checkAnswer(a, true)}
+              >
+                {a.review.status === 'reviewing' ? 'reviewing…' : 'recheck with AI (fresh call)'}
+              </button>
+            </section>
+          )}
 
           {a.cost && (
             <p className="cost">

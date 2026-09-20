@@ -21,6 +21,8 @@ import re
 import shlex
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +75,17 @@ _last_call_at = 0.0
 _tokens_remaining: int | None = None
 _tokens_reset_at = 0.0
 STATS = {"attempts": 0, "responses": 0, "input_tokens": 0, "output_tokens": 0, "quota_failures": 0}
+_local_stats: ContextVar[dict[str, int] | None] = ContextVar("llm_stats", default=None)
+
+
+@contextmanager
+def isolated_stats():
+    counters = {key: 0 for key in STATS}
+    token = _local_stats.set(counters)
+    try:
+        yield counters
+    finally:
+        _local_stats.reset(token)
 
 
 def reset_stats() -> None:
@@ -186,12 +199,13 @@ def _create_with_backoff(request: dict[str, Any]):
     that one propagates so the run reports it honestly.
     """
     last: Exception | None = None
+    stats = _local_stats.get() or STATS
     need = _estimate_tokens(request)
     for attempt in range(RATE_LIMIT_RETRIES):
         _pace(need)
         try:
             transport = client().responses
-            STATS["attempts"] += 1
+            stats["attempts"] += 1
             raw = getattr(transport, "with_raw_response", None)
             if raw is None:                 # a stubbed transport in tests
                 return transport.create(**request)
@@ -267,6 +281,7 @@ def complete_json(
     not a transport one.
     """
     global _temperature_ok, _structured_ok, _capability_model
+    stats = _local_stats.get() or STATS
     model = model or MODEL
     if _capability_model != model:
         _temperature_ok = _structured_ok = None
@@ -315,7 +330,7 @@ def complete_json(
             # matters operationally: it is not a bug and it will not fix itself in a retry.
             if "rate_limit" in message or "429" in message:
                 kind = "quota: daily token limit" if "per day" in message or "tpd" in message else "rate limit"
-                STATS["quota_failures"] = STATS.get("quota_failures", 0) + 1
+                stats["quota_failures"] = stats.get("quota_failures", 0) + 1
                 raise RuntimeError(f"LLM transport failed ({kind})") from None
             if "401" in message or "api key" in message or "authentication" in message:
                 raise RuntimeError("LLM transport failed (authentication)") from None
@@ -331,9 +346,9 @@ def complete_json(
         "input_tokens": int(getattr(response.usage, "input_tokens", 0) or 0),
         "output_tokens": int(getattr(response.usage, "output_tokens", 0) or 0),
     }
-    STATS["responses"] += 1
+    stats["responses"] += 1
     for key, value in usage.items():
-        STATS[key] += value
+        stats[key] += value
     text = _output_text(response)
     if not isinstance(text, str):
         raise ValueError("reply did not contain text")

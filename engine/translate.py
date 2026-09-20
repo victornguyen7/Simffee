@@ -434,7 +434,7 @@ def _cache_key(text: str, parent_id: str | None, shops: dict, actions: dict) -> 
 
 def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
               complete_json=None, cache_dir: Path = TRANSLATION_CACHE,
-              scenario_id: str | None = None, retries: int = 1) -> dict[str, Any]:
+              scenario_id: str | None = None, retries: int = 1, refresh: bool = False) -> dict[str, Any]:
     """Sentence -> {"scenario": {...} | None, "unsupported": [...], "problems": [...],
     "reply": raw, "cached": bool, "attempts": int}.
 
@@ -452,7 +452,7 @@ def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
 
     key = _cache_key(text, parent_id, shops, actions)
     cpath = cache_dir / f"{key}.json"
-    if cpath.exists():
+    if cpath.exists() and not refresh:
         reply = json.loads(cpath.read_text(encoding="utf-8"))
         scenario, problems = compile_actions(reply, chain, shops, actions, sid, text)
         return {"scenario": scenario, "unsupported": reply.get("unsupported", []),
@@ -479,8 +479,9 @@ def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
                     "reply": {}, "cached": False, "attempts": attempts}
         scenario, problems = compile_actions(reply, chain, shops, actions, sid, text)
         if scenario and not problems:
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            cpath.write_text(json.dumps(reply, ensure_ascii=False, indent=2), encoding="utf-8")
+            if not refresh:
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                cpath.write_text(json.dumps(reply, ensure_ascii=False, indent=2), encoding="utf-8")
             return {"scenario": scenario, "unsupported": reply.get("unsupported", []),
                     "problems": [], "reply": reply, "cached": False, "attempts": attempts}
         last_problems = problems

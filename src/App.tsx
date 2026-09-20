@@ -112,7 +112,7 @@ export default function App() {
     setLive((prev) => ({ ...prev, [a.run_id as string]: a }))
     setScenario(a.run_id)
     const first = Math.min(...(a.scenario?.overrides.map((o) => o.from_day) ?? [1]))
-    setDay(Math.max(1, first - 1))
+    setDay(Math.min(a.days ?? 7, Math.max(1, first)))
     setPhase(0)
     setPlaying(true)
   }, [])

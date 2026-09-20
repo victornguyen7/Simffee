@@ -1,0 +1,29 @@
+{
+  "situation": "incumbent_change",
+  "focus_shop": "simffee",
+  "label": "Cut all prices 20 percent",
+  "actions": [
+    {
+      "action": "set_price",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "latte",
+      "value": 38400
+    },
+    {
+      "action": "set_price",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "americano",
+      "value": 28000
+    },
+    {
+      "action": "set_price",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "cold_brew",
+      "value": 40000
+    }
+  ],
+  "unsupported": []
+}

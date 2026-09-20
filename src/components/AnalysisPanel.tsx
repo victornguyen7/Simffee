@@ -22,6 +22,7 @@ export default function AnalysisPanel({ runs, analysis: a, scenario, rows, day, 
   const histogram = Object.entries(a.actual?.histogram ?? {}).sort((x, y) => y[1] - x[1])
   const maxWeight = Math.max(1, ...histogram.map(([, v]) => v))
   const live = scenario?.source?.kind === 'user'
+  const comparison = live && !!scenario?.parent
 
   return (
     <aside className="panel">
@@ -91,8 +92,8 @@ export default function AnalysisPanel({ runs, analysis: a, scenario, rows, day, 
         </section>
       )}
 
-      <section>
-        <h3>what actually happened</h3>
+      <details open={!comparison}>
+        <summary>{comparison ? 'Baseline reference — not this what-if’s outcome' : 'what actually happened'}</summary>
         {!a.complete && (
           <p className="warn">
             Analysis withheld — {a.reason ?? 'incomplete evidence'}. Fallback decisions are not customer behaviour.
@@ -145,9 +146,9 @@ export default function AnalysisPanel({ runs, analysis: a, scenario, rows, day, 
             {a.narration && <p className="narration">{a.narration}</p>}
           </>
         )}
-      </section>
+      </details>
 
-      {a.whatif.length > 0 && (
+      {(a.whatif?.length ?? 0) > 0 && (
         <section>
           <h3>{live ? 'this plan' : 'what-if'}</h3>
           {a.whatif.map((w) => (

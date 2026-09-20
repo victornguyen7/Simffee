@@ -20,6 +20,11 @@ export default function ShopInterior({ runs, shopId, rows, day, sales, onClose }
   const lost = rows.filter((r) => r.choice !== shopId)
   const accent = shopId === 'simffee' ? '#2f7d6d' : '#1d6b4a'
   const visitorsRef = useRef(visitors)
+  // runs.json only carries each shop's starting metadata, so the day's own rows say what changed
+  const hoursShock = rows.some((r) => r.disruption.source === 'hours')
+  const listed = new Set(Object.values(shop.price))
+  const tickets = [...new Set(visitors.map((v) => v.spent))].sort((a, b) => a - b)
+  const offMenu = tickets.some((s) => !listed.has(s))
 
   useEffect(() => {
     visitorsRef.current = visitors
@@ -59,11 +64,14 @@ export default function ShopInterior({ runs, shopId, rows, day, sales, onClose }
       // menu board
       ctx.fillStyle = shade(accent, -0.25)
       ctx.fillRect(w * 0.08, 24, w * 0.3, 96)
+      ctx.textAlign = 'left'
+      ctx.fillStyle = 'rgba(255,255,255,0.65)'
+      ctx.font = '10px ui-sans-serif, system-ui, sans-serif'
+      ctx.fillText('opening menu', w * 0.08 + 14, 40)
       ctx.fillStyle = '#ffffff'
       ctx.font = 'bold 13px ui-monospace, monospace'
-      ctx.textAlign = 'left'
       Object.entries(shop.price).forEach(([item, price], i) => {
-        ctx.fillText(`${item.padEnd(10, ' ')} ${vnd(price)}`, w * 0.08 + 14, 52 + i * 22)
+        ctx.fillText(`${item.padEnd(10, ' ')} ${vnd(price)}`, w * 0.08 + 14, 62 + i * 20)
       })
       // shelves
       ctx.fillStyle = '#a97a4e'
@@ -130,8 +138,9 @@ export default function ShopInterior({ runs, shopId, rows, day, sales, onClose }
         <header>
           <h2 style={{ color: accent }}>{shop.name}</h2>
           <span className="muted">
-            day {day} · open {shop.open}–{shop.close} · avg wait {shop.avg_wait_min}m · quality{' '}
-            {shop.quality.toFixed(2)}
+            day {day} · opened {shop.open}–{shop.close} on day 1 · avg wait {shop.avg_wait_min}m ·
+            quality {shop.quality.toFixed(2)}
+            {hoursShock && <b className="shock"> · hours changed: twins found the door shut</b>}
           </span>
           <button type="button" onClick={onClose}>
             back to town
@@ -152,6 +161,11 @@ export default function ShopInterior({ runs, shopId, rows, day, sales, onClose }
             <span>twins who went elsewhere</span>
           </div>
         </div>
+        {offMenu && (
+          <p className="muted interior-note">
+            The board is the opening menu — tickets rung up today: {tickets.map(vnd).join(', ')}.
+          </p>
+        )}
         <ul className="interior-log">
           {rows.map((row) => {
             const twin = runs.twins.find((t) => t.id === row.twin)

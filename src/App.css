@@ -414,6 +414,14 @@
   background: #f2e6d2;
 }
 
+.interior-note {
+  margin: 0 2px 10px;
+}
+
+.shock {
+  color: #b3452f;
+}
+
 .interior-stats {
   display: flex;
   gap: 26px;

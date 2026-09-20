@@ -46,6 +46,8 @@ export default function IsoTown({
   onEnterShop,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  /** once the camera is touched the town stops refitting itself on resize */
+  const adjustedRef = useRef(false)
   const stateRef = useRef({ runs, town, rows, phase, brush, selectedTwin })
   const cameraRef = useRef({ x: 0, y: 0, zoom: 1 })
   const hoverRef = useRef<[number, number] | null>(null)
@@ -68,6 +70,10 @@ export default function IsoTown({
       canvas.height = rect.height * dpr
       const ctx = canvas.getContext('2d')
       if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+      if (!adjustedRef.current) {
+        const fit = Math.min(rect.width / (GRID * TILE_W + 80), rect.height / (GRID * TILE_H + 160))
+        cameraRef.current.zoom = Math.max(0.4, Math.min(1.4, fit))
+      }
     }
     resize()
     window.addEventListener('resize', resize)
@@ -243,6 +249,7 @@ export default function IsoTown({
           if (tile) onPaint(idx(tile[0], tile[1]), brush)
           return
         }
+        adjustedRef.current = true
         cameraRef.current.x += dx
         cameraRef.current.y += dy
         drag.x = e.clientX
@@ -268,10 +275,13 @@ export default function IsoTown({
         const cam = cameraRef.current
         const next = Math.min(2.2, Math.max(0.45, cam.zoom * (e.deltaY > 0 ? 0.92 : 1.08)))
         cam.zoom = next
+        adjustedRef.current = true
         force((n) => n + 1)
       }}
       onDoubleClick={() => {
+        adjustedRef.current = false
         cameraRef.current = { x: 0, y: 0, zoom: 1 }
+        window.dispatchEvent(new Event('resize'))
         force((n) => n + 1)
       }}
       aria-label={`Isometric town, ${GRID} by ${GRID} tiles, tile size ${TILE_W} by ${TILE_H}`}

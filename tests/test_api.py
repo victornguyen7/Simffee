@@ -190,6 +190,10 @@ def main():
                 patch.object(llm, "complete_json", return_value=({"headline": "", "movements": [], "drivers": [], "net": ""}, {})):
             out = svc.sketch("x", raw)
         check("empty reply -> untouched sketch", out["tailored"], False)
+        with patch.object(llm, "available", return_value=True), \
+                patch.object(llm, "complete_json", return_value=({**fitted, "movements": [{"text": "x"}]}, {})):
+            out = svc.sketch("x", raw)
+        check("non-string list item -> untouched sketch", out["tailored"], False)
         with patch.object(llm, "available", return_value=False):
             out = svc.sketch("x", raw)
         check("no key -> untouched sketch", (out["tailored"], out["sketch"]), (False, raw))

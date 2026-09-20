@@ -96,7 +96,7 @@ def scenario_from_dict(raw: dict[str, Any]) -> Scenario:
 
 
 def load_shops(data: Path = DATA) -> dict[str, dict[str, Any]]:
-    shops = json.loads((data / "shops.json").read_text())
+    shops = json.loads((data / "shops.json").read_text(encoding="utf-8"))
     for sid, shop in shops.items():
         for key in ("name", "position", "price", "open", "close", "products", "avg_wait_min"):
             if key not in shop:
@@ -107,7 +107,7 @@ def load_shops(data: Path = DATA) -> dict[str, dict[str, Any]]:
 def load_twins(data: Path = DATA, shop_ids: frozenset[str] | None = None) -> list[Twin]:
     twins: list[Twin] = []
     for path in sorted((data / "twins").glob("T*.json")):
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
         mech = raw["mechanism"]
         if shop_ids:
             # Normalise: every shop has an entry in both layers, so the engine
@@ -151,12 +151,12 @@ def load_scenario(scenario_id: str, data: Path = DATA,
     path = data / "scenarios" / f"{scenario_id}.json"
     if not path.exists():
         raise FileNotFoundError(f"no scenario {scenario_id!r} in {data / 'scenarios'}")
-    return scenario_from_dict(json.loads(path.read_text()))
+    return scenario_from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 def load_scenario_file(path: Path) -> Scenario:
     """A scenario from any JSON file, for --scenario-file and the live API."""
-    return scenario_from_dict(json.loads(Path(path).read_text()))
+    return scenario_from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
 def load_chain(scenario_id: str, data: Path = DATA,
@@ -187,7 +187,7 @@ def discover_scenarios(data: Path = DATA, include_all: bool = False) -> list[str
     """
     raws = {}
     for path in sorted((data / "scenarios").glob("*.json")):
-        raw = json.loads(path.read_text())
+        raw = json.loads(path.read_text(encoding="utf-8"))
         if include_all or raw.get("bundle", True):
             raws[raw["id"]] = raw
     depth: dict[str, int] = {}

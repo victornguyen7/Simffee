@@ -69,7 +69,7 @@ def save_snapshot(state, out, scenario_id, seed, day, rng) -> None:
         "history": state["history"],
         "visited": state["visited"],
         "rng_state": rng.getstate(),
-    }, ensure_ascii=False, indent=2))
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _retuple(value):
@@ -80,7 +80,7 @@ def _retuple(value):
 
 
 def load_snapshot(out: Path, scenario_id: str, seed: int, day: int):
-    raw = json.loads(_snapshot_path(out, scenario_id, seed, day).read_text())
+    raw = json.loads(_snapshot_path(out, scenario_id, seed, day).read_text(encoding="utf-8"))
     state = {
         "habit": raw["habit"],
         "latent_interest": raw["latent_interest"],
@@ -263,7 +263,7 @@ def _read_rows(out: Path, parent: str, seed: int, before_day: int, as_scenario: 
             f"Run --scenario {parent} --seed {seed} before {as_scenario}."
         )
     inherited = []
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         row = json.loads(line)
@@ -277,4 +277,5 @@ def _write_rows(out: Path, scenario_id: str, seed: int, rows) -> None:
     path = out / scenario_id / f"{seed}.jsonl"
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = sorted(rows, key=lambda r: (r["day"], r["twin"]))
-    path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+    path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                    encoding="utf-8")

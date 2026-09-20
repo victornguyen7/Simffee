@@ -40,7 +40,7 @@ def get(cache_key: str, cache_dir: Path = CACHE) -> dict[str, Any] | None:
     if not path.exists():
         return None
     try:
-        value = json.loads(path.read_text())
+        value = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
     return value if isinstance(value, dict) else None
@@ -49,5 +49,6 @@ def get(cache_key: str, cache_dir: Path = CACHE) -> dict[str, Any] | None:
 def put(cache_key: str, value: dict[str, Any], cache_dir: Path = CACHE) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     (cache_dir / f"{cache_key}.json").write_text(
-        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True),
+        encoding="utf-8",
     )

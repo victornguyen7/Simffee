@@ -1,0 +1,29 @@
+{
+  "situation": "mixed",
+  "focus_shop": "simffee",
+  "label": "Starbucks opens, we open and add pastries",
+  "actions": [
+    {
+      "action": "shop_enters",
+      "shop": "starbucks",
+      "from_day": 4,
+      "item": null,
+      "value": 4
+    },
+    {
+      "action": "set_open",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": null,
+      "value": "06:00"
+    },
+    {
+      "action": "add_item",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "pastry",
+      "value": 30000
+    }
+  ],
+  "unsupported": []
+}

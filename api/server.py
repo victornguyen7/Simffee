@@ -125,7 +125,7 @@ def main() -> int:
     ap.add_argument("--cache", type=pathlib.Path, default=CACHE)
     ap.add_argument("--live-dir", type=pathlib.Path, default=ROOT / "runs" / "live")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--timeout", type=float, default=45.0, help="seconds before a live run falls back")
+    ap.add_argument("--timeout", type=float, default=240.0, help="seconds before a live run falls back")
     ap.add_argument("--offline", action="store_true", help="never call the model (cached decisions only)")
     args = ap.parse_args()
 

@@ -1,4 +1,4 @@
-"""Live accuracy check for engine/translate.py — needs GROQ_API_KEY (ROADMAP A2).
+"""Live accuracy check for engine/translate.py — needs XAI_API_KEY (ROADMAP A2).
 
     python3 tools/check_translate_live.py            # ~12 calls first time, cached after
     python3 tools/check_translate_live.py --no-cache # force fresh calls
@@ -79,7 +79,7 @@ def main():
 
     from engine.llm import available
     if not available():
-        print("no Groq client (GROQ_API_KEY missing) — this check is live-only")
+        print("no xAI client (XAI_API_KEY missing) — this check is live-only")
         return 2
 
     hits, calls = 0, 0

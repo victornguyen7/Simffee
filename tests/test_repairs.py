@@ -221,8 +221,7 @@ class Repairs(unittest.TestCase):
         def patched_load(base, scenario, seed):
             with patch.object(build_runs, 'load_rows', original):
                 return load(base, scenario, seed)
-        scenarios = {sid: json.loads((ROOT / 'data' / 'scenarios' / f'{sid}.json').read_text())
-                     for sid in cli.ALL_SCENARIOS}
+        scenarios = build_runs.load_scenarios(ROOT / 'data' / 'scenarios')    # bundle scenarios only
         with patch.object(build_runs, 'load_rows', side_effect=patched_load):
             result = build_runs.build_analysis(FIX, self.shops, scenarios, self.records)
         self.assertFalse(result['complete'])
@@ -291,8 +290,8 @@ class Repairs(unittest.TestCase):
 
     def test_invalid_json_usage_is_still_counted(self):
         llm.reset_stats()
-        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='not JSON'))],
-                                   usage=SimpleNamespace(prompt_tokens=17, completion_tokens=9))
+        response = SimpleNamespace(output_text='not JSON',
+                                   usage=SimpleNamespace(input_tokens=17, output_tokens=9))
         with patch.object(llm, '_create_with_backoff', return_value=response):
             with self.assertRaises(ValueError):
                 llm.complete_json('system', 'user', {}, 0.7)
@@ -318,8 +317,11 @@ class Repairs(unittest.TestCase):
 
 class TransportRepairs(unittest.TestCase):
     def response(self, content=None):
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content or json.dumps(GOOD)))],
-                               usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5))
+        # The Responses API shape: output[] of typed items; reasoning items carry no text.
+        return SimpleNamespace(
+            output=[SimpleNamespace(type='reasoning', content=[]),
+                    SimpleNamespace(type='message', content=[SimpleNamespace(text=content or json.dumps(GOOD))])],
+            usage=SimpleNamespace(input_tokens=10, output_tokens=5))
 
     def test_unsupported_capabilities_are_removed_persistently(self):
         requests = []
@@ -327,18 +329,20 @@ class TransportRepairs(unittest.TestCase):
             requests.append(request)
             if 'temperature' in request:
                 raise ValueError('temperature is not supported')
-            if 'response_format' in request:
-                raise ValueError('response_format is not supported')
+            if 'text' in request:
+                raise ValueError('text.format json_schema is not supported')
             return self.response()
-        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        client = SimpleNamespace(responses=SimpleNamespace(create=create))
         with patch.object(llm, 'client', return_value=client), patch.object(llm, '_pace'), \
                 patch.object(llm, '_temperature_ok', None), patch.object(llm, '_structured_ok', None):
             llm.complete_json('system', 'user', {}, 0.7)
             llm.complete_json('system', 'user', {}, 0.3)
-        self.assertIn('response_format', requests[0])
+        self.assertIn('text', requests[0])
         self.assertEqual(len(requests), 4)
         self.assertNotIn('temperature', requests[-1])
-        self.assertNotIn('response_format', requests[-1])
+        self.assertNotIn('text', requests[-1])
+        self.assertEqual(requests[-1]['store'], False)
+        self.assertIn('max_output_tokens', requests[-1])
 
     def test_json_errors_do_not_echo_model_content(self):
         with patch.object(llm, '_create_with_backoff', return_value=self.response('PRIVATE_RESPONSE_MARKER')):
@@ -348,7 +352,7 @@ class TransportRepairs(unittest.TestCase):
 
     def test_credentials_required_without_embedded_fallback(self):
         factory = Mock()
-        with patch.dict(os.environ, {}, clear=True), patch.dict(sys.modules, {'groq': SimpleNamespace(Groq=factory)}), \
+        with patch.dict(os.environ, {}, clear=True), patch.dict(sys.modules, {'openai': SimpleNamespace(OpenAI=factory)}), \
                 patch.object(llm, '_client', None), patch.object(llm, '_client_error', None):
             with self.assertRaises(llm.LLMUnavailable):
                 llm.client()
@@ -356,7 +360,7 @@ class TransportRepairs(unittest.TestCase):
 
     def test_rate_limit_backoff_is_bounded(self):
         create = Mock(side_effect=RuntimeError('429 rate_limit Please try again in 0.1s'))
-        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+        client = SimpleNamespace(responses=SimpleNamespace(create=create))
         with patch.object(llm, 'client', return_value=client), patch.object(llm, '_pace'), patch.object(llm.time, 'sleep'):
             with self.assertRaises(RuntimeError):
                 llm._create_with_backoff({})

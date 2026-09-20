@@ -42,7 +42,7 @@ from tools.validate import check_file  # noqa: E402
 class WhatIfService:
     def __init__(self, library: pathlib.Path, cache_dir: pathlib.Path = CACHE,
                  live_dir: pathlib.Path | None = None, data: pathlib.Path = DATA,
-                 offline: bool = False, timeout_s: float = 45.0, translator=None):
+                 offline: bool = False, timeout_s: float = 240.0, translator=None):
         self.library = pathlib.Path(library)
         self.cache_dir = pathlib.Path(cache_dir)
         self.live_dir = pathlib.Path(live_dir) if live_dir else ROOT / "runs" / "live"
@@ -270,7 +270,11 @@ class WhatIfService:
         bits = []
         for ov in scenario["overrides"]:
             name = self.shops[ov["shop"]]["name"]
+            if "exists_from_day" in ov.get("set", {}):
+                bits.append(f"{name} does not exist until it opens on day {ov['set']['exists_from_day']}")
             for k, v in ov.get("set", {}).items():
+                if k == "exists_from_day":
+                    continue
                 if k == "open":
                     bits.append(f"{name} opens {v}")
                 elif k == "close":
@@ -295,7 +299,8 @@ class WhatIfService:
                     bits.append(f"{name} {k} = {v}")
             for k in ov.get("unset", []):
                 bits.append(f"{name} {k} back to normal")
-            bits[-1] += f" from day {ov['from_day']}"
+            if set(ov.get("set", {})) != {"exists_from_day"} or ov.get("unset"):
+                bits[-1] += f" from day {ov['from_day']}"
         return "Simulated: " + "; ".join(bits) + "."
 
     def nearest_library(self, scenario: dict[str, Any]) -> dict[str, Any] | None:

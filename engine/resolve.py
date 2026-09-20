@@ -8,6 +8,10 @@ Two additive extensions:
   fork *removes* a parent's change (keep the entrant, drop the hours shift).
 - The `prompt.*` namespace (e.g. `prompt.shop_label`) may be created on a shop even though
   shops.json does not carry it. It is text the LLM sees; the engine never reads it.
+- `exists_from_day: N` (ROADMAP B1) makes a shop absent before day N: it is dropped from the
+  resolved day entirely, so it is not an option, runs no marketing, and shocks nobody. Set it
+  from day 1 (`{"from_day": 1, "shop": "x", "set": {"exists_from_day": 4}}`); the shop then
+  appears on day 4 with whatever else the chain has set on it by then.
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ CREATABLE_ROOTS = frozenset({"prompt"})
 CREATABLE_LEAF_PARENTS = frozenset({"price"})
 # Top-level flags a scenario may introduce without shops.json carrying them (keeping
 # shops.json unchanged keeps v1 cache keys unchanged).
-CREATABLE_LEAVES = frozenset({"permanently_closed"})
+EXISTS = "exists_from_day"
+CREATABLE_LEAVES = frozenset({"permanently_closed", EXISTS})
 
 
 def _walk(target: dict[str, Any], parts: list[str], dotted: str, create: bool) -> dict[str, Any]:
@@ -85,16 +90,38 @@ def resolve(
     today = copy.deepcopy(shops)
     for scenario in chain:                      # root first
         for ov in sorted(scenario.overrides, key=lambda o: o["from_day"]):
-            if day < ov["from_day"]:
-                continue
             shop = today.get(ov["shop"])
             if shop is None:
                 raise KeyError(f"override targets unknown shop {ov['shop']!r}")
+            # Existence is a property of the whole run, not of the day a block starts:
+            # "starbucks opens on day 4" must make it absent on days 1-3 whatever from_day
+            # the block carries.
+            if EXISTS in ov.get("unset", []):
+                shop.pop(EXISTS, None)
+            if EXISTS in ov.get("set", {}):
+                shop[EXISTS] = ov["set"][EXISTS]
+            if day < ov["from_day"]:
+                continue
             for dotted in ov.get("unset", []):
-                _unset_dotted(shop, shops[ov["shop"]], dotted)
+                if dotted != EXISTS:
+                    _unset_dotted(shop, shops[ov["shop"]], dotted)
             for dotted, value in ov.get("set", {}).items():
-                _set_dotted(shop, dotted, value)
-    return today
+                if dotted != EXISTS:
+                    _set_dotted(shop, dotted, value)
+    return {sid: shop for sid, shop in today.items() if exists_on(shop, day)}
+
+
+def exists_on(shop: dict[str, Any], day: int) -> bool:
+    """A shop with `exists_from_day` is absent before that day. v1 shops always exist."""
+    return day >= int(shop.get("exists_from_day", 1))
+
+
+def opening_today(chain: list[Scenario], shops: dict[str, dict[str, Any]], day: int) -> list[str]:
+    """Shop ids that exist on `day` and did not exist on `day - 1`. Nothing opens on day 1."""
+    if day <= 1:
+        return []
+    yesterday = resolve(shops, chain, day - 1)
+    return sorted(sid for sid in resolve(shops, chain, day) if sid not in yesterday)
 
 
 def display_name(shop: dict[str, Any]) -> str:

@@ -189,6 +189,9 @@ def main():
     from engine.resolve import display_name, resolve
     check("discovery: parents before children, then `order`",
           discover_scenarios(), ["baseline", "cf_null", "cf_restore_hours", "cf_discount"])
+    check("discovery: --include-all adds the on-demand S2 family after their parents",
+          discover_scenarios(include_all=True),
+          ["baseline", "cf_null", "s2_entrant", "cf_restore_hours", "cf_discount", "s2_entrant_only", "abl_rename"])
     adhoc = scenario_from_dict({
         "id": "u1", "parent": "baseline", "days": 10, "focus_shop": "simffee",
         "source": {"kind": "user", "text": "open earlier, sell croissants, call them Shop B"},

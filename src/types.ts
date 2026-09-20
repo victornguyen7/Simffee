@@ -148,6 +148,62 @@ export interface Analysis {
   confidence: Confidence
   narration: string | null
   whatif: WhatIf[]
+  // ROADMAP B3 / B5 — generic, present even when the causal analysis is withheld
+  question?: Question | null
+  flows?: Flows | null
+  hero_agreement?: Record<string, HeroAgreement> | null
+}
+
+export interface Question {
+  situation: 'incumbent_change' | 'competitor_enters'
+  question: string
+  leads_with: string[]
+  entrant: { shop: string; day: number } | null
+}
+
+export interface FlowGroup {
+  twins: string[]
+  count: number
+  drivers: Record<string, number>
+}
+
+export interface FlowDay {
+  day: number
+  lost_to: Record<string, FlowGroup>
+  gained_from: Record<string, FlowGroup>
+  returned: string[]
+  lost: number
+  gained: number
+  net: number
+}
+
+export interface Flows {
+  focus_shop: string
+  days: number
+  by_day: FlowDay[]
+  totals: {
+    lost_to: Record<string, string[]>
+    gained_from: Record<string, string[]>
+    returned: string[]
+    moves: number
+    fallback_moves: number
+  }
+  end: {
+    start_customers: string[]
+    end_customers: string[]
+    kept: string[]
+    lost: Record<string, string[]>
+    gained: Record<string, string[]>
+    net: number
+  }
+}
+
+export interface HeroAgreement {
+  compare_to: string
+  label: string
+  value: number | null
+  reappraisal_value: number | null
+  seeds: Record<string, { value: number | null; reappraisal_value: number | null; twin_days: number }>
 }
 
 export interface Runs {

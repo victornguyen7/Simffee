@@ -30,9 +30,10 @@ export async function health(): Promise<Health | null> {
   }
 }
 
-/** Free text -> translated -> run -> analysed. The server's own timeout falls back to the library. */
+/** Free text -> translated -> run -> analysed. The server's own timeout (--timeout, default 240s)
+ *  falls back to the library; this must outlive it plus translation so the fallback answer arrives. */
 export function whatIf(text: string, seeds: number[], parent = 'baseline'): Promise<WhatIfAnswer> {
-  return post<WhatIfAnswer>('/whatif', { text, seeds, parent }, 120_000)
+  return post<WhatIfAnswer>('/whatif', { text, seeds, parent }, 300_000)
 }
 
 /** Re-run an already translated scenario (e.g. with more seeds). No model call for translation. */

@@ -19,7 +19,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from analyzer import attribution, breakpoint, confidence, impact, narrate, pairwise  # noqa: E402
+from analyzer import attribution, breakpoint, confidence, flows, impact, narrate, pairwise  # noqa: E402
+from analyzer.templates import entrant_of, question_for  # noqa: E402
 from engine.schema import coverage  # noqa: E402
 from tools.validate import check_file  # noqa: E402
 
@@ -38,8 +39,13 @@ SYNTHETIC_LABEL = ("Synthetic seed population — 10 synthetic twins, not real p
 
 # --- scenario set -------------------------------------------------------------------------
 
-def load_scenarios(path=DATA / "scenarios"):
+def load_scenarios(path=DATA / "scenarios", bundle_only=True):
+    """Scenario files by id, in `order`. `bundle: false` marks a scenario that is run on
+    demand (the S2 situation family, ablations) rather than promoted into runs.json; the
+    engine CLI still discovers it, the bundle and the library API skip it."""
     files = {f.stem: json.loads(f.read_text(encoding="utf-8")) for f in sorted(path.glob("*.json"))}
+    if bundle_only:
+        files = {k: v for k, v in files.items() if v.get("bundle", True)}
     return dict(sorted(files.items(), key=lambda kv: (kv[1].get("order", 99), kv[0])))
 
 
@@ -121,14 +127,35 @@ def build_twins():
 
 # --- analysis -----------------------------------------------------------------------------
 
-def _incomplete(reports, reason):
+def _incomplete(reports, reason, question=None, flow=None, hero_agreement=None):
     return {
         "complete": False, "coverage": reports, "break_day": None, "drop": None,
         "direction": None, "reason": reason,
         "naive": None, "actual": None, "surprise": None, "impact": None,
         "evidence": [], "confidence": {"value": None, "unmeasured": True, "reason": reason},
         "narration": None, "whatif": [],
+        "question": question, "flows": flow, "hero_agreement": hero_agreement,
     }
+
+
+def _hero_agreement(scenario_files, groups, seeds):
+    """ROADMAP B6 — for every `role: ablation` scenario whose `compare_to` is also in the
+    run set: per-seed agreement with it, and the mean. Absent when nothing is an ablation."""
+    out = {}
+    for sid, sc in scenario_files.items():
+        other = sc.get("compare_to")
+        if sc.get("role") != "ablation" or other not in groups or sid not in groups:
+            continue
+        per_seed = {str(seed): flows.agreement(a, b) for seed, a, b in zip(seeds, groups[other], groups[sid])}
+        values = [v["value"] for v in per_seed.values() if v["value"] is not None]
+        re_values = [v["reappraisal_value"] for v in per_seed.values() if v["reappraisal_value"] is not None]
+        out[sid] = {
+            "compare_to": other, "label": sc.get("label", sid),
+            "value": round(sum(values) / len(values), 3) if values else None,
+            "reappraisal_value": round(sum(re_values) / len(re_values), 3) if re_values else None,
+            "seeds": per_seed,
+        }
+    return out or None
 
 
 def build_analysis(base, shops, scenario_files, twins, groups=None, seeds=None):
@@ -147,10 +174,16 @@ def build_analysis(base, shops, scenario_files, twins, groups=None, seeds=None):
     reports = {sid: {str(seed): coverage(rs, int(scenario_files[sid].get("days", days)))
                      for seed, rs in zip(seeds, runs)}
                for sid, runs in groups.items()}
-    if not all(r["complete"] for per_seed in reports.values() for r in per_seed.values()):
-        return _incomplete(reports, "incomplete trajectories: fallback decisions prevent causal conclusions")
-
     baseline = groups[role["baseline"]][default_ix]
+    # ROADMAP B3 / §2: flows and the question template are generic and need no causal
+    # completeness, so they are reported even when the rest is withheld.
+    question = question_for(scenario_files, role["baseline"], shop)
+    flow = flows.flows(baseline, shop, days)
+    hero = _hero_agreement(scenario_files, groups, seeds)
+    if not all(r["complete"] for per_seed in reports.values() for r in per_seed.values()):
+        return _incomplete(reports, "incomplete trajectories: fallback decisions prevent causal conclusions",
+                           question, flow, hero)
+
     control = groups[role["control"]][default_ix] if role["control"] else []
 
     brk = breakpoint.find_break(baseline, control, shop, days)
@@ -158,7 +191,8 @@ def build_analysis(base, shops, scenario_files, twins, groups=None, seeds=None):
     if break_day is None:
         return {"complete": True, "coverage": reports, "focus_shop": shop, "break_day": None,
                 "direction": None, "narration": None,
-                "reason": "no day moved far enough from its trailing average"}
+                "reason": "no day moved far enough from its trailing average",
+                "question": question, "flows": flow, "hero_agreement": hero}
 
     active = [o for o in scenario_files[role["baseline"]]["overrides"] if o["from_day"] <= break_day]
     naive = attribution.naive_read(active, shops)
@@ -193,6 +227,9 @@ def build_analysis(base, shops, scenario_files, twins, groups=None, seeds=None):
         "whatif": [_whatif(s, scenario_files[s], baseline, imp["lost_twins"], twins,
                            groups[s], shop, days, seeds)
                    for s in role["whatifs"]],
+        "question": question,
+        "flows": flow,
+        "hero_agreement": hero,
     }
 
 
@@ -216,6 +253,7 @@ def _whatif(scenario, scenario_file, baseline, lost_twins, twins, by_seed, shop,
         "revenue": revenue,
         "confidence": conf["value"],
         "confidence_detail": {k: conf.get(k) for k in ("stability", "support", "unmeasured", "reason", "partial", "detail")},
+        "flows": flows.flows(by_seed[default_ix], shop, days),
     }
 
 
@@ -328,6 +366,8 @@ def main():
     ap.add_argument("--offline", action="store_true", help="explicitly offline; all bundle builds are local")
     ap.add_argument("--require-complete", action="store_true", help="refuse fallbacks or missing/mixed provenance")
     ap.add_argument("--synthetic", action="store_true", help="label stubbed/test trajectories; never publishable")
+    ap.add_argument("--include-all", action="store_true",
+                    help="also bundle `bundle: false` scenarios (S2 situations, ablations); their runs must exist")
     args = ap.parse_args()
     base = args.base
     if not base.exists():
@@ -336,7 +376,8 @@ def main():
     seeds = parse_seeds(args.seeds) if args.seeds else SEEDS
 
     try:
-        doc = build(base, seeds, synthetic=True if args.synthetic else None)
+        doc = build(base, seeds, scenario_files=load_scenarios(bundle_only=not args.include_all),
+                    synthetic=True if args.synthetic else None)
     except ValueError as exc:
         print(f"invalid input: {exc}")
         return 1

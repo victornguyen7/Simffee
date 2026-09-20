@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { health, runScenario, whatIf } from '../api'
-import type { Health, Runs, WhatIfAnswer } from '../types'
+import type { Flows, Health, Runs, WhatIfAnswer } from '../types'
 
 interface Props {
   runs: Runs
@@ -15,10 +15,45 @@ const EXAMPLES = [
   'cut the latte to 40k but keep the 7am opening',
   'put everything back the way it was',
   'Starbucks raises their latte to 70k',
+  'Starbucks opens across the street on day 4. I open at 6 and add pastries',
   'add a loyalty card',
 ]
 
 const pct = (n: number | null | undefined) => (n == null ? '—' : `${Math.round(n * 100)}%`)
+
+const names = (twins: string[]) => (twins.length ? ` (${twins.join(', ')})` : '')
+const topDriver = (drivers: Record<string, number>) =>
+  Object.entries(drivers).sort((x, y) => y[1] - x[1])[0]?.[0]
+
+/** ROADMAP B3 — who left for whom, who came back, who never moved. */
+function FlowsPanel({ flows, shops, entrant }: { flows: Flows; shops: Runs['shops']; entrant: string | null }) {
+  const name = (id: string) => (id === 'none' ? 'skipping coffee' : shops[id]?.name ?? id)
+  const lostTo = Object.entries(flows.totals.lost_to)
+  const drivers: Record<string, Record<string, number>> = {}
+  for (const d of flows.by_day)
+    for (const [o, g] of Object.entries(d.lost_to))
+      for (const [k, n] of Object.entries(g.drivers)) (drivers[o] ??= {})[k] = (drivers[o][k] ?? 0) + n
+  return (
+    <div className="flows">
+      <b>{entrant ? `Since ${name(entrant)} opened` : 'Who moved'}</b>
+      {lostTo.length === 0 && <span>nobody left the shop.</span>}
+      {lostTo.map(([o, twins]) => (
+        <span key={o} className={o === entrant ? 'flow-entrant' : undefined}>
+          lost {twins.length} to {name(o)}
+          {names(twins)}
+          {topDriver(drivers[o] ?? {}) ? ` — mostly ${topDriver(drivers[o])}` : ''}
+        </span>
+      ))}
+      <span>
+        {flows.totals.returned.length} came back{names(flows.totals.returned)} · {flows.end.kept.length} never left
+        {names(flows.end.kept)}
+      </span>
+      {flows.totals.fallback_moves > 0 && (
+        <em>{flows.totals.fallback_moves} of these moves were fallback decisions, not model decisions.</em>
+      )}
+    </div>
+  )
+}
 
 export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const [text, setText] = useState('')
@@ -189,6 +224,14 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
           {a.analysis && !a.analysis.complete && !a.fallback_used && (
             <p className="muted">Analysis withheld: {a.analysis.reason}</p>
           )}
+          {a.analysis?.flows && !a.fallback_used &&
+            (a.analysis.question?.situation === 'competitor_enters' || a.analysis.flows.totals.moves > 0) && (
+              <FlowsPanel
+                flows={a.analysis.flows}
+                shops={runs.shops}
+                entrant={a.analysis.question?.entrant?.shop ?? null}
+              />
+            )}
 
           {a.cost && (
             <p className="cost">

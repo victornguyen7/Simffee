@@ -345,6 +345,28 @@
   font-size: 11px;
 }
 
+/* ROADMAP B3 — the flows panel under a what-if answer */
+.flows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.flows .flow-entrant {
+  font-weight: 600;
+}
+
+.flows em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .synthetic {
   font-size: 11px;
   color: var(--muted);

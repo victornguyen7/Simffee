@@ -1,6 +1,7 @@
 {
   "_comment": "COST_PLAN 2 — the only place a dollar figure is allowed to originate. Per million tokens, USD. `as_of` is the date the sheet was read; `verified` is whether someone checked the provider page for THIS model id. Unverified rows are labelled as such wherever the figure is shown.",
-  "provider": "groq",
+  "provider": "xai",
+  "_provider_note": "Groq rows kept for the committed cache ledger; add grok-* rows from https://x.ai/api pricing before quoting.",
   "models": {
     "qwen/qwen3.8-27b": {"input": 0.29, "output": 0.59, "as_of": "2026-09-20", "verified": false,
                           "note": "assumed from the Qwen3-32B row on Groq's sheet; verify before quoting"},

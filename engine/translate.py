@@ -15,6 +15,7 @@ question twice costs nothing.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -24,7 +25,7 @@ from typing import Any
 from . import llm
 from .loader import DATA, Scenario, load_chain, load_shops, scenario_from_dict
 from .loop import scenario_days
-from .resolve import resolve
+from .resolve import EXISTS, resolve
 
 ACTIONS_PATH = DATA / "actions.json"
 TRANSLATION_CACHE = Path(__file__).resolve().parent.parent / "cache" / "translations"
@@ -53,9 +54,11 @@ of that item; compute the integer.
 - Times are "HH:MM", 24-hour. "6am" is "06:00"; "6" alone for an opening time is "06:00".
 - `item` is a lowercase slug (latte, cold_brew, croissant). For a new product use add_item with its price.
 - `restore` undoes an earlier change in this chain: its `value` is the field to restore (open, price.latte, ...).
+- `shop_enters` means a shop OTHER than the focus shop did not exist until `from_day`, the day it opens \
+("Starbucks opens on day 4" -> shop starbucks, from_day 4). Only for a competitor; never for the focus shop.
 - `label` is at most 8 words, in the owner's voice.
 - `situation` is "incumbent_change" if only the focus shop changes, "competitor_change" if only another \
-shop changes, "mixed" if both.
+shop changes, "competitor_enters" if a shop_enters action is present, "mixed" if both kinds change.
 Return only the JSON object described by the schema."""
 
 
@@ -63,7 +66,7 @@ def response_schema(shop_ids: list[str], action_ids: list[str]) -> dict[str, Any
     return {
         "type": "object",
         "properties": {
-            "situation": {"type": "string", "enum": ["incumbent_change", "competitor_change", "mixed", "unsupported"]},
+            "situation": {"type": "string", "enum": ["incumbent_change", "competitor_change", "competitor_enters", "mixed", "unsupported"]},
             "focus_shop": {"type": "string", "enum": sorted(shop_ids)},
             "label": {"type": "string"},
             "actions": {
@@ -235,8 +238,11 @@ def compile_actions(reply: dict[str, Any], parent_chain: list[Scenario],
     parent_days = scenario_days(parent_chain) if parent_chain else 7
     default_day = (parent.from_day + 1) if parent else 2
 
+    focus = reply.get("focus_shop") if reply.get("focus_shop") in shops else next(iter(shops))
+
     # Group by (shop, day) into override blocks; keep insertion order for readability.
     blocks: dict[tuple[str, int], dict[str, Any]] = {}
+    entrants: dict[str, int] = {}          # ROADMAP B5: shop -> the day it opens
     max_day = 0
     for i, a in enumerate(acts):
         aid, sid = a.get("action"), a.get("shop")
@@ -245,6 +251,18 @@ def compile_actions(reply: dict[str, Any], parent_chain: list[Scenario],
             continue
         if sid not in shops:
             problems.append(f"action {i}: unknown shop {sid!r}")
+            continue
+        if aid == "shop_enters":
+            open_day = a.get("from_day") if isinstance(a.get("from_day"), int) else _as_int(a.get("value"))
+            if sid == focus:
+                problems.append(f"action {i}: shop_enters is for a competitor; launching the focus shop "
+                                f"itself is not simulatable yet (roadmap C)"); continue
+            if open_day is None or open_day < limits["min_from_day"]:
+                problems.append(f"action {i}: shop_enters needs the opening day (>= {limits['min_from_day']})"); continue
+            if any(ov["shop"] == sid and EXISTS in ov.get("set", {}) for sc in parent_chain for ov in sc.overrides):
+                problems.append(f"action {i}: {sid!r} already enters mid-run in this chain"); continue
+            entrants[sid] = open_day
+            max_day = max(max_day, open_day)
             continue
         day = a.get("from_day")
         if not isinstance(day, int):
@@ -328,7 +346,7 @@ def compile_actions(reply: dict[str, Any], parent_chain: list[Scenario],
                                 f"(changed: {sorted(changed) or 'nothing'}); nothing to restore"); continue
             block["unset"].extend(f for f in fields if f not in block["unset"])
 
-    if not blocks and not problems:
+    if not blocks and not entrants and not problems:
         problems.append("no supported actions")
     overrides = []
     for b in sorted(blocks.values(), key=lambda b: (b["from_day"], b["shop"])):
@@ -339,7 +357,7 @@ def compile_actions(reply: dict[str, Any], parent_chain: list[Scenario],
             out["unset"] = b["unset"]
         if len(out) > 2:
             overrides.append(out)
-    if not overrides and not problems:
+    if not overrides and not entrants and not problems:
         problems.append("no supported actions")
 
     days = max(parent_days, max_day + 2) if max_day else parent_days
@@ -349,13 +367,27 @@ def compile_actions(reply: dict[str, Any], parent_chain: list[Scenario],
         "label": (reply.get("label") or "User what-if").strip()[:60],
         "role": "whatif",
         "days": days,
-        "focus_shop": reply.get("focus_shop") if reply.get("focus_shop") in shops else next(iter(shops)),
+        "focus_shop": focus,
         "situation": reply.get("situation", "incumbent_change"),
         "source": {"kind": "user", "text": source_text, "translator_model": llm.MODEL},
         "overrides": overrides,
         "unsupported": [u for u in (reply.get("unsupported") or []) if isinstance(u, dict)],
     }
-    return (scenario if overrides else None), problems
+    if entrants:
+        # A shop that is absent on days 1-3 cannot be forked from a parent whose days 1-3
+        # had it present, so the plan becomes a ROOT scenario: the parent chain's overrides
+        # are inlined (the S1 story still happens), the entrant is declared from day 1, and
+        # the whole thing reruns from day 1. `derived_from` keeps the lineage readable.
+        inherited = [copy.deepcopy(ov) for sc in parent_chain for ov in sc.overrides]
+        declared = [{"from_day": 1, "shop": sid, "set": {EXISTS: d}} for sid, d in sorted(entrants.items())]
+        scenario.update({
+            "parent": None,
+            "derived_from": parent.id if parent else None,
+            "situation": "competitor_enters",
+            "days": max(days, max(entrants.values()) + 3),
+            "overrides": declared + inherited + overrides,
+        })
+    return (scenario if scenario["overrides"] else None), problems
 
 
 def _match_restore(want: str, changed: set[str]) -> list[str]:

@@ -75,7 +75,9 @@ def main() -> int:
     ap.add_argument("--scenario", default="baseline")
     ap.add_argument("--scenario-file", type=Path, default=None,
                     help="run an ad-hoc scenario JSON (its parent must exist under --data or --out)")
-    ap.add_argument("--all", action="store_true", help="run every scenario under data/scenarios, parents first")
+    ap.add_argument("--all", action="store_true", help="run every promoted scenario under data/scenarios, parents first")
+    ap.add_argument("--include-all", action="store_true",
+                    help="with --all: also the `bundle: false` scenarios (S2 situations, ablations)")
     ap.add_argument("--seeds", default="0", help="e.g. 0, 0-4, or 0,2,4")
     ap.add_argument("--days", type=int, default=None,
                     help=f"override the run length (default: the scenario's `days`, else {DAYS})")
@@ -100,7 +102,7 @@ def main() -> int:
         extra[adhoc.id] = adhoc
         scenarios = [adhoc.id]
     elif args.all:
-        scenarios = discover_scenarios(args.data)
+        scenarios = discover_scenarios(args.data, include_all=args.include_all)
     else:
         scenarios = [args.scenario]
     seeds = parse_seeds(args.seeds) if args.seeds else list(SEEDS)

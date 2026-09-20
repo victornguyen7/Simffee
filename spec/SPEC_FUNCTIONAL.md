@@ -76,11 +76,12 @@ Overridable fields, the closed list the translator may target: `open`, `close`, 
 
 ## 3. Disruption sources
 
-v1's five (`hours`, `price`, `product`, `wait`, `closed`) stay as written. **Nothing is added.**
-Decision (2026-09-20): hold the line at five. A judge asking *"what if a competitor opens"* gets
-`unsupported` with the reason *"the model has no competitor-entry mechanism yet"* — an honest
-answer, and the same sentence the strategy doc's Direction A would need a real build to change.
-v2's `new_entrant` / `exists_from_day` are in §10 as deferred, schema slot reserved.
+v1's five (`hours`, `price`, `product`, `wait`, `closed`) stay as written. Superseded by
+ROADMAP §7.1 (phase B): a sixth source, **`new_entrant`**, fires on the one day a shop with
+`exists_from_day` appears — 0.5 if it is open at the twin's usual time, 0.2 otherwise, still a
+MAX with the other sources so the v1 hours shock keeps winning. v1 rows never emit it because
+every v1 shop exists from day 1. A judge asking *"what if a competitor opens on day 4"* now gets
+a full rerun from day 1 with the entrant absent on days 1–3 (`shop_enters` in `data/actions.json`).
 
 Not added either: a generic LLM-estimated shock. A shock the analyzer cannot attribute is a shock
 the demo cannot explain.
@@ -134,7 +135,7 @@ reappraisers). At 2.2 s pacing that is ~30 s; at a paid-tier interval of 0.5 s, 
 Single-seed answers are labeled so: `analysis.confidence` is `unmeasured` with reason
 *"one seed — run 3 for confidence"*, and a button offers exactly that (≈ +30 calls).
 
-Fallback: if translate or run fails or exceeds `timeout_s` (default 45), serve the nearest
+Fallback: if translate or run fails or exceeds `timeout_s` (default 240), serve the nearest
 library scenario by override-field overlap, with `fallback_used: true` and the reason. The UI
 says *"live run unavailable — showing the closest cached scenario"*. Never silently.
 

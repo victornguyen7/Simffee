@@ -1,0 +1,19 @@
+{
+  "id": "abl_rename",
+  "label": "Same entrant, called \"Shop B\"",
+  "role": "ablation",
+  "compare_to": "s2_entrant",
+  "bundle": false,
+  "order": 12,
+  "description": "ROADMAP B6. Identical to s2_entrant in every mechanism; the only difference is that the LLM reads the entrant as \"Shop B\" instead of Starbucks. `hero_agreement` between this and s2_entrant says whether the twins were reacting to the mechanism (hours, price, distance, curiosity) or to the brand name. from_day 1 on the label forces a full rerun rather than a fork, so no day carries the real name.",
+  "parent": "s2_entrant",
+  "overrides": [
+    {
+      "from_day": 1,
+      "shop": "starbucks",
+      "set": {
+        "prompt.shop_label": "Shop B"
+      }
+    }
+  ]
+}

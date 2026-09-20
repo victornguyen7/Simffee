@@ -175,16 +175,21 @@ def load_chain(scenario_id: str, data: Path = DATA,
     return list(reversed(chain))
 
 
-def discover_scenarios(data: Path = DATA) -> list[str]:
+def discover_scenarios(data: Path = DATA, include_all: bool = False) -> list[str]:
     """Every scenario id under data/scenarios, parents before children, then by `order`.
 
     The old ALL_SCENARIOS constant, computed. A fork reads its parent's snapshot, so the
     parent must run first; ties are broken by the optional `order` key, then by id.
+
+    By default this is the promoted set that runs.json is built from. Scenarios marked
+    `bundle: false` (the S2 situation family, ablations -- ROADMAP B4/B6) are run on demand
+    and only listed with `include_all=True` (CLI: `--include-all`).
     """
     raws = {}
     for path in sorted((data / "scenarios").glob("*.json")):
         raw = json.loads(path.read_text())
-        raws[raw["id"]] = raw
+        if include_all or raw.get("bundle", True):
+            raws[raw["id"]] = raw
     depth: dict[str, int] = {}
 
     def _depth(sid: str, trail: tuple[str, ...] = ()) -> int:

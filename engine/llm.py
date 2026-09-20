@@ -1,13 +1,15 @@
 """The only place the engine talks to an LLM.
 
-Groq SDK, with the model selected by SIMFFEE_MODEL. GROQ_API_KEY is required
-for live requests; offline/cache replay never constructs a client.
+xAI's Responses API (https://api.x.ai/v1/responses) through the `openai` SDK, with the
+model selected by SIMFFEE_MODEL. XAI_API_KEY is required for live requests; offline/cache
+replay never constructs a client. Requests are sent with `store=False`: nothing about a
+twin is kept on the provider's side.
 
 Two capabilities are probed once per model rather than assumed, because they
 vary by model and by SDK version:
 
 * `temperature` -- SPEC 4.3 wants 0.7 with a retry at 0.3.
-* `response_format` -- schema-constrained JSON. If the model rejects it we
+* `text.format` (json_schema) -- schema-constrained JSON. If the model rejects it we
   ask for JSON in words instead. Either way the caller validates the result.
 """
 
@@ -27,7 +29,7 @@ def load_environment(path: Path | None = None) -> None:
     path = path if path is not None else Path(__file__).resolve().parent.parent / ".env"
     if not path.exists():
         return
-    allowed = {"GROQ_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL"}
+    allowed = {"XAI_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL"}
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         key, separator, raw = line.strip().removeprefix("export ").partition("=")
         key = key.strip()
@@ -50,20 +52,24 @@ MODEL = os.environ.get("SIMFFEE_MODEL", "qwen/qwen3.8-27b")
 # emit the object, so a 300-500 cap truncates the JSON and the reply is thrown
 # away as invalid -- which shows up as retries and fallbacks, not as an error.
 MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", "400"))
-TIMEOUT_S = 30.0
+BASE_URL = "https://api.x.ai/v1"
+TIMEOUT_S = 60.0          # reasoning models think before they answer
 
-# Groq's on-demand tier caps requests per minute, and the `compound-*` models
-# fan out to sub-models with their own smaller token-per-minute caps. A bulk run
-# is ~350 calls, so without pacing roughly half of them come back 429 -- and a
-# 429 that reaches decide.py becomes a permanently flagged llm_failed row, which
-# is a transport hiccup masquerading as a simulation result. Pace the calls, and
-# honour the retry hint when one gets through anyway.
+# Providers cap requests and tokens per minute. A bulk run is ~350 calls, so without
+# pacing a good share come back 429 -- and a 429 that reaches decide.py becomes a
+# permanently flagged llm_failed row, which is a transport hiccup masquerading as a
+# simulation result. Pace the calls, and honour the retry hint when one gets through anyway.
 MIN_INTERVAL_S = float(os.environ.get("SIMFFEE_MIN_INTERVAL", "2.2"))
 RATE_LIMIT_RETRIES = 4
 MAX_BACKOFF_S = 75.0
 
 _throttle_lock = threading.Lock()
 _last_call_at = 0.0
+# Token budget as reported by the provider on the previous response. A 429 costs a
+# request from the (small) daily cap, so a call that would not fit in the per-minute
+# token window waits for the window to reset instead of being sent and refused.
+_tokens_remaining: int | None = None
+_tokens_reset_at = 0.0
 STATS = {"attempts": 0, "responses": 0, "input_tokens": 0, "output_tokens": 0, "quota_failures": 0}
 
 
@@ -72,18 +78,57 @@ def reset_stats() -> None:
         STATS[key] = 0
 
 
-def _pace() -> None:
-    """Block until MIN_INTERVAL_S has passed since the previous call."""
-    global _last_call_at
+def _pace(need_tokens: int = 0) -> None:
+    """Block until MIN_INTERVAL_S has passed since the previous call, and until the
+    per-minute token window can take a request of `need_tokens`."""
+    global _last_call_at, _tokens_remaining
     with _throttle_lock:
         wait = MIN_INTERVAL_S - (time.monotonic() - _last_call_at)
+        if _tokens_remaining is not None and _tokens_remaining < need_tokens:
+            wait = max(wait, min(_tokens_reset_at - time.monotonic(), 60.0))
+            _tokens_remaining = None
         if wait > 0:
             time.sleep(wait)
         _last_call_at = time.monotonic()
 
 
+def _duration(text: str | None) -> float | None:
+    """Rate-limit header durations (x-ratelimit-reset-*): '5ms', '2.19s', '1m2.5s', '4h36m28.8s'."""
+    if not text:
+        return None
+    parts = re.findall(r"([\d.]+)(ms|h|m|s)", text)
+    if not parts:
+        return None
+    unit = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
+    return sum(float(n) * unit[u] for n, u in parts)
+
+
+def _note_budget(headers) -> None:
+    """Remember the token window from a response (or a 429) so the next call can wait."""
+    global _tokens_remaining, _tokens_reset_at
+    if headers is None:
+        return
+    try:
+        remaining = int(headers.get("x-ratelimit-remaining-tokens"))
+    except (TypeError, ValueError):
+        return
+    reset = _duration(headers.get("x-ratelimit-reset-tokens"))
+    if reset is None:
+        return
+    with _throttle_lock:
+        _tokens_remaining = remaining
+        _tokens_reset_at = time.monotonic() + reset
+
+
+def _estimate_tokens(request: dict[str, Any]) -> int:
+    """Conservative size of a request as the provider counts it against the window:
+    prompt (JSON-heavy, so ~3 chars per token, plus the model's own preamble) + max_tokens."""
+    chars = sum(len(str(m.get("content", ""))) for m in request.get("input", []))
+    return chars // 3 + 500 + int(request.get("max_output_tokens", MAX_TOKENS))
+
+
 def _retry_after(message: str) -> float | None:
-    """Groq puts the wait in the error text: 'Please try again in 2.19s'."""
+    """Some providers put the wait in the error text: 'Please try again in 2.19s'."""
     match = re.search(r"try again in (?:(\d+)m)?([\d.]+)s", message)
     if not match:
         return None
@@ -107,18 +152,18 @@ def client():
     global _client, _client_error
     if _client is not None:
         return _client
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("XAI_API_KEY")
     if not api_key:
-        raise LLMUnavailable("GROQ_API_KEY must be set for live requests")
+        raise LLMUnavailable("XAI_API_KEY must be set for live requests")
     try:
-        from groq import Groq as GroqClient
+        from openai import OpenAI
     except ImportError as exc:                      # pragma: no cover
-        _client_error = "groq SDK not installed"
+        _client_error = "openai SDK not installed"
         raise LLMUnavailable(_client_error) from None
     try:
-        _client = GroqClient(api_key=api_key, timeout=TIMEOUT_S, max_retries=0)
+        _client = OpenAI(api_key=api_key, base_url=BASE_URL, timeout=TIMEOUT_S, max_retries=0)
     except Exception as exc:                        # missing key, bad profile
-        _client_error = "could not build a Groq client"
+        _client_error = "could not build an xAI client"
         raise LLMUnavailable(_client_error) from None
     return _client
 
@@ -139,14 +184,21 @@ def _create_with_backoff(request: dict[str, Any]):
     that one propagates so the run reports it honestly.
     """
     last: Exception | None = None
+    need = _estimate_tokens(request)
     for attempt in range(RATE_LIMIT_RETRIES):
-        _pace()
+        _pace(need)
         try:
-            transport = client().chat.completions
+            transport = client().responses
             STATS["attempts"] += 1
-            return transport.create(**request)
+            raw = getattr(transport, "with_raw_response", None)
+            if raw is None:                 # a stubbed transport in tests
+                return transport.create(**request)
+            response = raw.create(**request)
+            _note_budget(response.headers)
+            return response.parse()
         except Exception as exc:
             message = str(exc)
+            _note_budget(getattr(getattr(exc, "response", None), "headers", None))
             if "rate_limit" not in message and "429" not in message:
                 raise
             last = exc
@@ -158,6 +210,24 @@ def _create_with_backoff(request: dict[str, Any]):
             if attempt + 1 < RATE_LIMIT_RETRIES:
                 time.sleep(wait + 0.4)
     raise last          # pragma: no cover -- retries exhausted
+
+
+def _output_text(response) -> str | None:
+    """The assistant text of a Responses API reply: `output[].content[].text` for the
+    message items (reasoning items are skipped). The SDK's `output_text` shortcut does the
+    same and is used when present."""
+    shortcut = getattr(response, "output_text", None)
+    if isinstance(shortcut, str) and shortcut:
+        return shortcut
+    parts: list[str] = []
+    for item in getattr(response, "output", None) or []:
+        if getattr(item, "type", None) != "message":
+            continue
+        for block in getattr(item, "content", None) or []:
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                parts.append(text)
+    return "".join(parts) if parts else None
 
 
 def complete_json(
@@ -184,16 +254,16 @@ def complete_json(
         ]
         request: dict[str, Any] = {
             "model": MODEL,
-            "max_tokens": MAX_TOKENS,
-            "messages": messages,
+            "max_output_tokens": MAX_TOKENS,
+            "input": messages,
+            "store": False,             # nothing about a twin is kept server-side
         }
         if _temperature_ok is not False:
             request["temperature"] = temperature
         if _structured_ok is not False:
-            request["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": "response", "strict": True, "schema": schema},
-            }
+            request["text"] = {"format": {
+                "type": "json_schema", "name": "response", "strict": True, "schema": schema,
+            }}
 
         # Add JSON schema instructions to system prompt
         messages[0]["content"] = system + f"\n\nYou must respond with a JSON object that matches this schema:\n{json.dumps(schema, indent=2)}"
@@ -201,17 +271,17 @@ def complete_json(
         try:
             response = _create_with_backoff(request)
             _temperature_ok = "temperature" in request
-            _structured_ok = "response_format" in request
+            _structured_ok = "text" in request
             break
         except LLMUnavailable:
             raise
         except Exception as exc:
             message = str(exc).lower()
-            unsupported = any(word in message for word in ("not support", "unsupported", "not allowed", "unknown parameter", "not permitted"))
+            unsupported = any(word in message for word in ("not support", "unsupported", "not allowed", "unknown parameter", "not permitted", "invalid"))
             if unsupported and "temperature" in message and "temperature" in request:
                 _temperature_ok = False
                 continue
-            if unsupported and any(word in message for word in ("response_format", "json_schema", "structured")) and "response_format" in request:
+            if unsupported and any(word in message for word in ("text.format", "format", "json_schema", "structured", "schema")) and "text" in request:
                 _structured_ok = False
                 continue
             # Sanitised (no provider text reaches a trajectory), but classified, so a run
@@ -221,7 +291,7 @@ def complete_json(
                 kind = "quota: daily token limit" if "per day" in message or "tpd" in message else "rate limit"
                 STATS["quota_failures"] = STATS.get("quota_failures", 0) + 1
                 raise RuntimeError(f"LLM transport failed ({kind})") from None
-            if "401" in message or "invalid api key" in message or "authentication" in message:
+            if "401" in message or "api key" in message or "authentication" in message:
                 raise RuntimeError("LLM transport failed (authentication)") from None
             if "404" in message and "model" in message:
                 raise RuntimeError("LLM transport failed (model not found)") from None
@@ -230,13 +300,13 @@ def complete_json(
         raise ValueError("could not find a request shape this model accepts")
 
     usage = {
-        "input_tokens": response.usage.prompt_tokens,
-        "output_tokens": response.usage.completion_tokens,
+        "input_tokens": int(getattr(response.usage, "input_tokens", 0) or 0),
+        "output_tokens": int(getattr(response.usage, "output_tokens", 0) or 0),
     }
     STATS["responses"] += 1
     for key, value in usage.items():
         STATS[key] += value
-    text = response.choices[0].message.content
+    text = _output_text(response)
     if not isinstance(text, str):
         raise ValueError("reply did not contain text")
     text = text.strip()

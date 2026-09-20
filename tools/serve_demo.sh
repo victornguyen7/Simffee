@@ -6,7 +6,7 @@
 #
 # 1. Replays every library scenario x seeds 0-2 from the committed cache/ into runs/library
 #    (gitignored). Strict: exits if a single decision is missing from the cache.
-# 2. Starts api/server.py on that library. Live what-ifs need GROQ_API_KEY in .env; without
+# 2. Starts api/server.py on that library. Live what-ifs need XAI_API_KEY in .env; without
 #    it the API still serves cached scenarios and answers plans that need no new decisions.
 # 3. Starts the Vite dev server unless --no-web.
 set -euo pipefail

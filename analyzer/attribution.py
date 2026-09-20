@@ -88,8 +88,9 @@ def _score(shop, key, new, weights):
         if new == old:
             return None
         w = weights[key]
-        return {"driver": w["driver"], "magnitude": w["fixed"],
-                "label": f"{key.split('.')[-1].replace('_', ' ').capitalize()} changed",
+        label = (f"Competitor opens day {new}" if key == "exists_from_day"
+                 else f"{key.split('.')[-1].replace('_', ' ').capitalize()} changed")
+        return {"driver": w["driver"], "magnitude": w["fixed"], "label": label,
                 "detail": f"{key} {old} -> {new}"}
     return None
 

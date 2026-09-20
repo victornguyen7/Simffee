@@ -34,7 +34,13 @@ DRIVERS = frozenset({
     "product", "curiosity", "social", "quality",
 })
 MODES = frozenset({"autopilot", "reappraisal"})
-DISRUPTION_SOURCES = frozenset({"none", "hours", "price", "product", "wait", "closed"})
+# ROADMAP B2: "new_entrant" is the sixth source -- a shop that did not exist yesterday opened
+# today. v1 rows never emit it because every v1 shop exists from day 1.
+DISRUPTION_SOURCES = frozenset({"none", "hours", "price", "product", "wait", "closed", "new_entrant"})
+NEW_ENTRANT_SHOCK_OPEN = 0.50    # the entrant is open at the twin's usual time
+NEW_ENTRANT_SHOCK_SHUT = 0.20    # it exists, but not when this twin goes for coffee
+NEW_ENTRANT_LATENT_BUMP = 0.15   # opening-day curiosity, within 2 x walk tolerance
+NEW_ENTRANT_RADIUS_FACTOR = 2
 
 Mode = Literal["autopilot", "reappraisal"]
 

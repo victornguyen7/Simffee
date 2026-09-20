@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from .loader import Twin
 from .schema import (
+    NEW_ENTRANT_SHOCK_OPEN,
+    NEW_ENTRANT_SHOCK_SHUT,
     PRICE_SHOCK_FLOOR,
     PRICE_SHOCK_GAIN,
     PRODUCT_SHOCK,
@@ -17,6 +19,18 @@ from .schema import (
     Disruption,
 )
 from .timeutil import is_open_at
+
+
+def with_new_entrant(disr: Disruption, twin: Twin, entrants: list[dict]) -> Disruption:
+    """ROADMAP B2 — a shop that opened today is a shock in its own right, even though
+    nothing changed at the twin's regular: 0.5 if it is open when this twin goes for
+    coffee, 0.2 if it exists but not at their hour. Still a MAX, never a sum, so the v1
+    hours shock (1.0) keeps winning on a day both happen."""
+    if not entrants:
+        return disr
+    score = max(NEW_ENTRANT_SHOCK_OPEN if is_open_at(e, twin.usual_time) else NEW_ENTRANT_SHOCK_SHUT
+                for e in entrants)
+    return Disruption(score, "new_entrant") if score > disr.score else disr
 
 
 def disruption(twin: Twin, shop_today: dict, shop_remembered: dict) -> Disruption:

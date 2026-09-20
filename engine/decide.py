@@ -63,13 +63,17 @@ def options_block(
     twin: Twin,
     state: dict[str, dict[str, float]],
     shops_today: dict[str, dict[str, Any]],
+    day: int | None = None,
 ) -> list[dict[str, Any]]:
-    """The per-shop facts the reappraisal prompt renders into words."""
+    """The per-shop facts the reappraisal prompt renders into words. `day` lets a shop
+    that opened today (ROADMAP B2) say so; v1 shops never do."""
     options = []
     for shop_id, shop in shops_today.items():
         distance = manhattan(twin.home, shop["position"])
         price = price_for(twin, shop)
+        opened_today = day is not None and shop.get("exists_from_day") == day and day > 1
         options.append({
+            **({"opened_today": True} if opened_today else {}),
             "shop": shop_id,
             "name": display_name(shop),   # prompt.shop_label if set, else name
             "distance": distance,
@@ -193,7 +197,7 @@ def reappraise(
 ) -> Decision:
     """The habit is suspended. The twin consciously weighs the options."""
     latent = state["latent_interest"]
-    highest_latent = max((v for s, v in latent.items() if s != regular), default=0.0)
+    highest_latent = max((v for s, v in latent.items() if s != regular and s in shops_today), default=0.0)
 
     # SPEC 8, tuning note on T08. A deterministic rule, checked before the call:
     # a shock big enough to break the habit still is not enough to switch when
@@ -210,7 +214,7 @@ def reappraise(
             llm_failed=False, decision_source="rule",
         )
 
-    options = options_block(twin, state, shops_today)
+    options = options_block(twin, state, shops_today, day)
     history = state.get("history", [])
     user = prompt.build(
         twin, options, disr.score, disr.source, regular, history, shops_today,

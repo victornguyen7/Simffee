@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ "$OFFLINE" -eq 0 ]]; then
   if ! python3 -c 'import sys; from engine.llm import available; sys.exit(0 if available() else 2)'; then
-    echo "A valid local Groq configuration is required; set GROQ_API_KEY in .env or the environment" >&2
+    echo "A valid local xAI configuration is required; set XAI_API_KEY in .env or the environment" >&2
     exit 2
   fi
 fi

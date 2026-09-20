@@ -13,7 +13,7 @@ import {
   type Town,
 } from '../town/model'
 
-const PIXEL = 3
+const PIXEL = 2
 const BUILDING_HEIGHT = 90
 
 function fitZoom(width: number, height: number) {

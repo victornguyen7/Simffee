@@ -142,8 +142,9 @@ def user_message(text: str, shops_now: dict[str, dict[str, Any]], focus: str,
     shop_lines = []
     for sid, s in shops_now.items():
         prices = ", ".join(f"{k} {v:,}" for k, v in s["price"].items())
+        focus_note = ' — the focus shop, i.e. "we"' if sid == focus else ''
         shop_lines.append(
-            f"- {sid} ({s['name']}){' — the focus shop, i.e. \"we\"' if sid == focus else ''}: "
+            f"- {sid} ({s['name']}){focus_note}: "
             f"open {s['open']}–{s['close']}; prices {prices}; products {', '.join(s['products'])}; "
             f"wait {s['avg_wait_min']} min; quality {s.get('quality')}; "
             f"marketing reach {s.get('marketing', {}).get('reach')}"

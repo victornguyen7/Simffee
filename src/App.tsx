@@ -3,6 +3,7 @@ import Town from './pages/Town'
 import Shop from './pages/Shop'
 import Market from './pages/Market'
 import Conclusion from './pages/Conclusion'
+import WhatIf from './pages/WhatIf'
 import type { ShopId } from './sim/runs'
 
 type Scene =
@@ -10,10 +11,11 @@ type Scene =
   | { name: 'interior'; shop: ShopId }
   | { name: 'market' }
   | { name: 'conclusion' }
+  | { name: 'whatif' }
 
 function App() {
   const [scene, setScene] = useState<Scene>({ name: 'town' })
-  const fullBleed = scene.name !== 'market' && scene.name !== 'conclusion'
+  const fullBleed = scene.name !== 'market' && scene.name !== 'conclusion' && scene.name !== 'whatif'
 
   return (
     <div className={`shell ${fullBleed ? 'shell--full' : ''}`}>
@@ -39,6 +41,12 @@ function App() {
         >
           why
         </button>
+        <button
+          className={`hud__btn ${scene.name === 'whatif' ? 'hud__btn--on' : ''}`}
+          onClick={() => setScene(scene.name === 'whatif' ? { name: 'town' } : { name: 'whatif' })}
+        >
+          ask
+        </button>
       </div>
 
       <main className={`shell__body ${fullBleed ? 'shell__body--full' : ''}`}>
@@ -46,6 +54,7 @@ function App() {
         {scene.name === 'interior' && <Shop shop={scene.shop} />}
         {scene.name === 'market' && <Market />}
         {scene.name === 'conclusion' && <Conclusion />}
+        {scene.name === 'whatif' && <WhatIf />}
       </main>
     </div>
   )

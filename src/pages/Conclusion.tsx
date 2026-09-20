@@ -155,10 +155,10 @@ export default function Conclusion() {
               <h3>Which fix targets the mechanism</h3>
               <div className="conclusion__whatif">
                 {whatif.map((fix, index) => {
-                  const low = lowConfidence(fix.confidence_detail)
+                  const low = lowConfidence(fix.confidence_detail, fix.confidence)
                   const bestReturns = Math.max(
                     ...whatif
-                      .filter((candidate) => !lowConfidence(candidate.confidence_detail))
+                      .filter((candidate) => !lowConfidence(candidate.confidence_detail, candidate.confidence))
                       .map((candidate) => candidate.returns),
                     -Infinity,
                   )

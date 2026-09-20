@@ -164,6 +164,6 @@ export function twinName(runs: Runs, id: string): string {
   return runs.twins.find((twin) => twin.id === id)?.name ?? id
 }
 
-export function lowConfidence(c: Confidence | null | undefined): boolean {
-  return !!c && !c.unmeasured && c.value != null && (c.low_confidence ?? c.value < 0.5)
+export function lowConfidence(c: Confidence | null | undefined, value: number | null = c?.value ?? null): boolean {
+  return !!c && !c.unmeasured && value != null && (c.low_confidence ?? value < 0.5)
 }

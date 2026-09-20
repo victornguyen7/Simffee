@@ -31,6 +31,20 @@ export function targetTile(runs: Runs, row: Row | undefined, twin: Twin): [numbe
   return cellToTile(shop.position[0], shop.position[1])
 }
 
+/** Everyone heading to the same shop stands on their own spot in front of it. */
+const QUEUE_SPOTS: [number, number][] = [
+  [0, 0],
+  [0.7, 0],
+  [0, 0.7],
+  [0.7, 0.7],
+  [-0.7, 0],
+  [0, -0.7],
+  [-0.7, 0.7],
+  [0.7, -0.7],
+  [-0.7, -0.7],
+  [1.4, 0],
+]
+
 /**
  * Where everyone is at `phase` (0..1) of the given day.
  * 0–0.55 walking to the chosen shop, 0.55–0.85 standing there thinking,
@@ -38,10 +52,15 @@ export function targetTile(runs: Runs, row: Row | undefined, twin: Twin): [numbe
  */
 export function agentsAt(runs: Runs, rows: Row[], phase: number, selected: string | null): AgentState[] {
   const byTwin = new Map(rows.map((r) => [r.twin, r]))
+  const taken = new Map<string, number>()
   return runs.twins.map((twin) => {
     const row = byTwin.get(twin.id)
     const home = cellToTile(twin.home[0], twin.home[1])
-    const dest = targetTile(runs, row, twin)
+    const base = targetTile(runs, row, twin)
+    const queued = taken.get(base.join()) ?? 0
+    taken.set(base.join(), queued + 1)
+    const spot = QUEUE_SPOTS[queued % QUEUE_SPOTS.length]
+    const dest: [number, number] = [base[0] + spot[0], base[1] + spot[1]]
     const skipped = !row || row.choice === 'none'
 
     let pos: [number, number]
@@ -60,8 +79,9 @@ export function agentsAt(runs: Runs, rows: Row[], phase: number, selected: strin
     }
 
     let bubble: AgentState['bubble'] = null
-    if (row) {
-      const isSelected = selected === twin.id
+    const isSelected = selected === twin.id
+    // with a twin pinned the town stays readable: only their bubble shows
+    if (row && (isSelected || !selected)) {
       if (phase >= 0.55 && phase < 0.85 && (row.mode === 'reappraisal' || isSelected)) {
         bubble = { text: row.reasoning, tone: 'think' }
       } else if (phase >= 0.85 && row.told.length > 0) {

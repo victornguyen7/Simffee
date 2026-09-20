@@ -21,7 +21,11 @@ export default function App() {
   const [seed, setSeed] = useState(0)
   const [day, setDay] = useState(1)
   const [playing, setPlaying] = useState(true)
-  const [phase, setPhase] = useState(PAUSED_PHASE)
+  const [phase, setPhase] = useState(0)
+  const pause = useCallback((next: boolean) => {
+    setPlaying(next)
+    if (!next) setPhase(PAUSED_PHASE)
+  }, [])
   const [brush, setBrush] = useState<Brush>(null)
   const [selectedTwin, setSelectedTwin] = useState<string | null>(null)
   const [interior, setInterior] = useState<ShopId | null>(null)
@@ -130,7 +134,7 @@ export default function App() {
               setDay(d)
               setPhase(playing ? 0 : PAUSED_PHASE)
             }}
-            onPlaying={setPlaying}
+            onPlaying={pause}
           />
           <IsoTown
             runs={runs}

@@ -13,6 +13,7 @@ import {
   type Town,
 } from '../town/model'
 
+const HOME_ZOOM = 1.3
 const PIXEL = 2
 
 interface Pet {
@@ -111,7 +112,7 @@ export default function IsoTown({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef({ runs, town, rows, phase, selectedTwin })
-  const cameraRef = useRef({ x: 0, y: 0, zoom: 1.5 })
+  const cameraRef = useRef({ x: 0, y: 0, zoom: HOME_ZOOM })
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const petsRef = useRef<Pet[]>([])
   const livestockRef = useRef<Livestock[]>([])
@@ -375,7 +376,7 @@ export default function IsoTown({
         cam.zoom = Math.min(2.2, Math.max(0.45, cam.zoom * (e.deltaY > 0 ? 0.92 : 1.08)))
       }}
       onDoubleClick={() => {
-        cameraRef.current = { x: 0, y: 0, zoom: 1.5 }
+        cameraRef.current = { x: 0, y: 0, zoom: HOME_ZOOM }
       }}
       aria-label={`Isometric town, ${GRID} by ${GRID} tiles, tile size ${TILE_W} by ${TILE_H}`}
     />

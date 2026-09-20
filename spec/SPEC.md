@@ -69,7 +69,7 @@ Rises from three sources, each day:
 
 - Word of mouth: a neighbor reports a good experience at shop `o` → `+0.10 × valence`; a bad experience → `−0.10`
 - Marketing: `+ reach[o] × ad_sensitivity`, capped at +0.05/day
-- First-hand experience: after visiting `o` for the first time, `latent_interest[o] ← 0` and `habit[o]` starts accumulating in its place
+- First-hand experience: visiting a non-regular shop clears its accumulated `latent_interest[o]` and reinforces `habit[o]`. `engine.loop.run_day()` also records the shop in `visited`, initialized from the what-log and persisted in snapshots. This is observed visit history, not a new tunable preference. Zero curiosity after experience must not be read as refusal to return; `engine.decide.reappraise()` lets previously experienced, open alternatives reach deliberation. Positive or negative recent experiences remain in the three-day memory.
 
 The most important rule: **latent\_interest can only be acted on when habit is suspended** (reappraisal), or when `latent_interest[o] > habit[current] + 0.3` (rare — this models the person who actively seeks change). Outside those two gates, it just accumulates silently. This is why marketing alone barely pulls a competitor's regulars, but marketing + a shock does.
 
@@ -216,6 +216,8 @@ One row per twin per day per scenario per seed, written to `runs/{scenario}/{see
 
 The `primary_driver` field is mandatory and drawn from a closed set: `habit | hours | price | distance | wait | product | curiosity | social | quality`. It is what lets the attribution in section 6 run by counting rather than by having an LLM re-read everything.
 
+`engine.schema.Row` additionally exports `llm_failed`, `decision_source` (`autopilot`, `rule`, `llm`, or `fallback`), `llm_model`, and `llm_cache_key`. Model/cache provenance is identical on live generation and warm replay, preserving byte-for-byte determinism. Legacy fixtures without provenance remain usable for analyzer tests but are not publishable model evidence. `engine.schema.validate_row()` and `tools.validate.check_file()` share the 40-word reasoning limit; the latter also checks the full ordered day/twin grid.
+
 ## 4. The 7-day loop and the decision function
 
 Each day is one pass over the 10 twins in a fixed order, followed by one word-of-mouth pass. Nothing runs concurrently within a day, so results are reproducible for a given seed.
@@ -250,7 +252,9 @@ No LLM call. Records `mode: autopilot`, `choice: current`, `primary_driver: habi
 
 ### 4.3 Reappraisal — the LLM call
 
-One call per twin per day in this mode. Cheap model, `temperature 0.7`, `max_tokens 300`, JSON required.
+Implementation: `engine.decide.reappraise()`, with prompts from `engine.prompt.build()` and transport in `engine.llm.complete_json()`. Before a call, an hours shock plus maximum alternative curiosity below 0.20 forces skipping only if there is no previously experienced, open alternative. This rule is not in `autopilot()` and does not special-case T08. A repeat visit is allowed to reach deliberation, not forced to buy.
+
+Uncached deliberation requests use Groq, `temperature 0.7` with one invalid-response retry at 0.3, and `max_tokens` 1600 by default for reasoning-model compatibility. The model defaults to `groq/compound-mini`, configurable with `SIMFFEE_MODEL` or `--model`; the token cap is configurable with `SIMFFEE_MAX_TOKENS`. Live requests require `GROQ_API_KEY`. Temperature and `response_format` JSON-schema support are probed per model with bounded retries; unsupported fields remain omitted on subsequent requests. Local validation is mandatory even without provider-side structured output.
 
 The prompt has four blocks, in order:
 
@@ -258,6 +262,8 @@ The prompt has four blocks, in order:
 2. **Today** — the time, money left for the day, the disruption and its source.
 3. **Options** — for each shop: distance, price of the usual item, opening time, wait, plus `habit` and `latent_interest` rendered into words ("you've been here 24 of the last 30 days", "your neighbor Linh praised the cold brew here yesterday").
 4. **3-day memory** — choice + valence + condensed reasoning for the last 3 days.
+
+`engine.prompt.build()` reads `say_do_gap.log_shows` (with legacy `does` compatibility), states that a shop cannot serve only when it is actually closed, and distinguishes a missing usual item from total unavailability. Price and wait shocks do not remove an open shop from the options. `engine.decide.price_for()` uses the cheapest available item if the usual item was removed. Social links and ad sensitivity alone are not evidence that a particular endorsement or advertisement was heard; prompts must not invent those events.
 
 Output schema, mandatory:
 
@@ -277,7 +283,9 @@ Three constraints in the system prompt:
 - `primary_driver` must be the **real** reason present in the reasoning, not the flattering one. If the reason is "I had to go somewhere else anyway, might as well try it," the drivers are `hours` + `curiosity`, not `price`.
 - For twins with a `say_do_gap`: the Identity block contains both the stated claim and a summary of the what-log. The system prompt states: *"The behavior in the log matters more than what you say about yourself. When the two conflict, act according to the log."*
 
-Validating output: parse the JSON, check the enums; on failure → retry once at `temperature 0.3`; on a second failure → fall back to autopilot and flag `llm_failed: true` so the row is excluded from confidence.
+Validating output: parse the JSON, check enums, finite valence, reasoning, and shop availability; on invalid output → retry once at `temperature 0.3`; on a second failure → `engine.decide._fallback()` invokes `autopilot()` and flags `llm_failed: true`. Offline cache misses and unavailable transport also produce flagged diagnostic fallbacks. Error details are sanitized and reasoning remains at most 40 words. Such skips are technical placeholders, not observed customer preferences.
+
+`engine.schema.coverage()` and `engine.cli.main()` report full-grid status, reappraisals, fallbacks, skip categories, and model provenance per scenario/seed. `--require-complete` exits 2 for incomplete or unverified runs; schema failures exit 1. A one-day diagnostic run is not a complete seven-day simulation.
 
 ### 4.4 Cost
 
@@ -370,6 +378,8 @@ Pick 2 trajectories as evidence: the switcher whose `primary_driver == actual` a
 
 `impact = switchers(baseline) − switchers(cf_null)`, twin by twin. Only a twin who switches in the baseline and does not switch in cf\_null counts as "lost because of our decision." That number leads the panel: *"4 customers lost — 3 from the hours change, 1 would have been lost anyway."*
 
+`analyzer.attribution.actual_driver()`/`select_evidence()`, `analyzer.impact.impact()`, and `analyzer.pairwise.returns()` withhold conclusions when fallback decisions affect their input trajectories. `build_runs.build_analysis()` conservatively suppresses causal analysis and narration if any required scenario/seed is incomplete; diagnostic rows and sales remain available with coverage labels.
+
 ### 6.5 Confidence score
 
 Simile trains a confidence model alongside the simulation model. We substitute two measurable components:
@@ -381,21 +391,27 @@ c = 0.7 \cdot \text{stability} + 0.3 \cdot \text{support}
 - **stability** = for each twin, the fraction of seeds (out of 5) producing the same `choice` on the break day; averaged over the 10 twins. Autopilot counts as stability 1.0.
 - **support** = for twins in reappraisal, the number of why-transcript lines with a keyword matching `primary_driver`, divided by 3, capped at 1. A twin who switches out of `curiosity` whose transcript never mentions Starbucks → low support.
 
+`analyzer.confidence.stability()` counts distinct seeds, excludes fallbacks, and records sample counts even for unmeasured twins. At least three usable seeds are required per measured twin. `confidence()` additionally requires at least one twin with three usable reappraisal seeds and corresponding support in the selected seed; autopilot agreement cannot substitute for deliberation evidence. Otherwise `value` is null and `unmeasured` is true. Partial results retain coverage reasons and per-twin detail in the bundle.
+
 Displayed as `Confidence 0.78` next to each conclusion, with a tooltip breaking out the two components. Conclusions with `c < 0.5` are italicized and labeled *"low confidence — not actionable"*. This line exists so judges can see the system knows when it does not know.
+
+`analyzer.confidence.whatif_confidence()` applies the same weights and minimum-sample guard to each branch. Outcome stability is restricted to the customers baseline lost; unaffected customers cannot pad it. `branch_support()` uses each lost twin's last usable post-intervention reappraisal. Seeds containing earlier fallback decisions are excluded from branch evidence, even if the final outcome is autopilot. The selected default seed is resolved by ID, not list position. `build_runs._whatif()` exports both the scalar `confidence` and detailed coverage in `confidence_detail`, from the same rows used by the bundle. Impact comparisons use the contract field `per_twin.cf_null`, not `control`.
 
 ### 6.6 Narration
 
-One final LLM call: the input is the computed JSON (naive, actual, impact, the 2 pieces of evidence, c), the output is 2 sentences for the panel. The prompt forbids citing any number not present in the input.
+`analyzer.narrate.narrate()` deterministically renders exactly two sentences from the computed break day, naive driver, actual driver, and impact fields. Each number stays bound to its field: a digit in a price label cannot be reused as a customer count. No LLM client is constructed. Incomplete evidence, unmeasured confidence, invalid counts, or an unmeasured driver produce null narration with a reason. This replaces free-form LLM narration because a number allowlist alone cannot enforce factual correctness.
 
 ## 7. The reverse-engineered demo scenario
 
 The target: on day 4, Simffee sales drop \~40%, the naive read is price, the real mechanism is opening hours, and the two what-if branches diverge clearly. Tune the twin parameters until this outcome appears reliably in ≥ 4 of 5 seeds, then cache it. This is staging a scenario, not fabricating data — every number lives in a twin file that anyone can read.
 
+The following counts are illustrative demo targets, not correctness assertions or permission to force outcomes. Repairs must preserve genuine skipping and model discretion. Parameter calibration and new behavioral mechanisms require explicit review. In particular, §2.3's curiosity reset must not override prior experience and force day-5 skipping in conflict with the intended repeat visits below.
+
 ### 7.1 Target sequence of events
 
 | Day | Event | Desired outcome |
 | --- | --- | --- |
-| 1–3 | Stable | 7 of 10 twins go to Simffee on autopilot; 3 twins are Starbucks regulars |
+| 1–3 | Stable | 8 of 10 twins go to Simffee on autopilot; 2 twins are Starbucks regulars |
 | 4 | Simffee opens late at 07:00 (instead of 06:30), latte +3k | 6 twins with `usual_time` < 07:00 hit disruption = 1.0 → reappraisal. 4 of them have `latent_interest[starbucks] ≥ 0.3` → they switch. 2 twins with high thresholds skip coffee entirely (`none`) |
 | 5 | No change | The 4 who switched: habit\[starbucks\] ≈ 0.22, still in reappraisal. 3 stay at Starbucks because yesterday's valence was positive and the hours are still late; 1 returns |
 | 6–7 | Word of mouth | 1 more twin switches because a neighbor praised it. Final outcome: 4 customers lost — 3 due to hours, 1 due to gossip |
@@ -446,13 +462,16 @@ Grid: Simffee (1,1), Starbucks (3,3). Manhattan distance; `walk_tolerance` is th
 | T05 | Ngọc | (2,2) | 06:30 | 0.75 / 0.15 | 0.45 | 0.35 | 0.6 | — | Switches on day 4, forms a new habit fastest. Does **not** return in either branch |
 | T06 | Đức | (1,2) | 06:50 | 0.77 / 0.13 | 0.30 | 0.45 | 0.4 | Says frugal, spends 65k/day | Switches on day 4. cf\_discount doesn't bring him back; cf\_restore does |
 | T07 | Vy | (2,0) | 06:35 | 0.85 / 0.05 | 0.05 | 0.50 | 0.2 | — | Switches on day 4 due to hours but latent is low → negative valence at Starbucks → returns on her own on day 5 |
-| T08 | Mai | (0,0) | 06:40 | 0.90 / 0.00 | 0.15 | 0.70 | 0.3 | Says novelty-seeking, acts identically every day | Day 4 disruption of 1.0 exceeds her threshold → reappraisal, but latent is low so she **skips coffee** via the rule in 4.2: high threshold + low latent → `none` |
+| T08 | Mai | (0,0) | 06:40 | 0.90 / 0.00 | 0.15 | 0.70 | 0.3 | Says novelty-seeking, acts identically every day | Day 4 disruption of 1.0 exceeds her threshold → reappraisal, but latent is low so she **skips coffee** via the rule in 4.3 if current alternative interest stays below 0.20 and no experienced open alternative exists |
 | T09 | Khoa | (3,2) | 07:30 | 0.20 / 0.75 | — | 0.50 | 0.5 | — | Starbucks regular. The control showing Simffee marketing pulls nobody from Starbucks without a disruption on that side |
 | T10 | An | (4,3) | 08:15 | 0.10 / 0.85 | — | 0.55 | 0.5 | — | Starbucks regular. Genuinely price-sensitive: the only twin `cf_discount` pulls in (from Starbucks), so cf\_discount = +1 new customer, −3 old customers who never return |
 
 Tuning notes:
 
-- T08 needs a dedicated rule, not just a threshold: add to 4.2 the condition *in reappraisal but `max(latent_interest) < 0.2` and `disruption.source == hours` → choose `none`*. This is the "go without rather than switch" behavior of a high-inertia person, and it is the evidence that disruption ≠ switching.
+- The general untried-alternative gate lives in `engine.decide.reappraise()` (§4.3), not `autopilot()` (§4.2). An hours shock with maximum alternative interest below 0.20 and no experienced open alternative yields `none`; all other reappraisals reach the model/cache. T08 is not hard-coded.
+- **Unresolved T08 calibration:** marketing raises her Starbucks interest from 0.15 to 0.23 by day 4 with the current data, so the low-interest gate does not apply. Her guaranteed skip role is therefore not established. Changing sensitivity, the threshold, or the intended role requires approval; no such data change was made for this repair.
+- **Unresolved T10 mechanism:** `engine.loop.run_day()` computes disruption only for the current regular shop. Simffee's discount does not shock a Starbucks regular, and current interest does not pass the change-seeking gate. Acquiring T10 through competitor pricing requires an approved cross-shop attention mechanism or a revised narrative; the role above is a target, not currently reachable behavior.
+- **Unresolved control design:** current `cf_null` data adds a day-6 wait spike, whereas the narrative in §7.1 attributes control loss to marketing. This shock is not shared by the treatment arms. No causal-design assumption or scenario parameter was changed; review the control before treating its subtraction as calibrated evidence.
 - T07 is the key twin for confidence: she switches and then returns on her own, so her day-4 `choice` is stable across seeds while day 5 fluctuates. Stability will be lower on day 5, and that is **correct**.
 - T09 and T10 are controls: without them, Simffee marketing has no one to act on and the gossip table has no reverse direction.
 - Starting Simffee customers = 8 (T01–T08), Starbucks = 2. Baseline day-7 outcome: Simffee 4, Starbucks 5, 1 skipping.
@@ -503,9 +522,9 @@ The demo makes no LLM calls. Every trajectory is computed ahead of time and cach
 
 ### 10.1 Cache
 
-The key for an LLM call = `sha1(twin_id, day, scenario_id, seed, hash(state_before), hash(shops_today))`. Store the JSON response in `cache/{key}.json`. Re-running the same input → no API call. Changing one twin parameter → only the days after it are invalidated. That makes tuning the scenario (7.2) cheap: each adjustment costs a few dozen calls, not 400.
+`engine.cache.key()` hashes a versioned canonical JSON payload containing twin/day/scenario/seed, full decision state (including history and visited shops), today's shops, the twin record, disruption, regular shop, rendered system/user prompts, response schema, requested model, token cap, temperature policy, and transport version. Responses carry model/version metadata and are revalidated on replay. Old-format, malformed, incompatible-model, and invalid responses are cache misses; they are not silently reused or deleted. Input changes invalidate affected requests rather than reusing stale decisions.
 
-Output for the frontend: a single `public/runs.json` bundling every trajectory + state snapshot + analyzer result for the 3 scenarios × 5 seeds. The frontend has no idea the cache exists.
+`build_runs.main()` bundles all 4 scenarios × 5 seeds, validates the inputs, and derives analysis from the same in-memory rows included in the bundle. It is always offline, accepts an input directory and `--out`, and supports `--require-complete`. Strict builds reject missing trajectories, fallbacks, and missing/mixed model provenance before writing output. Diagnostic builds expose `meta.coverage`, per-seed coverage, and `meta.publishable=false` when unverified. `--synthetic` labels stubbed test trajectories, which are never publishable model evidence. Rebuild into an isolated path; promoting it to `public/runs.json` is a separate approved action.
 
 ### 10.2 Determinism
 
@@ -540,13 +559,13 @@ simffee/
   data/twins/T01..T10.json
   data/shops.json
   data/scenarios/{baseline,cf_null,cf_discount,cf_restore_hours}.json
-  engine/{loop,disruption,habit,gossip,reappraise,cache}.py
-  analyzer/{breakpoint,attribution,confidence,narrate}.py
+  engine/{loop,disruption,habit,gossip,decide,prompt,llm,cache,schema,cli}.py
+  analyzer/{breakpoint,attribution,pairwise,impact,confidence,narrate}.py
   runs/                      # gitignore
   cache/                     # committed — this is the demo
-  web/public/runs.json
-  web/src/...
+  public/runs.json
+  src/...
   PROTOCOL.md                # replacing synthetic twins with real people
 ```
 
-`cache/` is committed deliberately: anyone who clones the repo can run the demo without an API key.
+The intended release includes a complete compatible cache so a clean clone can replay without an API key. At the repair checkpoint, the existing cache is untracked and uses the old request identity; the offline-demo release condition is not yet satisfied. A fresh authorized generation and separately approved artifact promotion/commit are required. The frontend is still the Vite starter page and remains a separate, unimplemented deliverable.

@@ -7,16 +7,18 @@ fallback that flags the row so it never counts towards confidence.
 
 from __future__ import annotations
 
+import math
 import random
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from . import cache, llm, prompt
 from .loader import Twin
-from .schema import AUTOPILOT_VALENCE, DRIVERS, SKIP_LATENT_FLOOR, Disruption
+from .schema import AUTOPILOT_VALENCE, DRIVERS, REASONING_WORD_LIMIT, SKIP_LATENT_FLOOR, Disruption
 from .timeutil import is_open_at, manhattan
 
-MAX_REASONING_WORDS = 40          # SPEC 4.3
+MAX_REASONING_WORDS = REASONING_WORD_LIMIT          # SPEC 4.3 (increased for Groq compatibility)
 
 # Per-process counters, so the CLI can report what a run actually cost.
 STATS = {"cache_hits": 0, "llm_calls": 0, "retries": 0, "failures": 0,
@@ -42,10 +44,18 @@ def _available(twin: Twin, shop: dict) -> bool:
 def price_for(twin: Twin, shop: dict) -> int:
     """What this twin spends at this shop. Falls back to the cheapest item on the
     menu when their usual order is gone."""
-    price = shop["price"].get(twin.usual_order)
+    price = shop["price"].get(twin.usual_order) if twin.usual_order in shop["products"] else None
     if price is None:
         price = min(shop["price"][p] for p in shop["products"])
     return int(price)
+
+
+def experienced_shops(twin: Twin, state: dict) -> set[str]:
+    return set(state.get("visited", [])) | {
+        r.get("choice", r.get("shop"))
+        for r in twin.what_log + state.get("history", [])
+        if r.get("choice", r.get("shop")) not in (None, "none")
+    }
 
 
 def options_block(
@@ -73,6 +83,7 @@ def options_block(
             "marketing": shop.get("marketing", {}).get("message"),
             "habit": round(state["habit"][shop_id], 3),
             "latent_interest": round(state["latent_interest"][shop_id], 3),
+            "visited": shop_id in experienced_shops(twin, state),
         })
     return options
 
@@ -105,27 +116,35 @@ def _validate(
     shops_today: dict[str, dict[str, Any]],
 ) -> Decision:
     """Turn a model reply into a Decision, or raise ValueError to trigger a retry."""
+    if not isinstance(raw, dict):
+        raise ValueError("reply must be an object")
+    if not {"choice", "primary_driver", "secondary_driver", "valence", "reasoning"} <= raw.keys():
+        raise ValueError("reply is missing required decision fields")
     choice = raw.get("choice")
-    if choice not in set(shops_today) | {"none"}:
+    if not isinstance(choice, str) or choice not in set(shops_today) | {"none"}:
         raise ValueError(f"bad choice {choice!r}")
 
     primary = raw.get("primary_driver")
-    if primary not in DRIVERS:
+    if not isinstance(primary, str) or primary not in DRIVERS:
         raise ValueError(f"bad primary_driver {primary!r}")
 
     secondary = raw.get("secondary_driver")
     if secondary in ("none", "", None):
         secondary = None
-    elif secondary not in DRIVERS:
+    elif not isinstance(secondary, str) or secondary not in DRIVERS:
         raise ValueError(f"bad secondary_driver {secondary!r}")
 
     try:
         valence = float(raw.get("valence"))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"bad valence {raw.get('valence')!r}") from exc
-    valence = max(-1.0, min(1.0, valence))
+    if not math.isfinite(valence) or not -1.0 <= valence <= 1.0:
+        raise ValueError("valence out of range")
 
-    reasoning = str(raw.get("reasoning", "")).strip()
+    reasoning = raw.get("reasoning")
+    if not isinstance(reasoning, str):
+        raise ValueError("reasoning must be text")
+    reasoning = reasoning.strip()
     if not reasoning:
         raise ValueError("empty reasoning")
     words = reasoning.split()
@@ -149,7 +168,9 @@ def _fallback(twin: Twin, regular: str, shops_today, reason: str) -> Decision:
     STATS["failures"] += 1
     decision = autopilot(twin, regular, shops_today)
     decision["llm_failed"] = True
-    decision["reasoning"] = f"[llm unavailable: {reason}] {decision['reasoning']}"
+    safe_reason = reason if reason in {"offline, not cached", "invalid reply twice", "LLM unavailable", "transport failed"} else "LLM unavailable"
+    decision["reasoning"] = f"[llm unavailable: {safe_reason}] {decision['reasoning']}"
+    decision["decision_source"] = "fallback"
     return decision
 
 
@@ -173,23 +194,17 @@ def reappraise(
     # SPEC 8, tuning note on T08. A deterministic rule, checked before the call:
     # a shock big enough to break the habit still is not enough to switch when
     # there is nothing to be curious about. Saves a token too.
-    if highest_latent < SKIP_LATENT_FLOOR and disr.source == "hours":
+    experienced_alternative = any(
+        s != regular and s in experienced_shops(twin, state) and is_open_at(shop, twin.usual_time)
+        for s, shop in shops_today.items()
+    )
+    if highest_latent < SKIP_LATENT_FLOOR and disr.source == "hours" and not experienced_alternative:
         return Decision(
             choice="none", primary_driver="habit", secondary_driver=None,
             valence=-0.3,
             reasoning="My place wasn't open. I'd rather go without than go somewhere else.",
-            llm_failed=False,
+            llm_failed=False, decision_source="rule",
         )
-
-    state_key = {"habit": state["habit"], "latent_interest": latent}
-    cache_key = cache.key(twin.id, day, scenario_id, seed, state_key, shops_today)
-    hit = cache.get(cache_key, cache_dir)
-    if hit is not None:
-        STATS["cache_hits"] += 1
-        return Decision({k: v for k, v in hit.items() if not k.startswith("_")})
-
-    if offline:
-        return _fallback(twin, regular, shops_today, "offline, not cached")
 
     options = options_block(twin, state, shops_today)
     history = state.get("history", [])
@@ -197,6 +212,28 @@ def reappraise(
         twin, options, disr.score, disr.source, regular, history, shops_today,
     )
     schema = prompt.response_schema(list(shops_today))
+    context = {
+        "twin": asdict(twin), "regular": regular, "disruption": disr.to_dict(),
+        "system": prompt.SYSTEM, "user": user, "schema": schema,
+        "model": llm.MODEL, "max_tokens": llm.MAX_TOKENS,
+        "temperatures": [0.7, 0.3], "transport_version": 2,
+    }
+    cache_key = cache.key(twin.id, day, scenario_id, seed, state, shops_today, context)
+    provenance = {"decision_source": "llm", "llm_model": llm.MODEL, "llm_cache_key": cache_key}
+    hit = cache.get(cache_key, cache_dir)
+    if hit is not None and hit.get("_model") == llm.MODEL and hit.get("_version") == 2:
+        try:
+            decision = _validate(hit, twin, shops_today)
+            if hit.get("llm_failed") is not False or len(hit["reasoning"].split()) > MAX_REASONING_WORDS:
+                raise ValueError("invalid cached decision")
+        except (ValueError, TypeError, KeyError):
+            pass
+        else:
+            STATS["cache_hits"] += 1
+            return Decision(**decision, **provenance)
+
+    if offline:
+        return _fallback(twin, regular, shops_today, "offline, not cached")
 
     last_error = "unknown"
     for attempt, temperature in ((1, 0.7), (2, 0.3)):     # SPEC 4.3
@@ -206,16 +243,16 @@ def reappraise(
             STATS["input_tokens"] += usage["input_tokens"]
             STATS["output_tokens"] += usage["output_tokens"]
             decision = _validate(raw, twin, shops_today)
-            cache.put(cache_key, {**decision, "_model": llm.MODEL,
+            cache.put(cache_key, {**decision, "_model": llm.MODEL, "_version": 2,
                                   "_temperature": temperature, "_usage": usage}, cache_dir)
-            return decision
+            return Decision(**decision, **provenance)
         except llm.LLMUnavailable as exc:
-            return _fallback(twin, regular, shops_today, str(exc))
+            return _fallback(twin, regular, shops_today, "LLM unavailable")
         except ValueError as exc:                          # bad JSON or bad enum
             last_error = str(exc)
             if attempt == 1:
                 STATS["retries"] += 1
         except Exception as exc:                           # transport, rate limit, auth
-            return _fallback(twin, regular, shops_today, f"{type(exc).__name__}: {exc}")
+            return _fallback(twin, regular, shops_today, "transport failed")
 
-    return _fallback(twin, regular, shops_today, f"invalid reply twice: {last_error}")
+    return _fallback(twin, regular, shops_today, "invalid reply twice")

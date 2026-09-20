@@ -16,7 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from engine.schema import DAYS, DISRUPTION_SOURCES as SOURCES, DRIVERS, MODES  # noqa: E402
+from engine.schema import DAYS, validate_row  # noqa: E402
 
 EXPECTED_DAYS = DAYS
 
@@ -31,78 +31,45 @@ def shop_ids():
 
 
 def check_row(r, twins, shops, where, errs):
-    def bad(msg):
-        errs.append(f"{where}: {msg}")
-
-    for field in ("scenario", "seed", "day", "twin", "mode", "disruption", "state_before",
-                  "choice", "spent", "abandoned", "primary_driver", "valence", "reasoning",
-                  "state_after", "told"):
-        if field not in r:
-            bad(f"missing field {field!r}")
-    if "secondary_driver" not in r:
-        bad("missing field 'secondary_driver' (may be null, must be present)")
-    if errs:
+    errs.extend(f"{where}: {problem}" for problem in validate_row(r, frozenset(shops)))
+    if not isinstance(r, dict):
         return
-
-    if r["twin"] not in twins:
-        bad(f"unknown twin {r['twin']!r}")
-    if r["mode"] not in MODES:
-        bad(f"bad mode {r['mode']!r}")
-    if r["choice"] not in shops | {"none"}:
-        bad(f"bad choice {r['choice']!r}")
-    if r["primary_driver"] not in DRIVERS:
-        bad(f"bad primary_driver {r['primary_driver']!r}")
-    if r["secondary_driver"] is not None and r["secondary_driver"] not in DRIVERS:
-        bad(f"bad secondary_driver {r['secondary_driver']!r}")
-    if r["disruption"].get("source") not in SOURCES:
-        bad(f"bad disruption.source {r['disruption'].get('source')!r}")
-    if not 0.0 <= r["disruption"].get("score", -1) <= 1.0:
-        bad(f"disruption.score out of range: {r['disruption'].get('score')}")
-    if not -1.0 <= r["valence"] <= 1.0:
-        bad(f"valence out of range: {r['valence']}")
-
-    if r["spent"] is None:
-        bad("spent is null; must be 0 when choice == 'none'")
-    elif r["choice"] == "none" and r["spent"] != 0:
-        bad(f"choice 'none' but spent {r['spent']}")
-    elif r["choice"] != "none" and r["spent"] <= 0:
-        bad(f"choice {r['choice']!r} but spent {r['spent']}")
-
-    if r["abandoned"] != (r["choice"] == "none"):
-        bad(f"abandoned {r['abandoned']} disagrees with choice {r['choice']!r}")
-    if len(r["reasoning"].split()) > 40:
-        bad(f"reasoning is {len(r['reasoning'].split())} words, limit 40")
+    if not isinstance(r.get("twin"), str) or r["twin"] not in twins:
+        errs.append(f"{where}: unknown twin")
+    if not isinstance(r.get("told"), list):
+        errs.append(f"{where}: told must be a list")
+        return
     for t in r["told"]:
-        if t not in twins:
-            bad(f"told unknown twin {t!r}")
-        if t == r["twin"]:
-            bad("twin told itself")
-    for key in ("state_before", "state_after"):
-        if "habit" not in r[key] or "latent_interest" not in r[key]:
-            bad(f"{key} missing habit/latent_interest")
+        if not isinstance(t, str) or t not in twins:
+            errs.append(f"{where}: told unknown twin")
+        if t == r.get("twin"):
+            errs.append(f"{where}: twin told itself")
 
 
 def check_file(path, twins, shops, errs):
-    where = path.relative_to(ROOT)
-    rows = []
+    where = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
+    rows, line_numbers = [], []
     for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
         try:
             rows.append(json.loads(line))
+            line_numbers.append(i)
         except json.JSONDecodeError as e:
             errs.append(f"{where}:{i}: bad JSON: {e}")
-            return 0
 
-    for i, r in enumerate(rows, 1):
+    for i, r in zip(line_numbers, rows):
         check_row(r, twins, shops, f"{where}:{i}", errs)
 
     expected = len(twins) * EXPECTED_DAYS
     if len(rows) != expected:
         errs.append(f"{where}: {len(rows)} rows, expected {expected} ({len(twins)} twins x {EXPECTED_DAYS} days)")
 
+    indexed = [r for r in rows if isinstance(r, dict) and type(r.get("day")) is int and isinstance(r.get("twin"), str)]
     seen = {}
-    for r in rows:
+    for r in indexed:
+        if not 1 <= r["day"] <= EXPECTED_DAYS:
+            errs.append(f"{where}: day outside 1-{EXPECTED_DAYS}")
         key = (r["day"], r["twin"])
         if key in seen:
             errs.append(f"{where}: duplicate row for day {r['day']} twin {r['twin']}")
@@ -112,7 +79,7 @@ def check_file(path, twins, shops, errs):
         if missing:
             errs.append(f"{where}: day {day} missing twins {sorted(missing)}")
 
-    order = [(r["day"], r["twin"]) for r in rows]
+    order = [(r["day"], r["twin"]) for r in indexed]
     if order != sorted(order):
         errs.append(f"{where}: rows not ordered by (day, twin)")
 

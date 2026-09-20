@@ -85,36 +85,31 @@ def payload_for(analysis):
 
 
 def narrate(analysis, complete_json=None, retries=1):
-    """Two sentences, or None with a reason. Never raises on a bad reply.
-
-    `complete_json` is injected so this is testable without an API key; it defaults to
-    the engine's transport.
-    """
-    if complete_json is None:
-        from engine.llm import complete_json as default_transport
-        complete_json = default_transport
-
+    """Render two factual sentences without a model; legacy transport arguments are ignored."""
+    result = {"narration": None, "attempts": 0, "rejected": None, "source": "deterministic"}
+    if not analysis.get("complete") or analysis.get("break_day") is None:
+        return {**result, "rejected": "incomplete evidence or no measured break"}
+    if analysis.get("confidence", {}).get("unmeasured", True):
+        return {**result, "rejected": "confidence is unmeasured"}
+    drivers = {
+        "hours": "opening hours", "price": "price", "habit": "habit",
+        "curiosity": "curiosity", "social": "word of mouth", "wait": "waiting time",
+        "distance": "distance", "product": "product availability", "quality": "quality",
+        "marketing": "marketing",
+    }
     payload = payload_for(analysis)
-    user = json.dumps(payload, ensure_ascii=False, indent=2)
-
-    last = None
-    for attempt in range(retries + 1):
-        try:
-            reply, _usage = complete_json(SYSTEM, user, SCHEMA, 0.7 if attempt == 0 else 0.3)
-        except Exception as exc:
-            last = f"transport failed: {exc}"
-            continue
-
-        text = (reply.get("narration") or "").strip()
-        if not text:
-            last = "empty narration"
-            continue
-
-        bad = unsupported_numbers(text, payload)
-        if bad:
-            last = f"invented numbers {bad}"
-            continue
-
-        return {"narration": text, "attempts": attempt + 1, "rejected": None}
-
-    return {"narration": None, "attempts": retries + 1, "rejected": last}
+    if any(type(payload[k]) is not int or payload[k] < 0 for k in
+           ("break_day", "customers_lost", "lost_due_to_the_change", "lost_anyway")):
+        return {**result, "rejected": "invalid analysis counts"}
+    if payload["customers_lost"] != payload["lost_due_to_the_change"] + payload["lost_anyway"]:
+        return {**result, "rejected": "inconsistent impact counts"}
+    naive, actual = drivers.get(payload["obvious_driver"]), drivers.get(payload["actual_driver"])
+    if naive is None or actual is None:
+        return {**result, "rejected": "driver is unmeasured"}
+    text = (
+        f"Sales broke on day {payload['break_day']}; the obvious explanation was {naive}. "
+        f"Recorded decisions pointed to {actual}; {payload['customers_lost']} customers were lost, "
+        f"with {payload['lost_due_to_the_change']} attributed to the change and "
+        f"{payload['lost_anyway']} also lost in the control."
+    )
+    return {**result, "narration": text}

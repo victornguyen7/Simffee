@@ -9,7 +9,7 @@ def minutes(hhmm: str) -> int:
 
 
 def is_open_at(shop: dict, hhmm: str) -> bool:
-    return minutes(shop["open"]) <= minutes(hhmm) < minutes(shop["close"])
+    return not shop.get("permanently_closed", False) and minutes(shop["open"]) <= minutes(hhmm) < minutes(shop["close"])
 
 
 def manhattan(a, b) -> int:

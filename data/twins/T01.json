@@ -11,9 +11,9 @@
     "occupation": "software engineer",
     "usual_time": "06:45",
     "usual_order": "latte",
-    "daily_budget_vnd": 60000,
+    "daily_budget_vnd": 70000,
     "walk_tolerance": 5,
-    "wait_tolerance_min": 6
+    "wait_tolerance_min": 8
   },
   "what_log": [
     {

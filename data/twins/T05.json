@@ -13,7 +13,7 @@
     "usual_order": "latte",
     "daily_budget_vnd": 70000,
     "walk_tolerance": 3,
-    "wait_tolerance_min": 5
+    "wait_tolerance_min": 8
   },
   "what_log": [
     {

@@ -27,3 +27,5 @@ dist-ssr
 runs/
 __pycache__/
 *.pyc
+.env
+.env.*

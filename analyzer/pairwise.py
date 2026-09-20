@@ -48,6 +48,9 @@ def lost(rows, shop, days=7):
 
 def returns(baseline_rows, branch_rows, shop, days=7):
     """The number under a what-if button: of the customers baseline lost, how many come back."""
+    if any(r.get("llm_failed") for rs in (baseline_rows, branch_rows) for r in rs if r["day"] <= days):
+        return {"returns": None, "of": None, "returned": [], "still_gone": [],
+                "complete": False, "reason": "baseline or branch contains fallback decisions"}
     gone = lost(baseline_rows, shop, days)
     branch_last = {r["twin"]: r["choice"] for r in branch_rows if r["day"] == days}
     back = [t for t in gone if branch_last.get(t) == shop]

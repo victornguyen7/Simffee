@@ -31,17 +31,20 @@ def _fixture_analysis():
     Not read from public/runs.json: that file may have been built from real engine output,
     and the replies scripted below assume the fixture's numbers.
     """
-    from analyzer import attribution, impact
+    from analyzer import attribution, confidence, impact
     fix = ROOT / "tests" / "fixtures"
     oracle = json.loads((fix / "expected_analysis.json").read_text(encoding="utf-8"))
 
-    def rows(scenario):
-        path = fix / "runs" / scenario / "0.jsonl"
+    def rows(scenario, seed=0):
+        path = fix / "runs" / scenario / f"{seed}.jsonl"
         return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
     base = rows("baseline")
     actual = attribution.actual_driver(base, oracle["break_day"])
+    twins = {f.stem: json.loads(f.read_text()) for f in (ROOT / "data/twins").glob("*.json")}
     return {
+        "complete": True,
+        "confidence": confidence.confidence([rows("baseline", seed) for seed in range(5)], oracle["break_day"], twins),
         "break_day": oracle["break_day"],
         "naive": oracle["naive"],
         "actual": {"driver": actual["driver"], "switchers": actual["switchers"]},
@@ -80,33 +83,40 @@ def main():
     check("prose with no figures is allowed",
           narrate.unsupported_numbers("The obvious reading was price; the cause was the hours.", payload), [])
 
-    print("\nhappy path")
-    good = "Sales broke on day 4 and the obvious culprit was the price rise. The real cause was the later opening, which cost 3 customers outright."
-    t = stub([good])
+    print("\ndeterministic happy path")
+    good = ("Sales broke on day 4; the obvious explanation was price. "
+            "Recorded decisions pointed to opening hours; 4 customers were lost, "
+            "with 3 attributed to the change and 1 also lost in the control.")
+    t = stub(["Sales collapsed by 91% overnight."])
     out = narrate.narrate(ANALYSIS, complete_json=t)
-    check("returns the narration", out["narration"], good)
-    check("one attempt", out["attempts"], 1)
+    check("renders the exact computed facts", out["narration"], good)
+    check("zero model attempts", out["attempts"], 0)
+    check("transport never invoked", t.seen, [])
     check("nothing rejected", out["rejected"], None)
+    check("exactly two sentences", len([s for s in good.split('.') if s.strip()]), 2)
 
-    print("\nretry path")
-    t = stub(["Sales collapsed by 91% overnight.", good])
-    out = narrate.narrate(ANALYSIS, complete_json=t)
-    check("retries past an invented number", out["narration"], good)
-    check("two attempts", out["attempts"], 2)
-    check("retry drops the temperature", [s["temperature"] for s in t.seen], [0.7, 0.3])
+    print("\nfield binding")
+    changed = {**ANALYSIS, "impact": {**ANALYSIS["impact"], "lost_total": 6,
+                                     "lost_by_decision": 6, "lost_anyway": 0}}
+    t = stub(["Price caused the decline and cost 3 customers."])
+    out = narrate.narrate(changed, complete_json=t)
+    check("price digits cannot become customer counts", "3 customers" in out["narration"], False)
+    check("uses actual impact", "6 customers" in out["narration"], True)
+    check("uses actual driver", "pointed to opening hours" in out["narration"], True)
+    check("untrusted prose never requested", t.seen, [])
 
-    print("\ngiving up")
-    t = stub(["It fell 91%.", "No, 84%."])
-    out = narrate.narrate(ANALYSIS, complete_json=t)
-    check("returns None rather than a bad narration", out["narration"], None)
-    check("says why", out["rejected"], "invented numbers ['84']")
+    print("\ninsufficient evidence")
+    out = narrate.narrate({**ANALYSIS, "complete": False})
+    check("incomplete runs have no narration", out["narration"], None)
+    out = narrate.narrate({**ANALYSIS, "confidence": {"unmeasured": True}})
+    check("unmeasured confidence has no narration", out["narration"], None)
 
     print("\ntransport down")
     def broken(*a, **k):
         raise RuntimeError("no API key")
     out = narrate.narrate(ANALYSIS, complete_json=broken)
-    check("survives a dead transport", out["narration"], None)
-    check("reports the failure", out["rejected"].startswith("transport failed"), True)
+    check("offline rendering needs no transport", out["narration"], good)
+    check("no transport failure possible", out["rejected"], None)
 
     print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
     return 1 if failures else 0

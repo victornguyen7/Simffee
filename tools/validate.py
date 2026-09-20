@@ -1,7 +1,9 @@
 """Row validator for the frozen trajectory contract (BACKEND_PLAN 2.1).
 
-Runs against fixtures now and against B1's real runs/ later; the contract is the same.
-When engine/schema.py lands, DRIVERS/MODES/CHOICES should be imported from it instead.
+Runs against fixtures and against B1's real runs/; the contract is the same. The enums
+come from engine/schema.py so there is one definition rather than two that agree today.
+This adds the file-level invariants schema.validate_row cannot see on its own: row
+counts, per-day coverage, ordering, and told-list membership.
 
     python3 tools/validate.py                      # fixtures
     python3 tools/validate.py runs                 # B1's real output
@@ -12,11 +14,11 @@ import pathlib
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
-DRIVERS = {"habit", "hours", "price", "distance", "wait", "product", "curiosity", "social", "quality"}
-SOURCES = {"hours", "price", "product", "wait", "closed", "none"}
-MODES = {"autopilot", "reappraisal"}
-EXPECTED_DAYS = 7
+from engine.schema import DAYS, DISRUPTION_SOURCES as SOURCES, DRIVERS, MODES  # noqa: E402
+
+EXPECTED_DAYS = DAYS
 
 
 def twin_ids():

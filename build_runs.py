@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from analyzer import attribution, breakpoint, confidence, impact, pairwise  # noqa: E402
+from analyzer import attribution, breakpoint, confidence, impact, narrate, pairwise  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -105,7 +105,7 @@ def build_analysis(base, shops, scenario_files, twins):
         "evidence": attribution.select_evidence(baseline, break_day, actual["driver"], SHOP),
         "confidence": {k: conf[k] for k in ("value", "stability", "support", "unmeasured")
                        if k in conf} | {"reason": conf.get("reason")},
-        "narration": None,
+        "narration": None,   # filled by _narrate below, which needs the assembled block
         "whatif": [{"scenario": s,
                     "label": SCENARIO_LABELS[s],
                     **{k: v for k, v in pairwise.returns(baseline, load_rows(base, s, DEFAULT_SEED),
@@ -113,6 +113,25 @@ def build_analysis(base, shops, scenario_files, twins):
                        if k in ("returns", "of", "returned")}}
                    for s in WHATIF_ORDER],
     }
+
+
+def _narrate(analysis):
+    """SPEC 6.6. Skipped silently with no credentials, so a fixture build never calls out."""
+    if analysis.get("break_day") is None:
+        return
+    try:
+        from engine.llm import available
+    except ImportError:
+        return
+    if not available():
+        print("  narration skipped: no LLM credentials")
+        return
+    result = narrate.narrate(analysis)
+    analysis["narration"] = result["narration"]
+    if result["narration"] is None:
+        print(f"  narration rejected after {result['attempts']} attempts: {result['rejected']}")
+    else:
+        print(f"  narration ok in {result['attempts']} attempt(s)")
 
 
 def main():
@@ -157,6 +176,7 @@ def main():
         "scenarios": scenarios,
         "analysis": build_analysis(base, shops, scenario_files, twin_records),
     }
+    _narrate(doc["analysis"])
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(doc, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")

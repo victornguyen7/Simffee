@@ -6,67 +6,111 @@ price is the first thing anyone looks at. `actual_driver` counts the drivers the
 actually moved gave. When they disagree, that is the mechanism surprise the demo turns on.
 """
 
-PRICE_COEFFICIENT = 5
-HOURS_MAGNITUDE = 0.3
-PRODUCT_MAGNITUDE = 0.5
+import json
+import pathlib
+
 SECONDARY_WEIGHT = 0.5
 
+WEIGHTS_PATH = pathlib.Path(__file__).resolve().parent.parent / "data" / "naive_weights.json"
 
-def _price_changes(shop_before, set_block):
-    for key, new in set_block.items():
-        if not key.startswith("price."):
-            continue
+# Used if data/naive_weights.json is absent; identical to the v1 constants.
+DEFAULT_WEIGHTS = {
+    "price": {"driver": "price", "per_fraction": 5.0},
+    "open": {"driver": "hours", "fixed": 0.3},
+    "close": {"driver": "hours", "fixed": 0.3},
+    "products_removed": {"driver": "product", "fixed": 0.5},
+    "products_added": {"driver": "product", "fixed": 0.2},
+    "avg_wait_min": {"driver": "wait", "per_unit": 0.05},
+    "quality": {"driver": "quality", "per_unit": 2.0},
+    "marketing.reach": {"driver": "marketing", "per_unit": 1.0},
+    "marketing.message": {"driver": "marketing", "fixed": 0.05},
+    "permanently_closed": {"driver": "closed", "fixed": 1.0},
+}
+
+
+def load_weights(path=WEIGHTS_PATH):
+    if path and pathlib.Path(path).exists():
+        loaded = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+        return {k: v for k, v in loaded.items() if not k.startswith("_")}
+    return DEFAULT_WEIGHTS
+
+
+def _get(shop, dotted):
+    node = shop
+    for part in dotted.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node
+
+
+def _score(shop, key, new, weights):
+    """One override key -> one scored entry, or None if it is not a change."""
+    if key.startswith("price."):
         item = key.split(".", 1)[1]
-        old = shop_before["price"][item]
+        old = shop.get("price", {}).get(item)
+        w = weights["price"]
         if old:
-            yield item, old, new, abs(new - old) / old
+            delta = abs(new - old) / old
+            return {"driver": w["driver"], "magnitude": round(delta * w["per_fraction"], 4),
+                    "label": f"Price {'+' if new > old else '-'}{abs(new - old) // 1000:.0f}k",
+                    "detail": f"{item} {old} -> {new}"}
+        return {"driver": w["driver"], "magnitude": round(weights["products_added"]["fixed"], 4),
+                "label": f"New item {item} at {new // 1000:.0f}k", "detail": f"{item} added"}
+    if key in ("open", "close"):
+        w = weights[key]
+        return {"driver": w["driver"], "magnitude": w["fixed"],
+                "label": f"Opens {new}" if key == "open" else f"Closes {new}",
+                "detail": f"{key} {shop.get(key)} -> {new}"}
+    if key == "products":
+        before = shop.get("products", [])
+        dropped = [p for p in before if p not in new]
+        added = [p for p in new if p not in before]
+        if dropped:
+            w = weights["products_removed"]
+            return {"driver": w["driver"], "magnitude": w["fixed"],
+                    "label": f"Dropped {', '.join(dropped)}", "detail": f"products -> {new}"}
+        if added:
+            w = weights["products_added"]
+            return {"driver": w["driver"], "magnitude": w["fixed"],
+                    "label": f"Added {', '.join(added)}", "detail": f"products -> {new}"}
+        return None
+    if key in weights and "per_unit" in weights[key]:
+        old = _get(shop, key)
+        if old is None or new == old:
+            return None
+        w = weights[key]
+        return {"driver": w["driver"], "magnitude": round(abs(new - old) * w["per_unit"], 4),
+                "label": f"{key.split('.')[-1].replace('_', ' ').capitalize()} {old} -> {new}",
+                "detail": key}
+    if key in weights and "fixed" in weights[key]:
+        old = _get(shop, key)
+        if new == old:
+            return None
+        w = weights[key]
+        return {"driver": w["driver"], "magnitude": w["fixed"],
+                "label": f"{key.split('.')[-1].replace('_', ' ').capitalize()} changed",
+                "detail": f"{key} {old} -> {new}"}
+    return None
 
 
-def naive_read(overrides, shops_before):
+def naive_read(overrides, shops_before, weights=None):
     """Highest-magnitude override active on the break day.
 
-    `overrides` is the list of override blocks in force, `shops_before` the shop state
-    they were applied to.
+    `overrides` is the list of override blocks in force, `shops_before` the shop state they
+    were applied to. Every overridable field has a weight in data/naive_weights.json; a key
+    with no weight is not a naive candidate (it cannot be "blamed" from the change list).
+    `unset` blocks restore the base value; against `shops_before` (the base) that is no
+    change, so they contribute nothing here.
     """
+    weights = weights or load_weights()
     scored = []
     for ov in overrides:
         shop = shops_before[ov["shop"]]
-        for key, new in ov["set"].items():
-            if key.startswith("price."):
-                item, old, _, delta = next(
-                    (c for c in _price_changes(shop, {key: new})), (None, 0, 0, 0))
-                scored.append({
-                    "driver": "price",
-                    "magnitude": round(delta * PRICE_COEFFICIENT, 4),
-                    "label": f"Price {'+' if new > old else '-'}{abs(new - old) // 1000:.0f}k",
-                    "detail": f"{item} {old} -> {new}",
-                })
-            elif key in ("open", "close"):
-                scored.append({
-                    "driver": "hours",
-                    "magnitude": HOURS_MAGNITUDE,
-                    "label": f"Opens {new}" if key == "open" else f"Closes {new}",
-                    "detail": f"{key} {shop[key]} -> {new}",
-                })
-            elif key == "products":
-                dropped = [p for p in shop["products"] if p not in new]
-                if dropped:
-                    scored.append({
-                        "driver": "product",
-                        "magnitude": PRODUCT_MAGNITUDE,
-                        "label": f"Dropped {', '.join(dropped)}",
-                        "detail": f"products -> {new}",
-                    })
-            elif key.startswith("marketing."):
-                field = key.split(".", 1)[1]
-                if field == "reach":
-                    old = shop["marketing"]["reach"]
-                    scored.append({
-                        "driver": "marketing",
-                        "magnitude": round(abs(new - old), 4),
-                        "label": f"Reach {old} -> {new}",
-                        "detail": key,
-                    })
+        for key, new in ov.get("set", {}).items():
+            entry = _score(shop, key, new, weights)
+            if entry:
+                scored.append(entry)
 
     if not scored:
         return {"driver": None, "magnitude": 0.0, "label": "No change", "considered": []}

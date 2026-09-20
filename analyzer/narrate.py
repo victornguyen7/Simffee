@@ -95,7 +95,7 @@ def narrate(analysis, complete_json=None, retries=1):
         "hours": "opening hours", "price": "price", "habit": "habit",
         "curiosity": "curiosity", "social": "word of mouth", "wait": "waiting time",
         "distance": "distance", "product": "product availability", "quality": "quality",
-        "marketing": "marketing",
+        "marketing": "marketing", "closed": "the closure",
     }
     payload = payload_for(analysis)
     if any(type(payload[k]) is not int or payload[k] < 0 for k in
@@ -106,8 +106,9 @@ def narrate(analysis, complete_json=None, retries=1):
     naive, actual = drivers.get(payload["obvious_driver"]), drivers.get(payload["actual_driver"])
     if naive is None or actual is None:
         return {**result, "rejected": "driver is unmeasured"}
+    verb = "jumped" if analysis.get("direction") == "rise" else "broke"
     text = (
-        f"Sales broke on day {payload['break_day']}; the obvious explanation was {naive}. "
+        f"Sales {verb} on day {payload['break_day']}; the obvious explanation was {naive}. "
         f"Recorded decisions pointed to {actual}; {payload['customers_lost']} customers were lost, "
         f"with {payload['lost_due_to_the_change']} attributed to the change and "
         f"{payload['lost_anyway']} also lost in the control."

@@ -1,5 +1,8 @@
 {
   "id": "cf_discount",
+  "label": "Cut prices 15%",
+  "role": "whatif",
+  "order": 3,
   "description": "From day 5, cut the latte to 38k (-15% against the original 45k).",
   "parent": "baseline",
   "overrides": [

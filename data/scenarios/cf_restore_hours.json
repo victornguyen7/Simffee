@@ -1,5 +1,8 @@
 {
   "id": "cf_restore_hours",
+  "label": "Reopen at 06:30",
+  "role": "whatif",
+  "order": 2,
   "description": "From day 5, reopen at 06:30 and keep the 48k latte.",
   "parent": "baseline",
   "overrides": [

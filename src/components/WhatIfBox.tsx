@@ -118,7 +118,14 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const ask = async (q: string, seeds: number[] = [0]) => {
     const query = q.trim()
     if (!query || inFlight.current) return
-    if (!api || !api.llm || api.fresh_runs !== true) {
+    let live = api
+    if (live === undefined) {
+      setBusy('checking API…')
+      live = await health()
+      setApi(live)
+    }
+    if (!live || !live.llm || live.fresh_runs !== true) {
+      setBusy(null)
       requestVersion.current += 1
       setSubmittedText(query)
       setAnswer({ scenario: null, request_text: query })
@@ -168,9 +175,11 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
       setAnswer(next)
       if (a.result && !a.fallback_used && !a.error) onAnswer(next)
       void checkAnswer(next, true, version)
-    } catch (e) {
+      if (a.error) setMock(randomMock())
+    } catch {
       if (version === requestVersion.current) {
-        setAnswer({ scenario: null, request_text: previous.request_text, error: e instanceof Error ? e.message : String(e) })
+        setAnswer({ scenario: null, request_text: previous.request_text })
+        setMock(randomMock())
       }
     } finally {
       if (version === requestVersion.current) {

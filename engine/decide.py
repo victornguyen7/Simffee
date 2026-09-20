@@ -52,9 +52,10 @@ def price_for(twin: Twin, shop: dict) -> int:
 
 
 def experienced_shops(twin: Twin, state: dict) -> set[str]:
+    prior = [] if "visited" in state else twin.what_log
     return set(state.get("visited", [])) | {
         r.get("choice", r.get("shop"))
-        for r in twin.what_log + state.get("history", [])
+        for r in prior + state.get("history", [])
         if r.get("choice", r.get("shop")) not in (None, "none")
     }
 
@@ -175,7 +176,7 @@ def _fallback(twin: Twin, regular: str, shops_today, reason: str) -> Decision:
     decision["llm_failed"] = True
     allowed = {"offline, not cached", "invalid reply twice", "LLM unavailable", "transport failed",
                "transport failed: quota: daily token limit", "transport failed: rate limit",
-               "transport failed: authentication", "transport failed: model not found"}
+               "transport failed: authentication", "transport failed: model not found", "transport failed: timeout"}
     safe_reason = reason if reason in allowed else "LLM unavailable"
     decision["reasoning"] = f"[llm unavailable: {safe_reason}] {decision['reasoning']}"
     decision["decision_source"] = "fallback"
@@ -219,7 +220,9 @@ def reappraise(
     user = prompt.build(
         twin, options, disr.score, disr.source, regular, history, shops_today,
     )
-    schema = prompt.response_schema(list(shops_today))
+    choice_ids = prompt.choice_ids(shops_today)
+    decoded_choices = {value: key for key, value in choice_ids.items()}
+    schema = prompt.response_schema([choice_ids.get(s, s) for s in shops_today])
     context = {
         "twin": asdict(twin), "regular": regular, "disruption": disr.to_dict(),
         "system": prompt.SYSTEM, "user": user, "schema": schema,
@@ -247,6 +250,8 @@ def reappraise(
     for attempt, temperature in ((1, 0.7), (2, 0.3)):     # SPEC 4.3
         try:
             raw, usage = llm.complete_json(prompt.SYSTEM, user, schema, temperature)
+            if isinstance(raw, dict) and isinstance(raw.get("choice"), str) and raw["choice"] in decoded_choices:
+                raw = {**raw, "choice": decoded_choices[raw["choice"]]}
             STATS["llm_calls"] += 1
             STATS["input_tokens"] += usage["input_tokens"]
             STATS["output_tokens"] += usage["output_tokens"]

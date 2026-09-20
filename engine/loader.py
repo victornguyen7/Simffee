@@ -63,6 +63,9 @@ class Scenario:
     @property
     def from_day(self) -> int:
         """First day this scenario's own overrides bite. 1 when it has none."""
+        if any("exists_from_day" in o.get("set", {}) or "exists_from_day" in o.get("unset", [])
+               for o in self.overrides):
+            return 1
         return min((o["from_day"] for o in self.overrides), default=1)
 
 

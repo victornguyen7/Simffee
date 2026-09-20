@@ -358,6 +358,21 @@ class TransportRepairs(unittest.TestCase):
                 llm.client()
         self.assertEqual(factory.call_count, 0)
 
+    def test_timeout_is_classified_without_provider_text(self):
+        with patch.object(llm, '_create_with_backoff', side_effect=TimeoutError('PRIVATE_TIMEOUT_MARKER')):
+            with self.assertRaisesRegex(RuntimeError, r'^LLM transport failed \(timeout\)$'):
+                llm.complete_json('system', 'user', {}, 0.7)
+
+    def test_client_uses_configured_timeout_without_sdk_retries(self):
+        factory = Mock()
+        with patch.dict(os.environ, {'XAI_API_KEY': 'test-placeholder'}, clear=True), \
+                patch.dict(sys.modules, {'openai': SimpleNamespace(OpenAI=factory)}), \
+                patch.object(llm, '_client', None), patch.object(llm, 'TIMEOUT_S', 180):
+            llm.client()
+        self.assertEqual(factory.call_args.kwargs['timeout'], 180)
+        self.assertEqual(factory.call_args.kwargs['max_retries'], 0)
+        self.assertEqual(factory.call_args.kwargs['base_url'], 'https://api.x.ai/v1')
+
     def test_rate_limit_backoff_is_bounded(self):
         create = Mock(side_effect=RuntimeError('429 rate_limit Please try again in 0.1s'))
         client = SimpleNamespace(responses=SimpleNamespace(create=create))

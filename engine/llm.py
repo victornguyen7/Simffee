@@ -29,7 +29,7 @@ def load_environment(path: Path | None = None) -> None:
     path = path if path is not None else Path(__file__).resolve().parent.parent / ".env"
     if not path.exists():
         return
-    allowed = {"XAI_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL"}
+    allowed = {"XAI_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL", "SIMFFEE_TIMEOUT_S"}
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         key, separator, raw = line.strip().removeprefix("export ").partition("=")
         key = key.strip()
@@ -53,7 +53,7 @@ MODEL = os.environ.get("SIMFFEE_MODEL", "qwen/qwen3.8-27b")
 # away as invalid -- which shows up as retries and fallbacks, not as an error.
 MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", "400"))
 BASE_URL = "https://api.x.ai/v1"
-TIMEOUT_S = 60.0          # reasoning models think before they answer
+TIMEOUT_S = float(os.environ.get("SIMFFEE_TIMEOUT_S", "180"))          # reasoning models think before they answer
 
 # Providers cap requests and tokens per minute. A bulk run is ~350 calls, so without
 # pacing a good share come back 429 -- and a 429 that reaches decide.py becomes a
@@ -295,6 +295,8 @@ def complete_json(
                 raise RuntimeError("LLM transport failed (authentication)") from None
             if "404" in message and "model" in message:
                 raise RuntimeError("LLM transport failed (model not found)") from None
+            if isinstance(exc, TimeoutError) or type(exc).__name__ == "APITimeoutError":
+                raise RuntimeError("LLM transport failed (timeout)") from None
             raise RuntimeError("LLM transport failed") from None
     else:
         raise ValueError("could not find a request shape this model accepts")

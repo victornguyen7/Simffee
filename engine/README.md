@@ -9,7 +9,7 @@ Spec: [../spec/SPEC.md](../spec/SPEC.md) · Plan: [../spec/BACKEND_PLAN.md](../s
 Python 3.11+, stdlib plus `openai` (used against xAI's Responses API) for live requests (`pip install -r requirements.txt`).
 Offline replay, validation, analysis, narration, and stubbed tests need no credentials.
 The engine automatically reads the repository's private `.env` for `XAI_API_KEY`,
-`SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`, and `SIMFFEE_MIN_INTERVAL`. Existing shell
+`SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`, `SIMFFEE_MIN_INTERVAL`, and `SIMFFEE_TIMEOUT_S`. Existing shell
 variables take precedence, and `--model` takes precedence over both. Values may
 be quoted; shell commands and variable expansion are never evaluated. `.env`
 and `.env.*` are Git-ignored. Keep the file owner-readable/writable only (`600`),
@@ -34,6 +34,9 @@ exit 1 means invalid data; exit 2 means incomplete/unverified trajectories.
 A partial diagnostic run is not a complete seven-day run.
 
 Live generation requires `XAI_API_KEY` and explicit approval of model and spend.
+`SIMFFEE_TIMEOUT_S` defaults to 180 seconds per provider request (SDK retries remain
+disabled). This is separate from the API's `--timeout` (240 seconds for the whole
+what-if) and the frontend's 300-second fetch deadline; cold runs can still exceed them.
 The default model is `qwen/qwen3.8-27b` with `SIMFFEE_MAX_TOKENS` 400 — the pair the
 committed `cache/` was filled with; both are in the cache key, so change them only with a
 refill. Override with `SIMFFEE_MODEL` / `--model` and `SIMFFEE_MAX_TOKENS`. No embedded credential fallback

@@ -7,6 +7,8 @@ behaves oddly, you read the exact prompt that produced it.
 
 from __future__ import annotations
 
+import re
+from dataclasses import replace
 from typing import Any
 
 from .loader import Twin
@@ -38,6 +40,45 @@ Rules, in order of importance:
 4. `reasoning` is at most 40 words, first person, plain and specific.
 
 Return only the JSON object described by the schema."""
+
+
+def for_world(twin: Twin, shops: dict[str, dict[str, Any]]) -> Twin:
+    absent = {sid: shop for sid, shop in shops.items() if shop.get("exists_from_day", 1) > 1}
+    if not absent:
+        return twin
+    names = {name for sid, shop in absent.items() for name in (sid, shop["name"])}
+    pattern = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")\b", re.I)
+
+    def relevant(record):
+        return not any(pattern.search(str(value)) for value in record.values())
+
+    return replace(twin,
+        what_log=[r for r in twin.what_log if r.get("choice", r.get("shop")) not in absent],
+        why_transcript=[r for r in twin.why_transcript if relevant(r)],
+        say_do_gap=twin.say_do_gap if not twin.say_do_gap or relevant(twin.say_do_gap) else None)
+
+
+def choice_ids(shops: dict[str, dict[str, Any]]) -> dict[str, str]:
+    result = {}
+    used = set(shops) | {"none"}
+    for index, sid in enumerate(sorted(shops), 1):
+        if not shops[sid].get("prompt", {}).get("shop_label") and shops[sid].get("exists_from_day", 1) <= 1:
+            continue
+        value = f"option_{index}"
+        while value in used:
+            value = "_" + value
+        result[sid] = value
+        used.add(value)
+    return result
+
+
+def relabel(text: str, shops: dict[str, dict[str, Any]]) -> str:
+    labels = {name.casefold(): display_name(shop) for sid, shop in shops.items()
+              if shop.get("prompt", {}).get("shop_label") for name in (sid, shop["name"])}
+    if not labels:
+        return text
+    pattern = r"\b(?:" + "|".join(re.escape(n) for n in sorted(labels, key=len, reverse=True)) + r")\b"
+    return re.sub(pattern, lambda match: labels[match.group().casefold()], text, flags=re.I)
 
 
 def _relevant_lines(twin: Twin, source: str, limit: int = 3) -> list[dict[str, str]]:
@@ -123,9 +164,8 @@ def build(
         out.append(f"It is {p['usual_time']}. Nothing unusual about {regular_name} today.")
     elif disr_source == "new_entrant":
         out.append(
-            f"It is {p['usual_time']}. Nothing has changed at {regular_name}, your usual place, "
-            f"but a new coffee shop opened today: {' and '.join(new_places) or 'another place'}. "
-            f"Everyone is talking about it."
+            f"It is {p['usual_time']}. Your usual place is {regular_name}, "
+            f"and a new coffee shop opened today: {' and '.join(new_places) or 'another place'}."
         )
     else:
         out.append(
@@ -153,7 +193,7 @@ def build(
         if not opt["has_usual_order"]:
             bits.append(f"no {p['usual_order']} on the menu")
         if opt.get("opened_today"):
-            bits.append("opened today -- brand new, nobody you know has been yet")
+            bits.append("opened today")
         if opt["marketing"]:
             bits.append(f"currently advertising \"{opt['marketing']}\"")
         label = f"{opt['name']} (your usual place)" if opt["shop"] == regular else opt["name"]
@@ -181,7 +221,9 @@ def build(
     out.append(
         f"\nDecide where you go this morning. Allowed drivers: {', '.join(sorted(DRIVERS))}."
     )
-    return "\n".join(out)
+    for sid, choice_id in choice_ids(shops_today).items():
+        out.append(f"For {display_name(shops_today[sid])}, use choice {choice_id!r} in your JSON.")
+    return relabel("\n".join(out), shops_today)
 
 
 def _shock_sentence(source: str, shop: dict, twin: Twin) -> str:

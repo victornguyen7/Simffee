@@ -147,14 +147,12 @@ independent of C and can interleave; E needs C's dormant state.
 
 Never cut: the `unsupported` path, the override chip, the per-answer ledger, the synthetic label.
 
-## 7. Decisions this roadmap needs from you
+## 7. Decisions — taken 2026-09-20
 
-1. **Un-defer competitor entry** (S2, phase B). The earlier "hold at five" decision blocks the
-   situation people ask about most. Recommendation: reverse it.
-2. **Model for live demo.** `qwen/qwen3.8-27b` works with the current transport; `gpt-oss-20b`
-   with `reasoning_effort: low` is cheaper per call but needs a transport change. Recommendation:
-   stay on qwen through phase B; revisit with the cost ledger.
-3. **Phase C at 13 twins — ship it labelled, or wait for the crowd?** Recommendation: ship it
-   labelled. Thirteen readable people beat five hundred unreadable ones for a judge; the counts
-   come in E.
-4. **Who builds the frontend (A4)?** It is the front door and it is not assigned.
+1. **Competitor entry un-deferred.** Phase B is in scope; the disruption sources become six.
+   SPEC_FUNCTIONAL §3 is superseded by this.
+2. **Model:** `qwen/qwen3.8-27b` through phase B; revisit with the cost ledger.
+3. **Phase C ships at 13 twins, labelled** *"13 people, 3 of whom do not buy coffee out"*.
+   Counts arrive in E.
+4. **Frontend (A4) is built by Devin after the backend logic (A1–A3, B1–B5) is done.** Until
+   then the front door is `curl`.

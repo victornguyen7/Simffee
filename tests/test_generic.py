@@ -183,6 +183,51 @@ def main():
     check("single seed: confidence unmeasured", (got["confidence"]["value"], got["confidence"]["unmeasured"]), (None, True))
     check("single seed: reason names the floor", "3" in got["confidence"]["reason"], True)
 
+    print("\n6. engine schema additions (A1): unset, new-item price, shop_label, days, discovery")
+    from engine.loader import discover_scenarios, load_chain, load_scenario_file, scenario_from_dict
+    from engine.loop import scenario_days
+    from engine.resolve import display_name, resolve
+    check("discovery: parents before children, then `order`",
+          discover_scenarios(), ["baseline", "cf_null", "cf_restore_hours", "cf_discount"])
+    adhoc = scenario_from_dict({
+        "id": "u1", "parent": "baseline", "days": 10, "focus_shop": "simffee",
+        "source": {"kind": "user", "text": "open earlier, sell croissants, call them Shop B"},
+        "overrides": [
+            {"from_day": 5, "shop": "simffee",
+             "set": {"open": "06:00", "products": ["latte", "americano", "cold_brew", "croissant"],
+                     "price.croissant": 30000}},
+            {"from_day": 5, "shop": "simffee", "unset": ["price.latte"]},
+            {"from_day": 5, "shop": "starbucks", "set": {"prompt.shop_label": "Shop B"}},
+            {"from_day": 7, "shop": "starbucks", "unset": ["prompt.shop_label"]},
+        ]})
+    chain = load_chain("u1", extra={"u1": adhoc})
+    check("chain resolves through `extra`", [s.id for s in chain], ["baseline", "u1"])
+    check("days: child wins", scenario_days(chain), 10)
+    check("days: v1 default when unset", scenario_days(load_chain("cf_discount")), 7)
+    d4, d5, d7 = (resolve(shops, chain, d) for d in (4, 5, 7))
+    check("day 4 still the parent's world", (d4["simffee"]["open"], d4["simffee"]["price"]["latte"]), ("07:00", 48000))
+    check("unset restores the base price", d5["simffee"]["price"]["latte"], 45000)
+    check("new item gets a creatable price leaf", d5["simffee"]["price"]["croissant"], 30000)
+    check("shop_label is text only: name untouched", d5["starbucks"]["name"], "Starbucks")
+    check("display_name follows the label", display_name(d5["starbucks"]), "Shop B")
+    check("unset of a created key removes it", display_name(d7["starbucks"]), "Starbucks")
+    check("v1 shops carry no prompt block", "prompt" in resolve(shops, load_chain("baseline"), 5)["starbucks"], False)
+    try:
+        resolve(shops, [scenario_from_dict({"id": "bad", "parent": None,
+                                            "overrides": [{"from_day": 2, "shop": "simffee", "set": {"wifi": True}}]})], 3)
+        check("unknown field is rejected", "no error", "KeyError")
+    except KeyError:
+        check("unknown field is rejected", "KeyError", "KeyError")
+    try:
+        scenario_from_dict({"id": "bad", "overrides": [{"from_day": 0, "shop": "simffee", "set": {}}]})
+        check("from_day 0 is rejected", "no error", "ValueError")
+    except ValueError:
+        check("from_day 0 is rejected", "ValueError", "ValueError")
+    with tempfile.TemporaryDirectory() as tmp:
+        p = pathlib.Path(tmp) / "u1.json"
+        p.write_text(json.dumps({"id": "u1", "parent": "baseline", "overrides": []}))
+        check("load_scenario_file", load_scenario_file(p).id, "u1")
+
     print(f"\n{'FAILED: ' + ', '.join(failures) if failures else 'all checks passed'}")
     return 1 if failures else 0
 

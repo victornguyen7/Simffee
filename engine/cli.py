@@ -2,26 +2,27 @@
 
     python -m engine.cli --scenario baseline --seeds 0
     python -m engine.cli --scenario baseline --seeds 0-4
-    python -m engine.cli --all --seeds 0-4        # baseline, then the forks
+    python -m engine.cli --all --seeds 0-4                    # every scenario under data/scenarios, parents first
+    python -m engine.cli --scenario-file my_whatif.json --seeds 0   # an ad-hoc scenario (SPEC_FUNCTIONAL 2)
 
-Runs with no API key while decide.reappraise is a stub.
+Runs with no API key while decide.reappraise is a stub, or with --offline.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 from collections import Counter
 from pathlib import Path
 
 from . import decide, llm
 from .cache import CACHE
-from .loader import DATA, load_shops
-from .loop import RUNS, run
+from .loader import DATA, discover_scenarios, load_chain, load_scenario_file, load_shops
+from .loop import RUNS, run, scenario_days
 from .schema import DAYS, SEEDS, coverage, validate_row
 
-# Parents before children: a fork reads its parent's snapshot.
-ALL_SCENARIOS = ["baseline", "cf_null", "cf_discount", "cf_restore_hours"]
+# Parents before children: a fork reads its parent's snapshot. Computed from the data
+# directory, no longer a hardcoded list (SPEC_FUNCTIONAL 6).
+ALL_SCENARIOS = discover_scenarios(DATA)
 
 
 def parse_seeds(text: str) -> list[int]:
@@ -36,20 +37,20 @@ def parse_seeds(text: str) -> list[int]:
     return seeds
 
 
-def summarise(rows: list[dict], shop_ids: frozenset[str]) -> str:
+def summarise(rows: list[dict], shop_ids: frozenset[str], focus: str) -> str:
     problems = [p for row in rows for p in validate_row(row, shop_ids)]
     by_day: dict[int, Counter] = {}
     sales: dict[int, int] = {}
     for row in rows:
         by_day.setdefault(row["day"], Counter())[row["choice"]] += 1
-        if row["choice"] == "simffee":
+        if row["choice"] == focus:
             sales[row["day"]] = sales.get(row["day"], 0) + row["spent"]
     lines = []
     for day in sorted(by_day):
         counts = ", ".join(f"{k}:{v}" for k, v in sorted(by_day[day].items()))
         modes = sum(1 for r in rows if r["day"] == day and r["mode"] == "reappraisal")
         lines.append(
-            f"  day {day}  {counts:<34} reappraisal:{modes}  simffee sales {sales.get(day, 0):,}"
+            f"  day {day}  {counts:<34} reappraisal:{modes}  {focus} sales {sales.get(day, 0):,}"
         )
     if problems:
         lines.append(f"  !! {len(problems)} schema problems, first: {problems[0]}")
@@ -58,12 +59,26 @@ def summarise(rows: list[dict], shop_ids: frozenset[str]) -> str:
     return "\n".join(lines)
 
 
+def overall_coverage(rows: list[dict], days_by_scenario: dict[str, int]) -> dict:
+    """Coverage across scenarios that may have different run lengths: the grid check is
+    per scenario, provenance is over everything."""
+    report = coverage(rows, max(days_by_scenario.values(), default=DAYS))
+    per_scenario = [coverage([r for r in rows if r["scenario"] == s], d)
+                    for s, d in days_by_scenario.items()]
+    report["complete"] = bool(per_scenario) and all(p["complete"] for p in per_scenario)
+    report["full_grid"] = bool(per_scenario) and all(p["full_grid"] for p in per_scenario)
+    return report
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(prog="engine.cli")
     ap.add_argument("--scenario", default="baseline")
-    ap.add_argument("--all", action="store_true", help="run every scenario in order")
+    ap.add_argument("--scenario-file", type=Path, default=None,
+                    help="run an ad-hoc scenario JSON (its parent must exist under --data or --out)")
+    ap.add_argument("--all", action="store_true", help="run every scenario under data/scenarios, parents first")
     ap.add_argument("--seeds", default="0", help="e.g. 0, 0-4, or 0,2,4")
-    ap.add_argument("--days", type=int, default=DAYS)
+    ap.add_argument("--days", type=int, default=None,
+                    help=f"override the run length (default: the scenario's `days`, else {DAYS})")
     ap.add_argument("--data", type=Path, default=DATA)
     ap.add_argument("--out", type=Path, default=RUNS)
     ap.add_argument("--cache", type=Path, default=CACHE)
@@ -79,31 +94,47 @@ def main() -> int:
     decide.reset_stats()
     llm.reset_stats()
 
-    scenarios = ALL_SCENARIOS if args.all else [args.scenario]
+    extra = {}
+    if args.scenario_file:
+        adhoc = load_scenario_file(args.scenario_file)
+        extra[adhoc.id] = adhoc
+        scenarios = [adhoc.id]
+    elif args.all:
+        scenarios = discover_scenarios(args.data)
+    else:
+        scenarios = [args.scenario]
     seeds = parse_seeds(args.seeds) if args.seeds else list(SEEDS)
-    shop_ids = frozenset(load_shops(args.data))
+    shops = load_shops(args.data)
+    shop_ids = frozenset(shops)
 
     failed = False
     all_rows = []
+    days_by_scenario: dict[str, int] = {}
     for scenario in scenarios:
+        chain = load_chain(scenario, args.data, extra)
+        # The scenario's own length is what "complete" means; --days only truncates a
+        # diagnostic run and can never make a short run count as complete.
+        full_days = scenario_days(chain)
+        days = args.days or full_days
+        days_by_scenario[scenario] = full_days
+        focus = chain[-1].focus_shop or chain[0].focus_shop or next(iter(shops))
         for seed in seeds:
-            rows = run(scenario, seed, days=args.days, data=args.data, out=args.out,
-                       offline=args.offline, cache_dir=args.cache)
+            rows = run(scenario, seed, days=days, data=args.data, out=args.out,
+                       offline=args.offline, cache_dir=args.cache, extra=extra)
             problems = [p for row in rows for p in validate_row(row, shop_ids)]
             failed = failed or bool(problems)
             all_rows.extend(rows)
-            report = coverage(rows)
+            report = coverage(rows, full_days)
             status = "complete" if report["complete"] else "incomplete"
             print(f"{scenario} seed {seed}: {status}; reappraisals {report['reappraisals']}, "
                   f"fallbacks {report['fallbacks']}, models {report['models']}, "
                   f"missing provenance {report['missing_provenance']}, skips {report['skips']}")
             if not args.quiet:
                 print(f"\n{scenario} seed {seed} -> {args.out / scenario / f'{seed}.jsonl'}")
-                print(summarise(rows, shop_ids))
+                print(summarise(rows, shop_ids, focus))
     stats = decide.STATS
-    # Groq pricing estimate (varies by model, using GPT OSS 20B as reference: $0.075 input, $0.30 output per 1M tokens)
     transport = llm.STATS
-    report = coverage(all_rows)
+    report = overall_coverage(all_rows, days_by_scenario)
     print(
         f"\nconfigured model {llm.MODEL}; response models {report['models']}\n"
         f"API attempts {transport['attempts']}  responses {transport['responses']}  "

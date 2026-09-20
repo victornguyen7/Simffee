@@ -175,20 +175,36 @@ def run_day(
 # --- a whole scenario -------------------------------------------------------
 
 
+def scenario_days(chain: list[Scenario], default: int = DAYS) -> int:
+    """Run length: the child's `days`, else the nearest ancestor's, else the default."""
+    for sc in reversed(chain):
+        if sc.days:
+            return sc.days
+    return default
+
+
 def run(
     scenario_id: str,
     seed: int,
-    days: int = DAYS,
+    days: int | None = None,
     data: Path = DATA,
     out: Path = RUNS,
     offline: bool = False,
     cache_dir: Path = cache.CACHE,
+    extra: dict[str, Scenario] | None = None,
 ) -> list[dict[str, Any]]:
     """Run one scenario at one seed. Forks load the parent's snapshot and the
     parent's random stream, so the override is the ONLY difference between the
-    two branches (SPEC 5.1)."""
-    chain = load_chain(scenario_id, data)
+    two branches (SPEC 5.1).
+
+    `days` None means "what the scenario says" (SPEC_FUNCTIONAL 2); an explicit
+    value wins, for diagnostics. `extra` supplies ad-hoc scenarios by id (a
+    user's what-if) that are not files under data/scenarios.
+    """
+    chain = load_chain(scenario_id, data, extra)
     scenario: Scenario = chain[-1]
+    if days is None:
+        days = scenario_days(chain)
     shops = load_shops(data)
     twins = load_twins(data, shop_ids=frozenset(shops))
 

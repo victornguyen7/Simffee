@@ -185,11 +185,13 @@ def validate_row(row: dict[str, Any], shop_ids: frozenset[str]) -> list[str]:
     return problems
 
 
-def coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def coverage(rows: list[dict[str, Any]], days: int = DAYS) -> dict[str, Any]:
+    """Completeness and provenance of a set of rows. `days` is the run length the grid
+    must cover (SPEC_FUNCTIONAL: per scenario, default 7); a shorter run is incomplete."""
     failures = sum(bool(r.get("llm_failed")) for r in rows)
     groups = {(r["scenario"], r["seed"]) for r in rows}
     twins = {r["twin"] for r in rows}
-    expected = {(sid, seed, day, twin) for sid, seed in groups for day in range(1, DAYS + 1) for twin in twins}
+    expected = {(sid, seed, day, twin) for sid, seed in groups for day in range(1, days + 1) for twin in twins}
     actual = {(r["scenario"], r["seed"], r["day"], r["twin"]) for r in rows}
     full_grid = bool(rows) and actual == expected and len(actual) == len(rows)
     reappraisals = [r for r in rows if r["mode"] == "reappraisal"]

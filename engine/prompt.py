@@ -11,6 +11,7 @@ from typing import Any
 
 from .loader import Twin
 from .schema import DRIVERS
+from .resolve import display_name
 from .timeutil import is_open_at
 
 # Which why-transcript lines matter depends on what shocked the twin today.
@@ -115,7 +116,7 @@ def build(
 
     # 2 — today
     out.append("\n## This morning")
-    regular_name = shops_today[regular]["name"]
+    regular_name = display_name(shops_today[regular])
     if disr_source == "none":
         out.append(f"It is {p['usual_time']}. Nothing unusual about {regular_name} today.")
     else:

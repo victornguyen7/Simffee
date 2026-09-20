@@ -17,6 +17,7 @@ from . import cache, llm, prompt
 from .loader import Twin
 from .schema import AUTOPILOT_VALENCE, DRIVERS, REASONING_WORD_LIMIT, SKIP_LATENT_FLOOR, Disruption
 from .timeutil import is_open_at, manhattan
+from .resolve import display_name
 
 MAX_REASONING_WORDS = REASONING_WORD_LIMIT          # SPEC 4.3 (increased for Groq compatibility)
 
@@ -70,7 +71,7 @@ def options_block(
         price = price_for(twin, shop)
         options.append({
             "shop": shop_id,
-            "name": shop["name"],
+            "name": display_name(shop),   # prompt.shop_label if set, else name
             "distance": distance,
             "within_walk_tolerance": distance <= twin.profile["walk_tolerance"],
             "price": price,

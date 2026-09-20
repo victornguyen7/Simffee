@@ -2,13 +2,18 @@ import { useState } from 'react'
 import Town from './pages/Town'
 import Shop from './pages/Shop'
 import Market from './pages/Market'
+import Conclusion from './pages/Conclusion'
 import type { ShopId } from './sim/runs'
 
-type Scene = { name: 'town' } | { name: 'interior'; shop: ShopId } | { name: 'market' }
+type Scene =
+  | { name: 'town' }
+  | { name: 'interior'; shop: ShopId }
+  | { name: 'market' }
+  | { name: 'conclusion' }
 
 function App() {
   const [scene, setScene] = useState<Scene>({ name: 'town' })
-  const fullBleed = scene.name !== 'market'
+  const fullBleed = scene.name !== 'market' && scene.name !== 'conclusion'
 
   return (
     <div className={`shell ${fullBleed ? 'shell--full' : ''}`}>
@@ -28,12 +33,19 @@ function App() {
         >
           model
         </button>
+        <button
+          className={`hud__btn ${scene.name === 'conclusion' ? 'hud__btn--on' : ''}`}
+          onClick={() => setScene(scene.name === 'conclusion' ? { name: 'town' } : { name: 'conclusion' })}
+        >
+          why
+        </button>
       </div>
 
       <main className={`shell__body ${fullBleed ? 'shell__body--full' : ''}`}>
         {scene.name === 'town' && <Town onEnterShop={(shop) => setScene({ name: 'interior', shop })} />}
         {scene.name === 'interior' && <Shop />}
         {scene.name === 'market' && <Market />}
+        {scene.name === 'conclusion' && <Conclusion />}
       </main>
     </div>
   )

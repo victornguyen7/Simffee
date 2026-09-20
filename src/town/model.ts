@@ -1,6 +1,6 @@
 import type { Shop, Twin } from '../types'
 
-export const GRID = 19
+export const GRID = 27
 export const TILE_W = 64
 export const TILE_H = 32
 
@@ -22,6 +22,14 @@ export type Prop =
   | 'gate'
   | 'trough'
   | 'coop'
+  | 'hedge'
+  | 'flowerbed'
+  | 'vegpatch'
+  | 'well'
+  | 'haybale'
+  | 'barrel'
+  | 'cart'
+  | 'picketfence'
 
 export interface Town {
   ground: Ground[]
@@ -38,15 +46,15 @@ export interface Pen {
 
 export const PENS: Pen[] = [
   { kind: 'sheep', x: 0, y: 0, w: 5, h: 5 },
-  { kind: 'poultry', x: 14, y: 0, w: 5, h: 4 },
-  { kind: 'cow', x: 0, y: 14, w: 5, h: 5 },
+  { kind: 'poultry', x: GRID - 5, y: 0, w: 5, h: 4 },
+  { kind: 'cow', x: 0, y: GRID - 5, w: 5, h: 5 },
 ]
 
 export const idx = (x: number, y: number) => y * GRID + x
 export const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < GRID && y < GRID
 
 /** A world cell (0..4) of the simulation grid sits on this town tile. */
-export const cellToTile = (cx: number, cy: number): [number, number] => [cx * 2 + 5, cy * 2 + 5]
+export const cellToTile = (cx: number, cy: number): [number, number] => [cx * 4 + 5, cy * 4 + 5]
 
 /** Deterministic pseudo random so the default town is stable across reloads. */
 function rand(seed: number) {
@@ -64,7 +72,8 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
 
   // paths: a lane through every simulation row and column
   for (let c = 0; c < 5; c++) {
-    const [tx, ty] = cellToTile(c, 0)
+    const [tx] = cellToTile(c, 0)
+    const [, ty] = cellToTile(0, c)
     for (let i = 1; i <= GRID - 2; i++) {
       ground[idx(tx, i)] = 'path'
       ground[idx(i, ty)] = 'path'
@@ -72,10 +81,10 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
   }
 
   // a pond in the far corner plus a sandy shore
-  for (let x = 15; x < 18; x++) {
-    for (let y = 15; y < 18; y++) {
+  for (let x = GRID - 5; x < GRID - 1; x++) {
+    for (let y = GRID - 5; y < GRID - 1; y++) {
       if (ground[idx(x, y)] === 'path') continue
-      ground[idx(x, y)] = x === 15 || y === 15 ? 'sand' : 'water'
+      ground[idx(x, y)] = x === GRID - 5 || y === GRID - 5 ? 'sand' : 'water'
     }
   }
 
@@ -126,29 +135,65 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
 
   }
 
+  const houses = twins.map((twin) => cellToTile(twin.home[0], twin.home[1]))
+  for (const [hx, hy] of houses) {
+    const gardenX = hx < GRID / 2 ? 1 : -1
+    const gardenY = hy < GRID / 2 ? 1 : -1
+    const gardenProps: Prop[] = [
+      'flowerbed',
+      'vegpatch',
+      'hedge',
+      'picketfence',
+      'haybale',
+      'barrel',
+      'well',
+      'cart',
+    ]
+    for (let dx = 1; dx <= 3; dx++) {
+      for (let dy = 1; dy <= 3; dy++) {
+        const x = hx + gardenX * dx
+        const y = hy + gardenY * dy
+        const tile = idx(x, y)
+        if (
+          !inBounds(x, y) ||
+          penTiles.has(tile) ||
+          ground[tile] !== 'grass' ||
+          props[tile] !== 'none' ||
+          r() > 0.7
+        ) {
+          continue
+        }
+        props[tile] = gardenProps[Math.floor(r() * gardenProps.length)]
+      }
+    }
+  }
+
+  // village scatter leaves open grass between the gardens
   for (let x = 0; x < GRID; x++) {
     for (let y = 0; y < GRID; y++) {
-      const i = idx(x, y)
-      if (penTiles.has(i) || props[i] !== 'none' || ground[i] !== 'grass') continue
+      const tile = idx(x, y)
+      if (props[tile] !== 'none' || ground[tile] !== 'grass' || penTiles.has(tile)) continue
+      if (r() > 0.55) continue
       const roll = r()
-      if (roll > 0.82) props[i] = 'tree'
-      else if (roll > 0.74) props[i] = 'pine'
-      else if (roll > 0.68) props[i] = 'bush'
-      else if (roll > 0.62) props[i] = 'flowers'
+      if (roll < 0.25) props[tile] = 'tree'
+      else if (roll < 0.37) props[tile] = 'pine'
+      else if (roll < 0.47) props[tile] = 'bush'
+      else props[tile] = 'flowers'
     }
   }
 
   // street furniture along the central lanes
   const furniture: [number, number, Prop][] = [
-    [8, 7, 'fountain'],
-    [6, 7, 'bench'],
-    [10, 7, 'bench'],
-    [4, 11, 'lamp'],
-    [12, 7, 'lamp'],
-    [8, 11, 'kiosk'],
+    [13, 7, 'fountain'],
+    [6, 9, 'bench'],
+    [10, 9, 'bench'],
+    [5, 15, 'lamp'],
+    [17, 7, 'lamp'],
+    [21, 12, 'kiosk'],
   ]
   for (const [x, y, prop] of furniture) {
-    if (props[idx(x, y)] === 'none' && ground[idx(x, y)] !== 'dirt') props[idx(x, y)] = prop
+    const tile = idx(x, y)
+    if ((ground[tile] === 'path' || ground[tile] === 'plaza') && props[tile] === 'none') props[tile] = prop
   }
 
   return { ground, props }

@@ -138,11 +138,11 @@ function shopBuilding(
   ctx.fillStyle = shade(wall, -0.45)
   ctx.fillRect(8, -28, 13, 22)
   ctx.fillStyle = sign
-  ctx.fillRect(-28, -54, 56, 14)
+  ctx.fillRect(-33, -58, 66, 18)
   ctx.fillStyle = '#ffffff'
-  ctx.font = 'bold 11px ui-monospace, monospace'
+  ctx.font = 'bold 14px ui-monospace, monospace'
   ctx.textAlign = 'center'
-  ctx.fillText(label, 0, -43)
+  ctx.fillText(label, 0, -44)
 }
 
 export function shade(hex: string, amount: number) {
@@ -252,6 +252,133 @@ function coop(ctx: CanvasRenderingContext2D) {
   ctx.restore()
   ctx.fillStyle = '#efd4a0'
   ctx.fillRect(-5, -10, 10, 6)
+}
+
+function hedge(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 16, 7)
+  box(ctx, 0.72, 0.52, 8, '#3f7d42', '#2f6337', '#28522f')
+  ctx.fillStyle = '#5b9a4f'
+  ctx.beginPath()
+  ctx.ellipse(-10, -15, 8, 6, 0, 0, Math.PI * 2)
+  ctx.ellipse(0, -18, 9, 7, 0, 0, Math.PI * 2)
+  ctx.ellipse(10, -15, 8, 6, 0, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function flowerbed(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 15, 7)
+  box(ctx, 0.78, 0.5, 4, '#8f633c', '#6f492e', '#593b26')
+  for (let i = 0; i < 6; i++) {
+    const x = -12 + (i % 3) * 12
+    const y = -10 - Math.floor(i / 3) * 5
+    ctx.beginPath()
+    ctx.arc(x, y, 3, 0, Math.PI * 2)
+    ctx.fillStyle = ['#e8618c', '#f2c94c', '#f27b4c', '#c77bf2', '#e8618c', '#f2c94c'][i]
+    ctx.fill()
+  }
+}
+
+function vegpatch(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 16, 7)
+  box(ctx, 0.82, 0.55, 3, '#a88657', '#80613f', '#684c31')
+  ctx.strokeStyle = '#70502f'
+  ctx.lineWidth = 2
+  for (const x of [-14, -5, 5, 14]) {
+    ctx.beginPath()
+    ctx.moveTo(x, -8)
+    ctx.lineTo(x, -1)
+    ctx.stroke()
+  }
+  ctx.fillStyle = '#4f9b4a'
+  for (const x of [-10, 0, 10]) {
+    ctx.fillRect(x, -13, 2, 6)
+    ctx.fillRect(x + 3, -11, 2, 5)
+  }
+}
+
+function well(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 15, 8)
+  ctx.fillStyle = '#aab2b4'
+  ctx.beginPath()
+  ctx.ellipse(0, -12, 15, 7, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#7b8588'
+  ctx.fillRect(-15, -12, 30, 10)
+  ctx.fillStyle = '#5f6b70'
+  ctx.beginPath()
+  ctx.ellipse(0, -12, 9, 4, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#75482c'
+  ctx.fillRect(-17, -31, 3, 20)
+  ctx.fillRect(14, -31, 3, 20)
+  ctx.beginPath()
+  ctx.moveTo(-21, -31)
+  ctx.lineTo(0, -43)
+  ctx.lineTo(21, -31)
+  ctx.closePath()
+  ctx.fillStyle = '#9b5f3d'
+  ctx.fill()
+}
+
+function haybale(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 13, 7)
+  ctx.fillStyle = '#d7a84c'
+  ctx.beginPath()
+  ctx.ellipse(0, -10, 13, 8, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#b98232'
+  ctx.fillRect(-13, -10, 26, 10)
+  ctx.strokeStyle = '#f0ca6a'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(-6, -15)
+  ctx.lineTo(-6, -3)
+  ctx.moveTo(5, -15)
+  ctx.lineTo(5, -3)
+  ctx.stroke()
+}
+
+function barrel(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 10, 6)
+  ctx.fillStyle = '#8a5b32'
+  ctx.beginPath()
+  ctx.ellipse(0, -14, 9, 4, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillRect(-9, -14, 18, 12)
+  ctx.fillStyle = '#5f3c23'
+  ctx.fillRect(-10, -12, 20, 2)
+  ctx.fillRect(-10, -4, 20, 2)
+}
+
+function cart(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 17, 8)
+  box(ctx, 0.8, 0.55, 10, '#b4773f', '#84542e', '#6d4325')
+  ctx.fillStyle = '#4b4039'
+  ctx.beginPath()
+  ctx.arc(-13, 1, 5, 0, Math.PI * 2)
+  ctx.arc(13, 1, 5, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#9a6a3d'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(0, -18)
+  ctx.lineTo(23, -25)
+  ctx.stroke()
+}
+
+function picketfence(ctx: CanvasRenderingContext2D) {
+  shadow(ctx, 16, 6)
+  ctx.fillStyle = '#f4eee0'
+  for (const x of [-16, -5, 6, 17]) {
+    ctx.fillRect(x, -18, 4, 18)
+    ctx.beginPath()
+    ctx.moveTo(x, -18)
+    ctx.lineTo(x + 2, -23)
+    ctx.lineTo(x + 4, -18)
+    ctx.fill()
+  }
+  ctx.fillRect(-18, -14, 38, 3)
+  ctx.fillRect(-18, -6, 38, 3)
 }
 
 export function drawPet(ctx: CanvasRenderingContext2D, kind: 'cat' | 'dog', t: number) {
@@ -374,6 +501,30 @@ export function drawProp(ctx: CanvasRenderingContext2D, prop: Prop, t: number) {
     case 'coop':
       coop(ctx)
       break
+    case 'hedge':
+      hedge(ctx)
+      break
+    case 'flowerbed':
+      flowerbed(ctx)
+      break
+    case 'vegpatch':
+      vegpatch(ctx)
+      break
+    case 'well':
+      well(ctx)
+      break
+    case 'haybale':
+      haybale(ctx)
+      break
+    case 'barrel':
+      barrel(ctx)
+      break
+    case 'cart':
+      cart(ctx)
+      break
+    case 'picketfence':
+      picketfence(ctx)
+      break
     default:
       break
   }
@@ -418,8 +569,8 @@ export function drawPerson(
 }
 
 export function drawBubble(ctx: CanvasRenderingContext2D, text: string, tone: 'think' | 'talk') {
-  const maxWidth = 168
-  ctx.font = '12px ui-sans-serif, system-ui, sans-serif'
+  const maxWidth = 210
+  ctx.font = '15px ui-sans-serif, system-ui, sans-serif'
   const words = text.split(' ')
   const lines: string[] = []
   let line = ''
@@ -434,8 +585,8 @@ export function drawBubble(ctx: CanvasRenderingContext2D, text: string, tone: 't
   }
   if (line) lines.push(line)
   const clipped = lines.slice(0, 4)
-  const w = Math.max(...clipped.map((l) => ctx.measureText(l).width)) + 16
-  const h = clipped.length * 14 + 12
+  const w = Math.max(...clipped.map((l) => ctx.measureText(l).width)) + 24
+  const h = clipped.length * 18 + 16
   const x = -w / 2
   const y = -46 - h
 
@@ -457,7 +608,7 @@ export function drawBubble(ctx: CanvasRenderingContext2D, text: string, tone: 't
 
   ctx.fillStyle = '#2b2b2b'
   ctx.textAlign = 'center'
-  clipped.forEach((l, i) => ctx.fillText(l, 0, y + 18 + i * 14))
+  clipped.forEach((l, i) => ctx.fillText(l, 0, y + 21 + i * 18))
 }
 
 export function drawTileHighlight(ctx: CanvasRenderingContext2D, color: string) {

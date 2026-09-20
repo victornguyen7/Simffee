@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Row, Runs } from '../types'
-import { agentsAt } from '../town/agents'
+import { agentsAt, routeBetween } from '../town/agents'
 import { drawAnimal, drawBubble, drawGround, drawPerson, drawPet, drawProp } from '../town/draw'
 import {
   GRID,
@@ -13,8 +13,22 @@ import {
   type Town,
 } from '../town/model'
 
-const HOME_ZOOM = 1.3
-const PIXEL = 2
+const PIXEL = 3
+const BUILDING_HEIGHT = 90
+
+function fitZoom(width: number, height: number) {
+  return Math.min(
+    2.2,
+    Math.max(0.45, Math.min(width / (GRID * TILE_W + 40), (height - 120) / (GRID * TILE_H + BUILDING_HEIGHT))),
+  )
+}
+
+function originY(height: number, zoom: number, cameraY: number) {
+  const islandTop = -BUILDING_HEIGHT
+  const islandBottom = GRID * TILE_H
+  const islandCenter = (islandTop + islandBottom) / 2
+  return height / 2 - 40 - islandCenter * zoom + cameraY
+}
 
 interface Pet {
   kind: 'cat' | 'dog'
@@ -50,7 +64,7 @@ function petTarget(town: Town): [number, number] {
     for (let x = 0; x < GRID; x++) {
       const ground = town.ground[idx(x, y)]
       if (penTile(x, y) || town.props[idx(x, y)] !== 'none') continue
-      if (ground === 'path' || ground === 'plaza' || ground === 'grass') candidates.push([x, y])
+      if (ground === 'path' || ground === 'plaza' || ground === 'sand') candidates.push([x, y])
     }
   }
   return candidates[Math.floor(Math.random() * candidates.length)] ?? [8, 8]
@@ -112,7 +126,7 @@ export default function IsoTown({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef({ runs, town, rows, phase, selectedTwin })
-  const cameraRef = useRef({ x: 0, y: 0, zoom: HOME_ZOOM })
+  const cameraRef = useRef({ x: 0, y: 0, zoom: 1 })
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const petsRef = useRef<Pet[]>([])
   const livestockRef = useRef<Livestock[]>([])
@@ -140,6 +154,7 @@ export default function IsoTown({
       const rect = canvas.getBoundingClientRect()
       canvas.width = Math.max(1, Math.floor(rect.width * dpr / PIXEL))
       canvas.height = Math.max(1, Math.floor(rect.height * dpr / PIXEL))
+      cameraRef.current.zoom = fitZoom(rect.width, rect.height)
       const ctx = canvas.getContext('2d')
       if (ctx) ctx.setTransform(dpr / PIXEL, 0, 0, dpr / PIXEL, 0, 0)
     }
@@ -158,12 +173,17 @@ export default function IsoTown({
       const elapsed = previous === 0 ? 0 : Math.min(100, t - previous) / 1000
       previous = t
       for (const pet of petsRef.current) {
-        const dx = pet.target[0] - pet.pos[0]
-        const dy = pet.target[1] - pet.pos[1]
+        const route = routeBetween(tn, [Math.round(pet.pos[0]), Math.round(pet.pos[1])], pet.target)
+        const waypoint = route[1] ?? pet.target
+        const dx = waypoint[0] - pet.pos[0]
+        const dy = waypoint[1] - pet.pos[1]
         const distance = Math.hypot(dx, dy)
         if (distance < 0.04) {
-          pet.pos = pet.target
-          pet.target = petTarget(tn)
+          pet.pos = waypoint
+          if (waypoint[0] === pet.target[0] && waypoint[1] === pet.target[1]) {
+            pet.pos = pet.target
+            pet.target = petTarget(tn)
+          }
           continue
         }
         const step = Math.min(distance, elapsed * 0.35)
@@ -193,9 +213,9 @@ export default function IsoTown({
 
       const cam = cameraRef.current
       const originX = rect.width / 2 + cam.x
-      const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
+      const originYValue = originY(rect.height, cam.zoom, cam.y)
       ctx.save()
-      ctx.translate(originX, originY)
+      ctx.translate(originX, originYValue)
       ctx.scale(cam.zoom, cam.zoom)
 
       for (let y = 0; y < GRID; y++) {
@@ -208,7 +228,7 @@ export default function IsoTown({
         }
       }
 
-      const agents = agentsAt(r, rws, ph, sel)
+      const agents = agentsAt(r, tn, rws, ph, sel)
       type Item = { depth: number; draw: () => void; overlay?: () => void }
       const items: Item[] = []
 
@@ -263,7 +283,7 @@ export default function IsoTown({
             ctx.save()
             ctx.translate(sx, sy)
             drawPerson(ctx, i, a.walking, t, sel === a.twin.id)
-            ctx.font = '11px ui-sans-serif, system-ui, sans-serif'
+            ctx.font = '14px ui-sans-serif, system-ui, sans-serif'
             ctx.textAlign = 'center'
             ctx.fillStyle = 'rgba(30,30,30,0.7)'
             ctx.fillText(a.twin.name, 0, 8)
@@ -300,10 +320,10 @@ export default function IsoTown({
     const rect = canvas.getBoundingClientRect()
     const cam = cameraRef.current
     const originX = rect.width / 2 + cam.x
-    const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
+    const originYValue = originY(rect.height, cam.zoom, cam.y)
     const px = (clientX - rect.left - originX) / cam.zoom
-    const py = (clientY - rect.top - originY) / cam.zoom
-    const agents = agentsAt(runs, rows, phase, selectedTwin)
+    const py = (clientY - rect.top - originYValue) / cam.zoom
+    const agents = agentsAt(runs, town, rows, phase, selectedTwin)
     for (const a of agents) {
       const [sx, sy] = tileToScreen(a.pos[0], a.pos[1])
       if (Math.abs(px - sx) < 11 && py - sy < 6 && py - sy > -32) return a.twin.id
@@ -318,9 +338,9 @@ export default function IsoTown({
     const rect = canvas.getBoundingClientRect()
     const cam = cameraRef.current
     const originX = rect.width / 2 + cam.x
-    const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
+    const originYValue = originY(rect.height, cam.zoom, cam.y)
     const px = (clientX - rect.left - originX) / cam.zoom
-    const py = (clientY - rect.top - originY) / cam.zoom
+    const py = (clientY - rect.top - originYValue) / cam.zoom
     let hit: { id: 'simffee' | 'starbucks'; depth: number } | null = null
     for (let ty = 0; ty < GRID; ty++) {
       for (let tx = 0; tx < GRID; tx++) {
@@ -376,7 +396,12 @@ export default function IsoTown({
         cam.zoom = Math.min(2.2, Math.max(0.45, cam.zoom * (e.deltaY > 0 ? 0.92 : 1.08)))
       }}
       onDoubleClick={() => {
-        cameraRef.current = { x: 0, y: 0, zoom: HOME_ZOOM }
+        const rect = canvasRef.current?.getBoundingClientRect()
+        cameraRef.current = {
+          x: 0,
+          y: 0,
+          zoom: rect ? fitZoom(rect.width, rect.height) : 1,
+        }
       }}
       aria-label={`Isometric town, ${GRID} by ${GRID} tiles, tile size ${TILE_W} by ${TILE_H}`}
     />

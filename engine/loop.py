@@ -12,7 +12,7 @@ import random
 from pathlib import Path
 from typing import Any
 
-from . import cache, decide
+from . import cache, decide, prompt
 from .disruption import disruption, with_new_entrant
 from .gossip import apply_inbox, apply_marketing, apply_opening, gossip
 from .habit import apply_habit, regular_shop
@@ -221,6 +221,8 @@ def run(
         days = scenario_days(chain)
     shops = load_shops(data)
     twins = load_twins(data, shop_ids=frozenset(shops))
+    initial_world = resolve(shops, chain, 1, include_absent=True)
+    twins = [prompt.for_world(twin, initial_world) for twin in twins]
 
     # The world the 30-day log remembers: day 1 for every shop that exists then. A shop
     # that opens later (ROADMAP B1) is remembered as it was on its opening day, so its

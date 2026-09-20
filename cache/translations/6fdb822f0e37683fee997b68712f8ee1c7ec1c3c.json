@@ -1,0 +1,15 @@
+{
+  "situation": "competitor_enters",
+  "focus_shop": "simffee",
+  "label": "Starbucks opens across the street",
+  "actions": [
+    {
+      "action": "shop_enters",
+      "shop": "starbucks",
+      "from_day": 4,
+      "item": null,
+      "value": 4
+    }
+  ],
+  "unsupported": []
+}

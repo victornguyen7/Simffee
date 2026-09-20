@@ -1,0 +1,36 @@
+{
+  "situation": "incumbent_change",
+  "focus_shop": "simffee",
+  "label": "Open at 5 with drink discounts",
+  "actions": [
+    {
+      "action": "set_open",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": null,
+      "value": "05:00"
+    },
+    {
+      "action": "set_price",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "latte",
+      "value": 43200
+    },
+    {
+      "action": "set_price",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "americano",
+      "value": 31500
+    },
+    {
+      "action": "set_price",
+      "shop": "simffee",
+      "from_day": 5,
+      "item": "cold_brew",
+      "value": 45000
+    }
+  ],
+  "unsupported": []
+}

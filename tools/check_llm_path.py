@@ -41,7 +41,7 @@ def stub(replies):
     """Replace the transport with a canned sequence of replies."""
     queue = list(replies)
 
-    def fake(system, user, schema, temperature):
+    def fake(system, user, schema, temperature, **kwargs):
         calls.append(temperature)
         if not queue:
             raise AssertionError("stub ran out of replies")

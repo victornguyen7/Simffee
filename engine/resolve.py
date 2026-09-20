@@ -85,6 +85,7 @@ def resolve(
     shops: dict[str, dict[str, Any]],
     chain: list[Scenario],
     day: int,
+    include_absent: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Shop state as it is on `day`, with every override up to and including it."""
     today = copy.deepcopy(shops)
@@ -97,7 +98,7 @@ def resolve(
             # "starbucks opens on day 4" must make it absent on days 1-3 whatever from_day
             # the block carries.
             if EXISTS in ov.get("unset", []):
-                shop.pop(EXISTS, None)
+                _unset_dotted(shop, shops[ov["shop"]], EXISTS)
             if EXISTS in ov.get("set", {}):
                 shop[EXISTS] = ov["set"][EXISTS]
             if day < ov["from_day"]:
@@ -108,7 +109,7 @@ def resolve(
             for dotted, value in ov.get("set", {}).items():
                 if dotted != EXISTS:
                     _set_dotted(shop, dotted, value)
-    return {sid: shop for sid, shop in today.items() if exists_on(shop, day)}
+    return today if include_absent else {sid: shop for sid, shop in today.items() if exists_on(shop, day)}
 
 
 def exists_on(shop: dict[str, Any], day: int) -> bool:

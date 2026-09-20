@@ -1,0 +1,15 @@
+{
+  "situation": "competitor_change",
+  "focus_shop": "simffee",
+  "label": "Starbucks closes down",
+  "actions": [
+    {
+      "action": "close_permanently",
+      "shop": "starbucks",
+      "from_day": 5,
+      "item": null,
+      "value": null
+    }
+  ],
+  "unsupported": []
+}

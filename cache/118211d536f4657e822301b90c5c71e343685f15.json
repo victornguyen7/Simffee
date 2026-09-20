@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.3",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1274,
+    "output_tokens": 56
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee closed till 07:00, Starbucks costs too much and waits too long.",
+  "secondary_driver": "habit",
+  "valence": -1.0
+}

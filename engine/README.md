@@ -9,8 +9,9 @@ Spec: [../spec/SPEC.md](../spec/SPEC.md) · Plan: [../spec/BACKEND_PLAN.md](../s
 Python 3.11+, stdlib plus `openai` (used against xAI's Responses API) for live requests (`pip install -r requirements.txt`).
 Offline replay, validation, analysis, narration, and stubbed tests need no credentials.
 The engine automatically reads the repository's private `.env` for `XAI_API_KEY`,
-`SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`, and `SIMFFEE_MIN_INTERVAL`. Existing shell
-variables take precedence, and `--model` takes precedence over both. Values may
+`SIMFFEE_MODEL`, `SIMFFEE_DECISION_MODEL`, `SIMFFEE_MAX_TOKENS`, `SIMFFEE_MIN_INTERVAL`,
+`SIMFFEE_TIMEOUT_S`, and `SIMFFEE_REASONING_EFFORT`. Existing shell variables take precedence,
+and CLI `--model` overrides the decision model. Values may
 be quoted; shell commands and variable expansion are never evaluated. `.env`
 and `.env.*` are Git-ignored. Keep the file owner-readable/writable only (`600`),
 enter keys locally, and never use a `VITE_` prefix for a server credential.
@@ -34,11 +35,40 @@ exit 1 means invalid data; exit 2 means incomplete/unverified trajectories.
 A partial diagnostic run is not a complete seven-day run.
 
 Live generation requires `XAI_API_KEY` and explicit approval of model and spend.
+`SIMFFEE_TIMEOUT_S` defaults to 180 seconds per provider request (SDK retries remain
+disabled). This is separate from the API's `--timeout` (240 seconds for the whole
+what-if) and the frontend's 300-second fetch deadline; cold runs can still exceed them.
 The default model is `qwen/qwen3.8-27b` with `SIMFFEE_MAX_TOKENS` 400 — the pair the
 committed `cache/` was filled with; both are in the cache key, so change them only with a
 refill. Override with `SIMFFEE_MODEL` / `--model` and `SIMFFEE_MAX_TOKENS`. No embedded credential fallback
 exists. The CLI reports request attempts and response token usage, including
 invalid JSON responses; it does not invent a dollar estimate for unknown pricing.
+
+With `SIMFFEE_MODEL=grok-4.6` (or `grok-4.5`), customer decisions default to `grok-4.3`
+with reasoning disabled. Translation and the independent AI review use `SIMFFEE_MODEL`
+with high effort. Override customer selection with `SIMFFEE_DECISION_MODEL`; for example,
+set it to `grok-4.6` to restore that model for decisions. `SIMFFEE_REASONING_EFFORT` controls
+customer reasoning; absent an override it is `none` for Grok 4.3 and `low` for 4.5/4.6.
+Model and effective effort are part of decision cache identity. Other legacy models retain
+their existing selection, preserving Qwen replay. `/health` exposes both model roles.
+Restart the backend after changing code or environment settings.
+
+The frontend submits `POST /whatif` with `fresh: true`: translation bypasses its cache,
+and a unique scenario ID prevents reuse of earlier what-if decisions while preserving
+previous runs. The parent baseline prefix is still inherited for a fair comparison.
+Fresh requests consume additional API calls and may legitimately produce identical choices.
+API callers omitting `fresh` keep the original cached behavior. `/health.fresh_runs` lets
+the UI detect an old server instead of silently displaying its cached response. New
+submissions clear the previous answer; failed seed reruns do not merge old result fields.
+
+The what-if response's top-level `flows` belongs to that what-if, not the baseline used
+for causal comparison. Incomplete trajectories return `flows: null` with a reason.
+`POST /review` accepts `{run_id, refresh?: boolean}`. The frontend calls it after displaying
+the simulation, so review does not delay the primary answer. Reviews are keyed by the
+request, plan, actual rows, reviewer model and inference settings. The fresh-review button
+bypasses only the review cache and may incur an additional model call. The reviewer can
+flag a mismatch and explain the supplied facts; it never edits decisions or computed
+counts. Fallback-filled trajectories are not reviewed as genuine customer evidence.
 
 ## Modules and spec mapping
 

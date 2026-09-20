@@ -95,6 +95,22 @@ def main():
     guarded = confidence.confidence(all_failed, brk["break_day"], twins)
     check("all-fallback run reports unmeasured, not 1.0", (guarded["value"], guarded["unmeasured"]), (None, True))
 
+    print("what-if confidence")
+    lost = imp["lost_twins"]
+    wc = {sid: confidence.whatif_confidence([rows(sid, s) for s in range(5)], lost, 5, 7, twins)
+          for sid in ("cf_restore_hours", "cf_discount")}
+    for sid, c in wc.items():
+        check(f"{sid} is measurable", c["unmeasured"], False)
+        check(f"{sid} in range", 0.0 <= c["value"] <= 1.0, True)
+        check(f"{sid} weights", c["value"], round(0.7 * c["stability"] + 0.3 * c["support"], 4))
+        check(f"{sid} stability covers only the lost twins",
+              sorted(c["detail"]["stability"]["per_twin"]) <= sorted(lost), True)
+    check("done criterion 5: restore-hours beats discount on returns",
+          pairwise.returns(base, rows("cf_restore_hours"), SHOP)["returns"]
+          > pairwise.returns(base, rows("cf_discount"), SHOP)["returns"], True)
+    empty = confidence.whatif_confidence([rows("cf_discount", s) for s in range(5)], [], 5, 7, twins)
+    check("nothing lost -> unmeasured, not 1.0", (empty["value"], empty["unmeasured"]), (None, True))
+
     print("evidence")
     ev = attribution.select_evidence(base, brk["break_day"], actual["driver"], SHOP)
     check("two cards", [e["kind"] for e in ev], ["switcher", "resisted"])

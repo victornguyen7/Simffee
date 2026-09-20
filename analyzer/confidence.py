@@ -33,12 +33,26 @@ def _usable(rows):
     return [r for r in rows if not r.get("llm_failed")]
 
 
-def stability(rows_by_seed, day):
-    """Fraction of seeds giving the same choice on `day`, averaged over twins."""
+def _transcript_hits(twin, driver):
+    words = DRIVER_KEYWORDS.get(driver, ())
+    hits = 0
+    for qa in twin["why_transcript"]:
+        text = f"{qa['q']} {qa['a']}".lower()
+        if any(w in text for w in words):
+            hits += 1
+    return hits
+
+
+def stability(rows_by_seed, day, only=None):
+    """Fraction of seeds giving the same choice on `day`, averaged over twins.
+
+    `only` restricts the average to a set of twin ids — a what-if conclusion is about
+    the customers baseline lost, so the other twins' agreement should not pad it.
+    """
     per_twin = {}
     for seed_rows in rows_by_seed:
         for r in seed_rows:
-            if r["day"] == day:
+            if r["day"] == day and (only is None or r["twin"] in only):
                 per_twin.setdefault(r["twin"], []).append(r)
 
     scores, unmeasured, detail = {}, [], {}
@@ -76,12 +90,7 @@ def support(rows, day, twins):
         twin = twins.get(r["twin"])
         if not twin:
             continue
-        words = DRIVER_KEYWORDS.get(r["primary_driver"], ())
-        hits = 0
-        for qa in twin["why_transcript"]:
-            text = f"{qa['q']} {qa['a']}".lower()
-            if any(w in text for w in words):
-                hits += 1
+        hits = _transcript_hits(twin, r["primary_driver"])
         scores[r["twin"]] = min(1.0, hits / SUPPORT_DIVISOR)
         detail[r["twin"]] = {"driver": r["primary_driver"], "hits": hits,
                              "score": round(scores[r["twin"]], 3)}
@@ -91,10 +100,30 @@ def support(rows, day, twins):
             "per_twin": detail, "measured": len(scores)}
 
 
-def confidence(rows_by_seed, day, twins, default_seed=0):
-    stab = stability(rows_by_seed, day)
-    supp = support(rows_by_seed[default_seed], day, twins)
+def branch_support(rows, only, from_day, twins):
+    """Support for a what-if outcome: the last reappraisal each lost twin made in the
+    branch is the decision that settled where they ended up, so that is the driver the
+    transcript has to evidence."""
+    last = {}
+    for r in rows:
+        if r["twin"] in only and r["day"] >= from_day and r["mode"] == "reappraisal" \
+                and not r.get("llm_failed"):
+            last[r["twin"]] = r
+    scores, detail = {}, {}
+    for twin_id, r in sorted(last.items()):
+        twin = twins.get(twin_id)
+        if not twin:
+            continue
+        hits = _transcript_hits(twin, r["primary_driver"])
+        scores[twin_id] = min(1.0, hits / SUPPORT_DIVISOR)
+        detail[twin_id] = {"driver": r["primary_driver"], "day": r["day"], "hits": hits,
+                           "score": round(scores[twin_id], 3)}
+    value = sum(scores.values()) / len(scores) if scores else None
+    return {"value": None if value is None else round(value, 4),
+            "per_twin": detail, "measured": len(scores)}
 
+
+def _combine(stab, supp):
     if stab["value"] is None or supp["value"] is None:
         missing = "no usable reappraisal rows" if supp["value"] is None else "no measurable twins"
         return {"value": None, "stability": stab["value"], "support": supp["value"],
@@ -110,3 +139,23 @@ def confidence(rows_by_seed, day, twins, default_seed=0):
         "low_confidence": value < 0.5,
         "detail": {"stability": stab, "support": supp},
     }
+
+
+def confidence(rows_by_seed, day, twins, default_seed=0):
+    """SPEC 6.5 on the headline conclusion: the break day."""
+    return _combine(stability(rows_by_seed, day),
+                    support(rows_by_seed[default_seed], day, twins))
+
+
+def whatif_confidence(rows_by_seed, lost_twins, from_day, days, twins, default_seed=0):
+    """SPEC 6.5 on a what-if conclusion ("3 of 4 return").
+
+    stability: do the lost twins land on the same shop on the last day across seeds?
+    support:   is the driver of each lost twin's deciding reappraisal in their transcript?
+    """
+    only = set(lost_twins)
+    if not only:
+        return {"value": None, "stability": None, "support": None, "unmeasured": True,
+                "reason": "baseline lost nobody, so there is nothing to bring back"}
+    return _combine(stability(rows_by_seed, days, only),
+                    branch_support(rows_by_seed[default_seed], only, from_day, twins))

@@ -106,12 +106,25 @@ def build_analysis(base, shops, scenario_files, twins):
         "confidence": {k: conf[k] for k in ("value", "stability", "support", "unmeasured")
                        if k in conf} | {"reason": conf.get("reason")},
         "narration": None,   # filled by _narrate below, which needs the assembled block
-        "whatif": [{"scenario": s,
-                    "label": SCENARIO_LABELS[s],
-                    **{k: v for k, v in pairwise.returns(baseline, load_rows(base, s, DEFAULT_SEED),
-                                                         SHOP, DAYS).items()
-                       if k in ("returns", "of", "returned")}}
+        "whatif": [_whatif(base, s, baseline, imp["lost_twins"], scenario_files[s], twins)
                    for s in WHATIF_ORDER],
+    }
+
+
+def _whatif(base, scenario, baseline, lost_twins, scenario_file, twins):
+    """One what-if button: returns/of from seed 0, confidence from all seeds (SPEC 6.5)."""
+    by_seed = [load_rows(base, scenario, s) for s in SEEDS]
+    ret = pairwise.returns(baseline, by_seed[DEFAULT_SEED], SHOP, DAYS)
+    conf = confidence.whatif_confidence(by_seed, lost_twins, from_day(scenario_file), DAYS,
+                                        twins, DEFAULT_SEED)
+    return {
+        "scenario": scenario,
+        "label": SCENARIO_LABELS[scenario],
+        "returns": ret["returns"],
+        "of": ret["of"],
+        "returned": ret["returned"],
+        "confidence": conf["value"],
+        "confidence_detail": {k: conf.get(k) for k in ("stability", "support", "unmeasured", "reason")},
     }
 
 

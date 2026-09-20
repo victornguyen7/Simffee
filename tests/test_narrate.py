@@ -25,7 +25,31 @@ def check(name, got, want):
         failures.append(name)
 
 
-ANALYSIS = json.loads((ROOT / "public" / "runs.json").read_text(encoding="utf-8"))["analysis"]
+def _fixture_analysis():
+    """The slice of `analysis` narrate.payload_for reads, computed from the fixture rows.
+
+    Not read from public/runs.json: that file may have been built from real engine output,
+    and the replies scripted below assume the fixture's numbers.
+    """
+    from analyzer import attribution, impact
+    fix = ROOT / "tests" / "fixtures"
+    oracle = json.loads((fix / "expected_analysis.json").read_text(encoding="utf-8"))
+
+    def rows(scenario):
+        path = fix / "runs" / scenario / "0.jsonl"
+        return [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+    base = rows("baseline")
+    actual = attribution.actual_driver(base, oracle["break_day"])
+    return {
+        "break_day": oracle["break_day"],
+        "naive": oracle["naive"],
+        "actual": {"driver": actual["driver"], "switchers": actual["switchers"]},
+        "impact": impact.impact(base, rows("cf_null"), "simffee"),
+    }
+
+
+ANALYSIS = _fixture_analysis()
 
 
 def stub(replies):

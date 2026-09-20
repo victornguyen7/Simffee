@@ -23,7 +23,7 @@ def impact(baseline_rows, control_rows, shop, days=7):
         "lost_twins": gone,
         "by_decision_twins": by_decision,
         "anyway_twins": sorted(t for t in gone if t in anyway),
-        "per_twin": [{"twin": t, "baseline": base_last.get(t), "control": ctrl_last.get(t),
+        "per_twin": [{"twin": t, "baseline": base_last.get(t), "cf_null": ctrl_last.get(t),
                       "attributed": t not in anyway}
                      for t in gone],
     }

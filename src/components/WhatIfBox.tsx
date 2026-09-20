@@ -120,9 +120,11 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     if (!query || inFlight.current) return
     let live = api
     if (live === undefined) {
+      inFlight.current = true
       setBusy('checking API…')
       live = await health()
       setApi(live)
+      inFlight.current = false
     }
     if (!live || !live.llm || live.fresh_runs !== true) {
       setBusy(null)

@@ -21,6 +21,9 @@ from .loader import Scenario
 CREATABLE_ROOTS = frozenset({"prompt"})
 # Existing dicts under which a NEW leaf may be added: a price for a new menu item.
 CREATABLE_LEAF_PARENTS = frozenset({"price"})
+# Top-level flags a scenario may introduce without shops.json carrying them (keeping
+# shops.json unchanged keeps v1 cache keys unchanged).
+CREATABLE_LEAVES = frozenset({"permanently_closed"})
 
 
 def _walk(target: dict[str, Any], parts: list[str], dotted: str, create: bool) -> dict[str, Any]:
@@ -36,7 +39,9 @@ def _walk(target: dict[str, Any], parts: list[str], dotted: str, create: bool) -
 
 
 def _leaf_creatable(parts: list[str]) -> bool:
-    return parts[0] in CREATABLE_ROOTS or (len(parts) == 2 and parts[0] in CREATABLE_LEAF_PARENTS)
+    return (parts[0] in CREATABLE_ROOTS
+            or (len(parts) == 2 and parts[0] in CREATABLE_LEAF_PARENTS)
+            or (len(parts) == 1 and parts[0] in CREATABLE_LEAVES))
 
 
 def _set_dotted(target: dict[str, Any], dotted: str, value: Any) -> None:

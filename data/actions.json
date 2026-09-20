@@ -1,0 +1,75 @@
+{
+  "_comment": "ROADMAP 3 — the closed, growing list of things a plan may do. The translator picks from these; it cannot invent a field. Each action names the mechanism it touches, so every simulated plan is explainable. Phrases are hints for the model and for tests, not a grammar.",
+  "actions": {
+    "set_open": {
+      "field": "open", "value": "time",
+      "mechanism": "hours disruption; who is shut out at their usual time",
+      "phrases": ["open at 6", "open earlier", "start at 06:30", "open an hour later", "reopen at 6:30"]
+    },
+    "set_close": {
+      "field": "close", "value": "time",
+      "mechanism": "hours disruption for late visitors",
+      "phrases": ["close at 6pm", "stay open until 10", "shut earlier"]
+    },
+    "set_price": {
+      "field": "price.<item>", "value": "vnd", "needs_item": true,
+      "mechanism": "price disruption at the regular shop; price cost in reappraisal",
+      "phrases": ["cut the latte to 40k", "raise prices 10%", "discount 15%", "latte back to 45k", "make americano 30k"]
+    },
+    "add_item": {
+      "field": "products +", "value": "vnd", "needs_item": true,
+      "mechanism": "product availability; a new usual_order candidate",
+      "phrases": ["add croissants at 30k", "sell pastries", "introduce a matcha latte"]
+    },
+    "drop_item": {
+      "field": "products -", "value": null, "needs_item": true,
+      "mechanism": "product disruption for anyone whose usual item disappears",
+      "phrases": ["stop selling cold brew", "drop the americano", "remove frappuccino"]
+    },
+    "set_wait": {
+      "field": "avg_wait_min", "value": "minutes",
+      "mechanism": "wait disruption; wait cost in reappraisal",
+      "phrases": ["speed up service to 2 minutes", "hire a second barista", "the queue gets to 10 minutes"]
+    },
+    "set_quality": {
+      "field": "quality", "value": "fraction",
+      "mechanism": "quality in reappraisal only",
+      "phrases": ["switch to better beans", "new espresso machine", "quality drops"]
+    },
+    "set_marketing_reach": {
+      "field": "marketing.reach", "value": "fraction",
+      "mechanism": "daily latent-interest lift for non-regulars",
+      "phrases": ["run ads", "big poster campaign", "double our marketing", "stop advertising"]
+    },
+    "set_marketing_message": {
+      "field": "marketing.message", "value": "text",
+      "mechanism": "the line non-regulars read in the options block",
+      "phrases": ["advertise the new pastries", "change the slogan to ..."]
+    },
+    "close_permanently": {
+      "field": "permanently_closed", "value": null,
+      "mechanism": "closed disruption (1.0) for every regular",
+      "phrases": ["close the shop", "shut down for good", "Starbucks closes"]
+    },
+    "restore": {
+      "field": "<any>", "value": "field", "needs_field": true,
+      "mechanism": "undo a change made earlier in this scenario chain (unset to the base value)",
+      "phrases": ["go back to normal hours", "put the price back", "undo the price rise"]
+    }
+  },
+  "unsupported_examples": [
+    {"text": "add a loyalty card", "reason": "no persona state for accumulated rewards yet (roadmap D2)"},
+    {"text": "start delivery", "reason": "no mechanism for distance or wait removal per person yet (roadmap D3)"},
+    {"text": "host live music on Fridays", "reason": "nothing in a persona perceives events; would be opinion, not behaviour"},
+    {"text": "a new competitor opens across the street", "reason": "competitor entry is a separate mechanism (roadmap B)"},
+    {"text": "close on Sundays", "reason": "the simulation has no weekdays; every day is a weekday"}
+  ],
+  "limits": {
+    "max_actions": 6,
+    "price_ratio": [0.3, 3.0],
+    "new_item_price_vnd": [5000, 300000],
+    "wait_min": [0, 30],
+    "fraction": [0.0, 1.0],
+    "min_from_day": 2
+  }
+}

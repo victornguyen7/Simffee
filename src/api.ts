@@ -1,3 +1,4 @@
+import type { MockAnswer } from './mockAnswers'
 import type { AIReview, Health, UserScenario, WhatIfAnswer } from './types'
 
 /** Where api/server.py listens. Override with VITE_API_URL for another port. */
@@ -43,6 +44,18 @@ export async function whatIf(text: string, seeds: number[], parent = 'baseline')
 /** Re-run an already translated scenario (e.g. with more seeds). No model call for translation. */
 export function runScenario(scenario: UserScenario, seeds: number[]): Promise<WhatIfAnswer> {
   return post<WhatIfAnswer>('/run', { scenario, seeds }, 300_000)
+}
+
+/** One model pass that rewords a canned movement sketch to fit the plan and shop set-up.
+ *  Returns null when the backend can't (offline, no key, old backend) so the caller keeps the raw sketch. */
+export async function tailorSketch(text: string, sketch: MockAnswer): Promise<MockAnswer | null> {
+  try {
+    const r = await post<{ sketch?: MockAnswer; tailored?: boolean; error?: string }>('/sketch', { text, sketch }, 60_000)
+    if (r.error || r.tailored !== true || !r.sketch) return null
+    return r.sketch
+  } catch {
+    return null
+  }
 }
 
 export async function reviewRun(runId: string, refresh = false): Promise<AIReview> {

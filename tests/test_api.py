@@ -173,6 +173,27 @@ def main():
               (out.get("fallback_used"), out.get("served", {}).get("scenario")), (True, "cf_discount"))
         svc._pool.shutdown(wait=True)
 
+        print("\nsketch: canned movement sketch reworded against the plan")
+        raw = {"headline": "h", "movements": ["m1"], "drivers": ["price"], "net": "n"}
+        fitted = {"headline": "Cheaper latte at Simffee", "movements": ["two students switch"],
+                  "drivers": ["price"], "net": "small gain"}
+        with patch.object(llm, "available", return_value=True), \
+                patch.object(llm, "complete_json", return_value=(fitted, {})) as call:
+            out = svc.sketch("cut the latte to 40k", raw)
+        check("tailored by one model call", (out["tailored"], out["sketch"], call.call_count), (True, fitted, 1))
+        check("plan and shops reach the prompt", ("cut the latte" in call.call_args.args[1], "Simffee Coffee" in call.call_args.args[1]), (True, True))
+        with patch.object(llm, "available", return_value=True), \
+                patch.object(llm, "complete_json", side_effect=RuntimeError("LLM transport failed")):
+            out = svc.sketch("cut the latte to 40k", raw)
+        check("transport failure -> untouched sketch", (out["tailored"], out["sketch"]), (False, raw))
+        with patch.object(llm, "available", return_value=True), \
+                patch.object(llm, "complete_json", return_value=({"headline": "", "movements": [], "drivers": [], "net": ""}, {})):
+            out = svc.sketch("x", raw)
+        check("empty reply -> untouched sketch", out["tailored"], False)
+        with patch.object(llm, "available", return_value=False):
+            out = svc.sketch("x", raw)
+        check("no key -> untouched sketch", (out["tailored"], out["sketch"]), (False, raw))
+
         print("\ncost_report")
         rows = cost_report.read(live / "u_reopen")
         r = rows[0]

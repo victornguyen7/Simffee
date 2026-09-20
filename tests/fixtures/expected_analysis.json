@@ -1,0 +1,48 @@
+{
+  "break_day": 4,
+  "naive": {
+    "driver": "price",
+    "magnitude": 0.333,
+    "label": "Price +3k"
+  },
+  "actual": {
+    "driver": "hours",
+    "histogram": {
+      "hours": 5.0,
+      "habit": 1.5,
+      "curiosity": 1.0,
+      "price": 0.5,
+      "social": 0.5
+    }
+  },
+  "surprise": true,
+  "impact": {
+    "lost_total": 4,
+    "lost_by_decision": 3,
+    "lost_anyway": 1,
+    "lost_twins": [
+      "T01",
+      "T02",
+      "T05",
+      "T08"
+    ],
+    "anyway_twins": [
+      "T05"
+    ]
+  },
+  "whatif": {
+    "cf_restore_hours": {
+      "returns": 3,
+      "of": 4
+    },
+    "cf_discount": {
+      "returns": 1,
+      "of": 4
+    }
+  },
+  "day7_split": {
+    "simffee": 4,
+    "starbucks": 5,
+    "none": 1
+  }
+}

@@ -1,12 +1,17 @@
+/* Coffee shop interior. Fills the tab, canvas on the left, controls on the right. */
+
 .shop {
-  width: 100%;
-  max-width: 900px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 270px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 58px 20px 20px;
 }
 
 .shop__head {
+  grid-column: 1 / -1;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -16,7 +21,7 @@
 
 .shop__title {
   margin: 0;
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 600;
   letter-spacing: -0.015em;
 }
@@ -64,14 +69,13 @@
   padding: 11px 13px;
 }
 
+/* The old wrapper is now just a pass through, the grid does the work. */
 .shop__body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 230px;
-  gap: 16px;
-  align-items: start;
+  display: contents;
 }
 
 .shop__stage {
+  min-height: 0;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -79,22 +83,28 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  align-items: center;
+  justify-content: center;
 }
 
 .shop__canvas {
-  width: 100%;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
   height: auto;
   display: block;
   border-radius: 8px;
-  /* keeps the pixel grid crisp instead of blurring when scaled up */
   image-rendering: pixelated;
 }
 
 .shop__progress {
+  width: 100%;
   height: 4px;
   background: var(--line);
   border-radius: 999px;
   overflow: hidden;
+  flex: 0 0 auto;
 }
 
 .shop__progress span {
@@ -105,6 +115,8 @@
 }
 
 .shop__panel {
+  min-height: 0;
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -163,13 +175,16 @@
 
 .readout dd.bad,
 .days__num.bad {
-  color: #e06a7c;
+  color: #c2564f;
 }
 
 .days {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  max-height: 128px;
+  overflow-y: auto;
 }
 
 .days__title {
@@ -219,11 +234,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 880px) {
-  .shop__body {
+@media (max-width: 900px) {
+  .shop {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .days__row {
-    grid-template-columns: 52px minmax(40px, 1fr) 70px 58px;
   }
 }

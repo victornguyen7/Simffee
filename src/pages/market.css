@@ -1,0 +1,99 @@
+.market {
+  width: 100%;
+  max-width: 1000px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.market__head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.market__title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.market__h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.check {
+  margin: 0;
+  font-size: 13px;
+}
+
+.check--ok {
+  color: #3f7a55;
+}
+
+.check--bad {
+  color: #c2564f;
+  font-weight: 600;
+}
+
+.check__details {
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.grid td {
+  padding: 9px 13px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.grid tr:last-child td {
+  border-bottom: none;
+}
+
+.grid__total td {
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.dim {
+  color: var(--muted);
+}
+
+.good {
+  color: #3f7a55;
+  font-weight: 600;
+}
+
+.bad {
+  color: #c2564f;
+  font-weight: 600;
+}

@@ -10,14 +10,16 @@ export interface AgentState {
   bubble: { text: string; tone: 'think' | 'talk' } | null
 }
 
-const routeCache = new Map<string, [number, number][]>()
+export type Route = [number, number][]
+
+const routeCache = new WeakMap<Town, Map<string, Route>>()
+const warnedRoutes = new WeakMap<Town, Set<string>>()
 
 function routeKey(from: [number, number], to: [number, number]) {
   return `${from[0]},${from[1]}>${to[0]},${to[1]}`
 }
 
-function isWalkable(town: Town, x: number, y: number, start: [number, number], goal: [number, number]) {
-  if ((x === start[0] && y === start[1]) || (x === goal[0] && y === goal[1])) return true
+function isWalkable(town: Town, x: number, y: number) {
   return (
     town.ground[idx(x, y)] === 'path' ||
     town.ground[idx(x, y)] === 'plaza' ||
@@ -25,15 +27,44 @@ function isWalkable(town: Town, x: number, y: number, start: [number, number], g
   ) && town.props[idx(x, y)] === 'none'
 }
 
-export function routeBetween(town: Town, from: [number, number], to: [number, number]): [number, number][] {
+export function entranceOf(town: Town, tile: [number, number]): [number, number] {
+  const [x, y] = tile
+  const prop = town.props[idx(x, y)]
+  if (prop !== 'house' && prop !== 'simffee' && prop !== 'starbucks') return tile
+  const candidates: [number, number][] = [
+    [x, y + 1],
+    [x + 1, y],
+    [x - 1, y],
+    [x, y - 1],
+  ]
+  return candidates.find(([cx, cy]) => cx >= 0 && cy >= 0 && cx < GRID && cy < GRID && isWalkable(town, cx, cy)) ?? tile
+}
+
+export function routeBetween(town: Town, from: [number, number], to: [number, number]): Route {
   const start: [number, number] = [Math.round(from[0]), Math.round(from[1])]
   const goal: [number, number] = [Math.round(to[0]), Math.round(to[1])]
   const key = routeKey(start, goal)
-  const cached = routeCache.get(key)
+  let townRoutes = routeCache.get(town)
+  if (!townRoutes) {
+    townRoutes = new Map()
+    routeCache.set(town, townRoutes)
+  }
+  const cached = townRoutes.get(key)
   if (cached) return cached
+  if (!isWalkable(town, start[0], start[1]) || !isWalkable(town, goal[0], goal[1])) {
+    const warnings = warnedRoutes.get(town) ?? new Set<string>()
+    if (import.meta.env.DEV && !warnings.has(key)) {
+      console.warn(`No walkable route from ${key}; keeping the twin at its entrance`)
+      warnings.add(key)
+      warnedRoutes.set(town, warnings)
+    }
+    const fallback = [start]
+    townRoutes.set(key, fallback)
+    return fallback
+  }
   if (start[0] === goal[0] && start[1] === goal[1]) {
     const same = [start]
-    routeCache.set(key, same)
+    townRoutes.set(key, same)
     return same
   }
 
@@ -51,7 +82,7 @@ export function routeBetween(town: Town, from: [number, number], to: [number, nu
         next[0] >= GRID ||
         next[1] >= GRID ||
         previous.has(nextKey) ||
-        !isWalkable(town, next[0], next[1], start, goal)
+        !isWalkable(town, next[0], next[1])
       ) {
         continue
       }
@@ -60,19 +91,25 @@ export function routeBetween(town: Town, from: [number, number], to: [number, nu
     }
   }
 
-  const route: [number, number][] = []
+  if (!previous.has(goal.join(','))) {
+    const warnings = warnedRoutes.get(town) ?? new Set<string>()
+    if (import.meta.env.DEV && !warnings.has(key)) {
+      console.warn(`No walkable route from ${key}; keeping the twin at its entrance`)
+      warnings.add(key)
+      warnedRoutes.set(town, warnings)
+    }
+    const fallback = [start]
+    townRoutes.set(key, fallback)
+    return fallback
+  }
+  const route: Route = []
   let current: [number, number] | undefined = goal
   while (current) {
     route.push(current)
     current = previous.get(current.join(',')) ?? undefined
   }
-  if (!previous.has(goal.join(','))) {
-    const fallback = [from, to]
-    routeCache.set(key, fallback)
-    return fallback
-  }
   route.reverse()
-  routeCache.set(key, route)
+  townRoutes.set(key, route)
   return route
 }
 
@@ -98,12 +135,16 @@ function routedPoint(town: Town, from: [number, number], to: [number, number], p
   return pointOnRoute(routeBetween(town, from, to), progress)
 }
 
+function routeExists(town: Town, from: [number, number], to: [number, number]) {
+  return from[0] === to[0] && from[1] === to[1] || routeBetween(town, from, to).length > 1
+}
+
 function wanderTarget(town: Town, home: [number, number]): [number, number] {
   const queue: { point: [number, number]; distance: number }[] = [{ point: home, distance: 0 }]
   const seen = new Set([home.join(',')])
   for (let head = 0; head < queue.length; head++) {
     const { point, distance } = queue[head]
-    if (distance >= 2 && isWalkable(town, point[0], point[1], home, home)) return point
+    if (distance >= 2 && isWalkable(town, point[0], point[1])) return point
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const next: [number, number] = [point[0] + dx, point[1] + dy]
       const key = next.join(',')
@@ -113,7 +154,7 @@ function wanderTarget(town: Town, home: [number, number]): [number, number] {
         next[0] >= GRID ||
         next[1] >= GRID ||
         seen.has(key) ||
-        !isWalkable(town, next[0], next[1], home, home)
+        !isWalkable(town, next[0], next[1])
       ) {
         continue
       }
@@ -160,8 +201,8 @@ export function agentsAt(
   const taken = new Map<string, number>()
   return runs.twins.map((twin) => {
     const row = byTwin.get(twin.id)
-    const home = cellToTile(twin.home[0], twin.home[1])
-    const base = targetTile(runs, row, twin)
+    const home = entranceOf(town, cellToTile(twin.home[0], twin.home[1]))
+    const base = entranceOf(town, targetTile(runs, row, twin))
     const queued = taken.get(base.join()) ?? 0
     taken.set(base.join(), queued + 1)
     const spot = QUEUE_SPOTS[queued % QUEUE_SPOTS.length]
@@ -179,7 +220,7 @@ export function agentsAt(
     } else if (phase < 0.55) {
       const routeProgress = phase / 0.55
       pos = routedPoint(town, home, base, routeProgress)
-      if (routeProgress > 0.9) {
+      if (routeProgress > 0.9 && routeExists(town, home, base)) {
         const blend = (routeProgress - 0.9) / 0.1
         pos = [pos[0] + spot[0] * blend, pos[1] + spot[1] * blend]
       }
@@ -189,7 +230,7 @@ export function agentsAt(
     } else {
       const routeProgress = (phase - 0.85) / 0.15
       pos = routedPoint(town, base, home, routeProgress)
-      if (routeProgress < 0.1) {
+      if (routeProgress < 0.1 && routeExists(town, base, home)) {
         const blend = 1 - routeProgress / 0.1
         pos = [pos[0] + spot[0] * blend, pos[1] + spot[1] * blend]
       }

@@ -65,6 +65,47 @@ function rand(seed: number) {
   }
 }
 
+function walkableForCheck(ground: Ground[], props: Prop[], x: number, y: number) {
+  return (
+    inBounds(x, y) &&
+    (ground[idx(x, y)] === 'path' || ground[idx(x, y)] === 'plaza' || ground[idx(x, y)] === 'sand') &&
+    props[idx(x, y)] === 'none'
+  )
+}
+
+function entranceForCheck(ground: Ground[], props: Prop[], tile: [number, number]): [number, number] {
+  const [x, y] = tile
+  const prop = props[idx(x, y)]
+  if (prop !== 'house' && prop !== 'simffee' && prop !== 'starbucks') return tile
+  const candidates: [number, number][] = [
+    [x, y + 1],
+    [x + 1, y],
+    [x - 1, y],
+    [x, y - 1],
+  ]
+  return candidates.find(([cx, cy]) => walkableForCheck(ground, props, cx, cy)) ?? tile
+}
+
+function hasWalkableRoute(ground: Ground[], props: Prop[], from: [number, number], to: [number, number]) {
+  if (!walkableForCheck(ground, props, from[0], from[1]) || !walkableForCheck(ground, props, to[0], to[1])) {
+    return false
+  }
+  const queue: [number, number][] = [from]
+  const seen = new Set([from.join(',')])
+  for (let head = 0; head < queue.length; head++) {
+    const current = queue[head]
+    if (current[0] === to[0] && current[1] === to[1]) return true
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const next: [number, number] = [current[0] + dx, current[1] + dy]
+      const key = next.join(',')
+      if (seen.has(key) || !walkableForCheck(ground, props, next[0], next[1])) continue
+      seen.add(key)
+      queue.push(next)
+    }
+  }
+  return false
+}
+
 export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: string): Town {
   const ground: Ground[] = new Array(GRID * GRID).fill('grass')
   const props: Prop[] = new Array(GRID * GRID).fill('none')
@@ -91,6 +132,14 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
   for (const twin of twins) {
     const [tx, ty] = cellToTile(twin.home[0], twin.home[1])
     props[idx(tx, ty)] = 'house'
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue
+        const nx = tx + dx
+        const ny = ty + dy
+        if (inBounds(nx, ny) && ground[idx(nx, ny)] === 'grass') ground[idx(nx, ny)] = 'path'
+      }
+    }
   }
 
   for (const [id, shop] of Object.entries(shops)) {
@@ -106,6 +155,14 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
       const nx = tx + dx
       const ny = ty + dy
       if (inBounds(nx, ny) && ground[idx(nx, ny)] === 'grass') ground[idx(nx, ny)] = 'plaza'
+    }
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 2; dy++) {
+        if (dx === 0 && dy === 0) continue
+        const nx = tx + dx
+        const ny = ty + dy
+        if (inBounds(nx, ny) && ground[idx(nx, ny)] === 'grass') ground[idx(nx, ny)] = 'plaza'
+      }
     }
   }
 
@@ -186,7 +243,7 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
   const furniture: [number, number, Prop][] = [
     [13, 7, 'fountain'],
     [6, 9, 'bench'],
-    [10, 9, 'bench'],
+    [14, 9, 'bench'],
     [5, 15, 'lamp'],
     [17, 7, 'lamp'],
     [21, 12, 'kiosk'],
@@ -194,6 +251,20 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
   for (const [x, y, prop] of furniture) {
     const tile = idx(x, y)
     if ((ground[tile] === 'path' || ground[tile] === 'plaza') && props[tile] === 'none') props[tile] = prop
+  }
+
+  if (import.meta.env.DEV) {
+    const shopEntrances = Object.values(shops).map((shop) =>
+      entranceForCheck(ground, props, cellToTile(shop.position[0], shop.position[1])),
+    )
+    for (const twin of twins) {
+      const home = entranceForCheck(ground, props, cellToTile(twin.home[0], twin.home[1]))
+      for (const shop of shopEntrances) {
+        if (!hasWalkableRoute(ground, props, home, shop)) {
+          console.warn(`No default town route from ${home.join(',')} to ${shop.join(',')}`)
+        }
+      }
+    }
   }
 
   return { ground, props }

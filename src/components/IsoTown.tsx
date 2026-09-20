@@ -7,7 +7,6 @@ import {
   GRID,
   TILE_H,
   TILE_W,
-  cellToTile,
   idx,
   inBounds,
   screenToTile,
@@ -204,12 +203,18 @@ export default function IsoTown({
     const originY = rect.height / 2 - (GRID * TILE_H) / 2 + cam.y
     const px = (clientX - rect.left - originX) / cam.zoom
     const py = (clientY - rect.top - originY) / cam.zoom
-    for (const id of ['simffee', 'starbucks'] as const) {
-      const [tx, ty] = cellToTile(runs.shops[id].position[0], runs.shops[id].position[1])
-      const [sx, sy] = tileToScreen(tx, ty)
-      if (Math.abs(px - sx) < TILE_W / 2 && py - sy < TILE_H / 2 && py - sy > -62) return id
+    let hit: { id: 'simffee' | 'starbucks'; depth: number } | null = null
+    for (let ty = 0; ty < GRID; ty++) {
+      for (let tx = 0; tx < GRID; tx++) {
+        const prop = town.props[idx(tx, ty)]
+        if (prop !== 'simffee' && prop !== 'starbucks') continue
+        const [sx, sy] = tileToScreen(tx, ty)
+        if (Math.abs(px - sx) > TILE_W / 2 || py - sy > TILE_H / 2 || py - sy < -62) continue
+        const depth = tx + ty
+        if (!hit || depth > hit.depth) hit = { id: prop, depth }
+      }
     }
-    return null
+    return hit?.id ?? null
   }
 
   return (

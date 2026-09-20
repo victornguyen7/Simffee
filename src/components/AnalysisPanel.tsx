@@ -60,6 +60,7 @@ export default function AnalysisPanel({ runs, rows, day, selectedTwin, onSelectT
 
       <section>
         <h3>what actually happened</h3>
+        <p className="muted">Analyzer output for the baseline week, across all seeds.</p>
         <p>
           Sales broke on day {a.break_day}, down {pct(a.drop)}. The obvious read is{' '}
           <b>{a.naive.label}</b>, but the simulation attributes it to <b>{a.actual.driver}</b>.

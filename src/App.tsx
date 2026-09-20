@@ -10,6 +10,8 @@ import { clearTown, defaultTown, loadTown, saveTown, type Town } from './town/mo
 import type { Runs, ShopId } from './types'
 
 const DAY_MS = 7000
+/** Agents stand at their shop with their reasoning showing. */
+const PAUSED_PHASE = 0.7
 
 export default function App() {
   const [runs, setRuns] = useState<Runs | null>(null)
@@ -19,7 +21,7 @@ export default function App() {
   const [seed, setSeed] = useState(0)
   const [day, setDay] = useState(1)
   const [playing, setPlaying] = useState(true)
-  const [phase, setPhase] = useState(0)
+  const [phase, setPhase] = useState(PAUSED_PHASE)
   const [brush, setBrush] = useState<Brush>(null)
   const [selectedTwin, setSelectedTwin] = useState<string | null>(null)
   const [interior, setInterior] = useState<ShopId | null>(null)
@@ -126,7 +128,7 @@ export default function App() {
             onSeed={setSeed}
             onDay={(d) => {
               setDay(d)
-              setPhase(0)
+              setPhase(playing ? 0 : PAUSED_PHASE)
             }}
             onPlaying={setPlaying}
           />
@@ -134,7 +136,7 @@ export default function App() {
             runs={runs}
             town={town}
             rows={rows}
-            phase={playing ? phase : 0.7}
+            phase={phase}
             brush={brush}
             selectedTwin={selectedTwin}
             onPaint={paint}

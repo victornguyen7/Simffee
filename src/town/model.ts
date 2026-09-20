@@ -144,5 +144,5 @@ export function tileToScreen(x: number, y: number): [number, number] {
 export function screenToTile(sx: number, sy: number): [number, number] {
   const x = sy / TILE_H + sx / TILE_W
   const y = sy / TILE_H - sx / TILE_W
-  return [Math.floor(x), Math.floor(y)]
+  return [Math.round(x), Math.round(y)]
 }

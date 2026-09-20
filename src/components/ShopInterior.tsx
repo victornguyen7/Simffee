@@ -34,8 +34,12 @@ export default function ShopInterior({ runs, shopId, rows, day, sales, onClose }
       if (!ctx) return
       const dpr = window.devicePixelRatio || 1
       const rect = canvas.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
+      const bw = Math.round(rect.width * dpr)
+      const bh = Math.round(rect.height * dpr)
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw
+        canvas.height = bh
+      }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
       const w = rect.width

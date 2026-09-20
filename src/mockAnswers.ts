@@ -116,7 +116,7 @@ export const MOCK_ANSWERS: MockAnswer[] = [
       'sales per seat drop as people nurse one americano for two hours',
     ],
     drivers: ['amenities', 'dwell time'],
-    net: '+2 customers on the final day vs day 1',
+    net: '+3 customers on the final day vs day 1',
   },
   {
     headline: 'A rainy week moves everyone to whoever is closest',
@@ -166,7 +166,7 @@ export const MOCK_ANSWERS: MockAnswer[] = [
       'drink quality is unchanged; the movement is entirely social',
     ],
     drivers: ['staff', 'social habit'],
-    net: '+1 customer on the final day vs day 1',
+    net: '−2 customers on the final day vs day 1',
   },
   {
     headline: 'Seasonal pumpkin drinks pull a crowd that leaves with the season',
@@ -226,7 +226,7 @@ export const MOCK_ANSWERS: MockAnswer[] = [
       'turnover per seat rises, but the room feels empty at 3pm',
     ],
     drivers: ['seating', 'social habit'],
-    net: '−4 customers on the final day vs day 1',
+    net: '−5 customers on the final day vs day 1',
   },
   {
     headline: 'A student discount fills the quiet hours with people who tell each other',

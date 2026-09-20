@@ -3,6 +3,29 @@
 Companion to [BACKEND_PLAN.md](./BACKEND_PLAN.md). Covers the Analyzer + build pipeline seat only.
 Read alongside [B1_STATUS.md](./B1_STATUS.md).
 
+## Integration update — 2026-09-20
+
+Upstream `f6aa19f` has been reconciled with the local simulation repairs. The historical
+report below describes the upstream checkpoint; these notes supersede its run commands,
+confidence/fallback behavior, and narration status:
+
+- Retained `whatif_confidence()`, the lost-customer-only cohort, `_whatif()` bundle fields,
+  and the `impact.per_twin.cf_null` contract. Confidence now requires three distinct usable
+  evidence seeds for both headline and branch conclusions. A branch seed with earlier
+  fallback decisions is excluded even if its last-day row is successful autopilot.
+- Retained fixture-derived narration test inputs, but production narration is now
+  deterministic and offline. Incomplete trajectories suppress causal claims, not merely
+  confidence. Do not relabel fallback drivers to manufacture the intended demo conclusion.
+- `tools/build_demo.sh` now defaults to offline, strict verification in a fresh temporary
+  directory. Use `--out NEW_DIRECTORY --cache DIRECTORY --model MODEL` to choose artifacts;
+  a nonempty destination is rejected. `--live` is explicit and requires `GROQ_API_KEY` plus
+  prior approval of model/spend. The script never promotes artifacts to `public/runs.json`.
+- Both upstream and local regression cases are retained. Run `python3 tests/test_b2_sync.py -v`
+  alongside the commands in `engine/README.md`. Stubbed end-to-end results are test evidence,
+  not fresh model predictions; real-model verification still needs a compatible live cache.
+- T08/T10 behavior and control-arm design remain review items in SPEC §8. No customer data
+  was tuned during reconciliation, and the frontend remains outside the backend repair.
+
 **Where we are: every B2 milestone that does not need an API key is done**, including the hour
 7–9 items (`narrate.py`, `PROTOCOL.md`, single-source enums) that the previous version of this
 report listed as "next". The analyzer runs unmodified on B1's real engine output. What remains is

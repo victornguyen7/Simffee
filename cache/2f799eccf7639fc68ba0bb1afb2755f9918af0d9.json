@@ -1,0 +1,14 @@
+{
+  "_model": "openai/gpt-oss-20b",
+  "_temperature": 0.3,
+  "_usage": {
+    "input_tokens": 1058,
+    "output_tokens": 440
+  },
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee closed, Starbucks open, I can get latte before shift, within wait limit, and I'm mildly curious about the new fall menu.",
+  "secondary_driver": "curiosity",
+  "valence": 0.5
+}

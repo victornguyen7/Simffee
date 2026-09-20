@@ -1,0 +1,14 @@
+{
+  "_model": "openai/gpt-oss-20b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1095,
+    "output_tokens": 627
+  },
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "price",
+  "reasoning": "Simffee is closed at 06:40 and I can't afford Starbucks' 65,000d latte. I don't want to wait beyond my patience limit or exceed my 60,000d budget, so I skip coffee.",
+  "secondary_driver": "hours",
+  "valence": -0.7
+}

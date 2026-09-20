@@ -32,6 +32,7 @@ def init_state(twins: list[Twin]) -> dict[str, Any]:
         "latent_interest": {t.id: dict(t.mechanism["latent_interest"]) for t in twins},
         "inbox": {t.id: [] for t in twins},
         "history": {t.id: [] for t in twins},
+        "visited": {t.id: sorted(decide.experienced_shops(t, {})) for t in twins},
     }
 
 
@@ -42,6 +43,7 @@ def _twin_view(state: dict[str, Any], twin_id: str) -> dict[str, Any]:
         "habit": state["habit"][twin_id],
         "latent_interest": state["latent_interest"][twin_id],
         "history": state["history"][twin_id],
+        "visited": state["visited"][twin_id],
     }
 
 
@@ -58,6 +60,7 @@ def save_snapshot(state, out, scenario_id, seed, day, rng) -> None:
         "latent_interest": state["latent_interest"],
         "inbox": state["inbox"],
         "history": state["history"],
+        "visited": state["visited"],
         "rng_state": rng.getstate(),
     }, ensure_ascii=False, indent=2))
 
@@ -76,6 +79,7 @@ def load_snapshot(out: Path, scenario_id: str, seed: int, day: int):
         "latent_interest": raw["latent_interest"],
         "inbox": raw["inbox"],
         "history": raw["history"],
+        "visited": raw.get("visited", {tid: [] for tid in raw["habit"]}),
     }
     rng = random.Random()
     rng.setstate(_retuple(raw["rng_state"]))
@@ -133,6 +137,7 @@ def run_day(
 
         choice = decision["choice"]
         if choice != "none":
+            state["visited"][twin.id] = sorted(set(state["visited"][twin.id]) | {choice})
             # SPEC 2.3: a first visit converts curiosity into experience.
             if latent.get(choice, 0.0) > 0.0 and choice != regular:
                 latent[choice] = 0.0
@@ -148,6 +153,8 @@ def run_day(
             valence=decision["valence"], reasoning=decision["reasoning"],
             state_after={"habit": dict(habit), "latent_interest": dict(latent)},
             told=[], llm_failed=decision.get("llm_failed", False),
+            decision_source=decision.get("decision_source", "autopilot"),
+            llm_model=decision.get("llm_model"), llm_cache_key=decision.get("llm_cache_key"),
         ))
         pending.append((twin, choice, decision["valence"]))
 

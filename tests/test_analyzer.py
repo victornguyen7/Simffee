@@ -90,7 +90,7 @@ def main():
           round(0.7 * conf["stability"] + 0.3 * conf["support"], 4))
     check("stability below 1.0 (seeds disagree somewhere)", conf["stability"] < 1.0, True)
 
-    all_failed = [[dict(r, llm_failed=True) if r["mode"] == "reappraisal" else r
+    all_failed = [[{**r, "llm_failed": True} if r["mode"] == "reappraisal" else r
                    for r in rows("baseline", s)] for s in range(5)]
     guarded = confidence.confidence(all_failed, brk["break_day"], twins)
     check("all-fallback run reports unmeasured, not 1.0", (guarded["value"], guarded["unmeasured"]), (None, True))
@@ -110,6 +110,22 @@ def main():
           > pairwise.returns(base, rows("cf_discount"), SHOP)["returns"], True)
     empty = confidence.whatif_confidence([rows("cf_discount", s) for s in range(5)], [], 5, 7, twins)
     check("nothing lost -> unmeasured, not 1.0", (empty["value"], empty["unmeasured"]), (None, True))
+
+    # Test minimum seeds guard - one twin with only one usable seed
+    one_seed_rows = []
+    for s in range(5):
+        seed_rows = []
+        for r in rows("baseline", s):
+            # Copy the row to avoid modifying original
+            row_copy = dict(r)
+            if s > 0 and r["twin"] == "T01" and r["mode"] == "reappraisal":
+                row_copy["llm_failed"] = True
+            seed_rows.append(row_copy)
+        one_seed_rows.append(seed_rows)
+    one_seed_conf = confidence.confidence(one_seed_rows, brk["break_day"], twins)
+    check("twin with one usable seed is in unmeasured list",
+          "T01" in one_seed_conf["detail"]["stability"]["unmeasured_twins"],
+          True)
 
     print("evidence")
     ev = attribution.select_evidence(base, brk["break_day"], actual["driver"], SHOP)

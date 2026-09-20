@@ -22,11 +22,13 @@ def key(
     seed: int,
     state_before: dict[str, Any],
     shops_today: dict[str, Any],
+    context: dict[str, Any] | None = None,
 ) -> str:
     payload = json.dumps(
         {
+            "version": 2,
             "twin": twin_id, "day": day, "scenario": scenario_id, "seed": seed,
-            "state": state_before, "shops": shops_today,
+            "state": state_before, "shops": shops_today, "context": context,
         },
         sort_keys=True, separators=(",", ":"), ensure_ascii=False,
     )
@@ -37,7 +39,11 @@ def get(cache_key: str, cache_dir: Path = CACHE) -> dict[str, Any] | None:
     path = cache_dir / f"{cache_key}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    try:
+        value = json.loads(path.read_text())
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def put(cache_key: str, value: dict[str, Any], cache_dir: Path = CACHE) -> None:

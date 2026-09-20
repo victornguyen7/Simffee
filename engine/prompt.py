@@ -11,6 +11,7 @@ from typing import Any
 
 from .loader import Twin
 from .schema import DRIVERS
+from .timeutil import is_open_at
 
 # Which why-transcript lines matter depends on what shocked the twin today.
 # Keyword match, no embeddings (SPEC 4.3 block 1).
@@ -57,7 +58,12 @@ def _habit_in_words(habit: float, shop_name: str) -> str:
     return f"you almost never go to {shop_name}"
 
 
-def _latent_in_words(latent: float, shop_name: str) -> str:
+def _latent_in_words(latent: float, shop_name: str, twin: Twin, target_shop: str) -> str:
+    """Give latent interest magnitude and context."""
+    if latent >= 0.55:
+        # High interest - add context about why
+        reason = _latent_reason(twin, target_shop)
+        return f"you are strongly drawn to {shop_name} — {reason}"
     if latent >= 0.4:
         return f"you have been meaning to try {shop_name} for a while"
     if latent >= 0.2:
@@ -65,6 +71,14 @@ def _latent_in_words(latent: float, shop_name: str) -> str:
     if latent > 0.0:
         return f"{shop_name} barely registers with you"
     return f"you have no particular interest in {shop_name}"
+
+
+def _latent_reason(twin: Twin, shop_id: str) -> str:
+    """Determine why the twin has latent interest in a shop."""
+    # Check social links who might have mentioned it
+    # Check marketing
+    # Default fallback
+    return "your recorded interest is high, but no specific endorsement is recorded"
 
 
 def build(
@@ -95,7 +109,7 @@ def build(
         gap = twin.say_do_gap
         out.append(
             f"\nYou describe yourself this way: \"{gap.get('says', '')}\". "
-            f"Your actual 30-day log shows: {gap.get('does', '')} "
+            f"Your actual 30-day log shows: {gap.get('log_shows', gap.get('does', ''))} "
             f"Act like the log."
         )
 
@@ -109,16 +123,20 @@ def build(
             f"It is {p['usual_time']}. Something is off at {regular_name}, "
             f"your usual place: {_shock_sentence(disr_source, shops_today[regular], twin)}"
         )
+    if not is_open_at(shops_today[regular], twin.usual_time):
+        out.append("Your usual place cannot serve you today. You must choose between an alternative or go without coffee.")
+    elif twin.usual_order not in shops_today[regular]["products"]:
+        out.append("Your usual item is unavailable; consider another item, another shop, or skipping.")
 
     # 3 — options
     out.append("\n## Your options")
     for opt in options:
         blocks = "block" if opt["distance"] == 1 else "blocks"
         bits = [
-            f"{opt['distance']} {blocks} away"
-            + ("" if opt["within_walk_tolerance"] else " (further than you usually walk)"),
-            f"{opt['price']:,}d for your {p['usual_order']}"
-            + ("" if opt["within_budget"] else " (over your daily budget)"),
+            f"{opt['distance']} {blocks} away",
+            (f"{opt['price']:,}d for your {p['usual_order']}" if opt["has_usual_order"]
+             else f"{opt['price']:,}d for the cheapest available item")
+            + ("" if opt["within_budget"] else f" ({opt['price'] - p['daily_budget_vnd']:,}d more than your daily budget)"),
             f"opens {opt['opens']}"
             + ("" if opt["open_at_usual_time"] else f" -- shut at {p['usual_time']}"),
             f"about {opt['avg_wait_min']} min wait",
@@ -133,9 +151,12 @@ def build(
         # so the regular shop gets the habit sentence only.
         sense = _habit_in_words(opt["habit"], opt["name"])
         if opt["shop"] != regular:
-            sense += f"; {_latent_in_words(opt['latent_interest'], opt['name'])}"
+            if opt.get("visited"):
+                sense += "; you have visited before; weigh your experience, not just curiosity"
+            else:
+                sense += f"; {_latent_in_words(opt['latent_interest'], opt['name'], twin, opt['shop'])}"
         out.append(f"  {sense}.")
-    out.append("- **Skip it**: no coffee today.")
+    out.append(f"- **Skip it**: no coffee at all today, and you have your full routine ahead of you.")
 
     # 4 — three-day memory
     if history:

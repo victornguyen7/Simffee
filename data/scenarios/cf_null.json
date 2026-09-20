@@ -1,6 +1,8 @@
 {
   "id": "cf_null",
-  "description": "Control arm: what if we had changed nothing. Days 1-3 are identical to the baseline by determinism, so no fork is needed.",
+  "description": "Control arm: what if we had changed nothing, with ambient variation. Days 1-3 are identical to the baseline by determinism, so no fork is needed. The day-6 wait spike provides ambient variation unrelated to the hours shock.",
   "parent": null,
-  "overrides": []
+  "overrides": [
+    {"from_day": 6, "shop": "simffee", "set": {"avg_wait_min": 12}}
+  ]
 }

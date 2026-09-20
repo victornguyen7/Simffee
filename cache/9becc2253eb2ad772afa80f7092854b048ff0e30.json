@@ -1,0 +1,14 @@
+{
+  "_model": "openai/gpt-oss-20b",
+  "_temperature": 0.3,
+  "_usage": {
+    "input_tokens": 1047,
+    "output_tokens": 490
+  },
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "I was at Simffee at 06:40, but it was closed until 07:00. I can't afford Starbucks and it's too far. So I skip coffee today.",
+  "secondary_driver": "curiosity",
+  "valence": -0.5
+}

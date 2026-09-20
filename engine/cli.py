@@ -18,7 +18,7 @@ from . import decide, llm
 from .cache import CACHE
 from .loader import DATA, load_shops
 from .loop import RUNS, run
-from .schema import DAYS, SEEDS, validate_row
+from .schema import DAYS, SEEDS, coverage, validate_row
 
 # Parents before children: a fork reads its parent's snapshot.
 ALL_SCENARIOS = ["baseline", "cf_null", "cf_discount", "cf_restore_hours"]
@@ -71,37 +71,51 @@ def main() -> int:
                     help="never call the API; uncached reappraisals fall back and flag the row")
     ap.add_argument("--model", default=None, help=f"override the model (default {llm.MODEL})")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--require-complete", action="store_true", help="exit 2 on fallbacks or missing/mixed model provenance")
     args = ap.parse_args()
 
     if args.model:
         llm.MODEL = args.model
     decide.reset_stats()
+    llm.reset_stats()
 
     scenarios = ALL_SCENARIOS if args.all else [args.scenario]
     seeds = parse_seeds(args.seeds) if args.seeds else list(SEEDS)
     shop_ids = frozenset(load_shops(args.data))
 
     failed = False
+    all_rows = []
     for scenario in scenarios:
         for seed in seeds:
             rows = run(scenario, seed, days=args.days, data=args.data, out=args.out,
                        offline=args.offline, cache_dir=args.cache)
             problems = [p for row in rows for p in validate_row(row, shop_ids)]
             failed = failed or bool(problems)
+            all_rows.extend(rows)
+            report = coverage(rows)
+            status = "complete" if report["complete"] else "incomplete"
+            print(f"{scenario} seed {seed}: {status}; reappraisals {report['reappraisals']}, "
+                  f"fallbacks {report['fallbacks']}, models {report['models']}, "
+                  f"missing provenance {report['missing_provenance']}, skips {report['skips']}")
             if not args.quiet:
                 print(f"\n{scenario} seed {seed} -> {args.out / scenario / f'{seed}.jsonl'}")
                 print(summarise(rows, shop_ids))
     stats = decide.STATS
-    cost = stats["input_tokens"] / 1e6 * 1.00 + stats["output_tokens"] / 1e6 * 5.00
+    # Groq pricing estimate (varies by model, using GPT OSS 20B as reference: $0.075 input, $0.30 output per 1M tokens)
+    transport = llm.STATS
+    report = coverage(all_rows)
     print(
-        f"\nmodel {llm.MODEL}  calls {stats['llm_calls']}  cache hits {stats['cache_hits']}  "
-        f"retries {stats['retries']}  fallbacks {stats['failures']}\n"
-        f"tokens in {stats['input_tokens']:,} out {stats['output_tokens']:,}  "
-        f"approx ${cost:.3f}"
+        f"\nconfigured model {llm.MODEL}; response models {report['models']}\n"
+        f"API attempts {transport['attempts']}  responses {transport['responses']}  "
+        f"cache hits {stats['cache_hits']}  retries {stats['retries']}  fallbacks {stats['failures']}\n"
+        f"reported tokens in {transport['input_tokens']:,} out {transport['output_tokens']:,}; "
+        "cost not estimated (provider/model pricing required)"
     )
-    if stats["failures"]:
-        print("  NOTE: rows with llm_failed=true are excluded from confidence by the analyzer.")
-    return 1 if failed else 0
+    if not report["complete"]:
+        print("  INCOMPLETE: diagnostic trajectories only; fallback decisions are not customer evidence.")
+    if failed:
+        return 1
+    return 2 if args.require_complete and not (report["complete"] and report["provenance_complete"]) else 0
 
 
 if __name__ == "__main__":

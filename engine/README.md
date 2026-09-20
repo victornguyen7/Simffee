@@ -1,79 +1,135 @@
 # engine/ — B1, the simulation
 
-Turns `/data` into `runs/{scenario}/{seed}.jsonl` + per-day state snapshots.
+Turns `/data` into `{out}/{scenario}/{seed}.jsonl` and per-day state snapshots.
 Contracts live in [`schema.py`](./schema.py); B2 imports that module.
 Spec: [../spec/SPEC.md](../spec/SPEC.md) · Plan: [../spec/BACKEND_PLAN.md](../spec/BACKEND_PLAN.md)
 
-## Run
+## Run safely
+
+Python 3.11+, stdlib plus `groq` for live requests (`pip install -r requirements.txt`).
+Offline replay, validation, analysis, narration, and stubbed tests need no credentials.
+The engine automatically reads the repository's private `.env` for `GROQ_API_KEY`,
+`SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`, and `SIMFFEE_MIN_INTERVAL`. Existing shell
+variables take precedence, and `--model` takes precedence over both. Values may
+be quoted; shell commands and variable expansion are never evaluated. `.env`
+and `.env.*` are Git-ignored. Keep the file owner-readable/writable only (`600`),
+enter keys locally, and never use a `VITE_` prefix for a server credential.
+Use a new output directory; do not overwrite an existing demo while diagnosing it.
 
 ```bash
-python3 -m engine.cli --scenario baseline --seeds 0     # one run
-python3 -m engine.cli --all --seeds 0-4                 # 4 scenarios x 5 seeds
-./tools/check_determinism.sh                            # replay + fork fairness
+python3 -m engine.cli --all --seeds 0-4 --offline --out /tmp/simffee-check/runs --cache cache
+python3 tools/validate.py /tmp/simffee-check/runs
+python3 build_runs.py /tmp/simffee-check/runs --offline --out /tmp/simffee-check/bundle.json
 ```
 
-Python 3.11+, stdlib plus `anthropic` (`pip install -r requirements.txt`).
-`--offline` and a warm `cache/` need no API key at all.
+`--offline` never calls the API. A cache miss produces a flagged fallback, not a
+customer preference. Every scenario/seed reports coverage even with `--quiet`.
+Add `--require-complete` to the engine or bundle command for a release gate:
+exit 1 means invalid data; exit 2 means incomplete/unverified trajectories.
+A partial diagnostic run is not a complete seven-day run.
 
-## Modules
+Live generation requires `GROQ_API_KEY` and explicit approval of model and spend.
+The default model is `groq/compound-mini`, overridden by `SIMFFEE_MODEL` or
+`--model`; `SIMFFEE_MAX_TOKENS` defaults to 1600. No embedded credential fallback
+exists. The CLI reports request attempts and response token usage, including
+invalid JSON responses; it does not invent a dollar estimate for unknown pricing.
 
-| File | Spec | Does |
+## Modules and spec mapping
+
+| File/function | Spec | Responsibility |
 | --- | --- | --- |
-| `schema.py` | 3.4 | Constants, enums, `Row`, `validate_row`. The B1/B2 contract. |
-| `loader.py` | 3.1–3.3 | Reads and validates `/data`; normalises habit/latent to every shop. |
-| `resolve.py` | 3.3 | Shop state on day `d`: parent overrides, then the child's. |
-| `disruption.py` | 2.2 | Max over the 5 shock sources, against the day-1 remembered world. |
-| `habit.py` | 2.1 | `h += a(1-h)` on the choice, `h *= (1-d)` on the rest. |
-| `gossip.py` | 2.3, 2.4 | Marketing drip, inbox from yesterday, one talkativeness roll per twin. |
-| `decide.py` | 4.2, 4.3 | `autopilot()` and `reappraise()` — cache, validate, retry, fallback. |
-| `prompt.py` | 4.3 | The four prompt blocks: identity, today, options, 3-day memory. |
-| `llm.py` | 4.3 | The only call site. Claude Haiku 4.5, JSON-schema constrained. |
-| `cache.py` | 10.1 | sha1-keyed response cache. `cache/` is committed. |
-| `loop.py` | 4.1, 5.1 | The day loop, snapshots, and forking from a parent snapshot. |
-| `cli.py` | — | Entry point, per-day summary, schema validation on every run. |
+| `schema.Row`, `validate_row`, `coverage` | 3.4, 4.3 | Trajectory contract, provenance, validation, completeness |
+| `loader.load_shops`, `load_twins` | 3.1–3.3 | Load data; normalize habit/interest by sorted shop ID |
+| `resolve.resolve` | 3.3 | Parent overrides, then child overrides |
+| `disruption.disruption` | 2.2 | Maximum shock against day-1 remembered conditions |
+| `habit.apply_habit`, `regular_shop` | 2.1 | Habit reinforcement/decay and regular-shop selection |
+| `gossip.apply_inbox`, `apply_marketing`, `gossip` | 2.3–2.4 | Social and marketing updates |
+| `decide.autopilot` | 4.2 | Habit choice; unavailable usual shop/item means skipping |
+| `decide.reappraise`, `experienced_shops` | 2.3, 4.3, 8 | Untried-alternative gate, cache, deliberation, validation |
+| `decide._fallback` | 4.3 | Sanitized, explicitly failed diagnostic decision |
+| `prompt.build` | 4.3 | Grounded identity, availability, options, three-day memory |
+| `llm.complete_json` | 4.3 | Bounded Groq transport and capability fallback |
+| `cache.key`, `get`, `put` | 10.1 | Versioned decision-input cache |
+| `loop.run_day`, `run` | 4.1, 5.1 | Visits, state updates, snapshots, parent forks |
+| `cli.main` | 4.3 | Execution, per-seed coverage, strict completion gate |
 
-## The LLM call
+## Decision and cache behavior
 
-One call per twin per day in reappraisal, and only then — autopilot days spend
-nothing. `claude-haiku-4-5` (override with `SIMFFEE_MODEL` or `--model`),
-`max_tokens` 300, replies constrained to a json_schema.
+1. An hours shock with alternative curiosity below 0.20 triggers the skip rule
+   only when no previously experienced alternative is open. The rule is inside
+   `reappraise()`, not `autopilot()`, and does not special-case T08.
+2. `visited` is initialized from the what-log, updated on purchases, and saved in
+   snapshots. It survives the three-day memory window. Clearing curiosity after
+   visiting an alternative must not block future deliberation about that shop.
+   Experience does not force a purchase; negative experience can still lead to skipping.
+3. The cache identity includes the twin record, state/history/visited shops,
+   scenario/seed/day, shop facts, rendered prompts, schema, model, token cap,
+   temperature policy, and transport version. Cache hits are locally validated.
+   Old-format or malformed entries are misses, not silently reused or deleted.
+4. Uncached model decisions use temperature 0.7; invalid output gets one retry at
+   0.3. Unsupported `temperature` or `response_format` fields stay omitted for the
+   model after capability probing. Rate-limit retries/backoff are bounded, with
+   SDK retries disabled to prevent nested retry multiplication.
+5. Failure produces `llm_failed=true`, `decision_source=fallback`. Model decisions
+   carry `llm_model` and `llm_cache_key`; live and cached rows have identical
+   provenance, so warm replay remains byte-identical. All reasoning is capped at
+   40 words and raw provider errors never enter trajectories.
 
-Order of operations in `decide.reappraise()`:
+## Analysis and bundles
 
-1. **The T08 gate, before any call.** Curiosity under 0.20 plus an hours shock →
-   skip. Deterministic, and it saves a token.
-2. **Cache lookup** on `sha1(twin, day, scenario, seed, state_before, shops_today)`.
-   A warm cache means zero calls.
-3. **Call at temperature 0.7**, validate enums, choice, valence, and that the
-   chosen shop is actually open. On failure, **one retry at 0.3**.
-4. **Two failures → autopilot fallback with `llm_failed: true`**, so the
-   analyzer drops the row from confidence instead of reading it as signal.
+`build_runs.py` is always offline; narration uses deterministic fact rendering,
+not a model call. `--out` chooses the destination. Input trajectories are checked
+before writing, and conclusions are derived from the same rows placed in the bundle.
 
-Two capabilities are probed once per process rather than assumed, because they
-vary by model and SDK version: `temperature` (dropped from the Python SDK's
-typed signature in 1.x, so it goes through `extra_body`) and
-`output_config.format`. If either is rejected the call retries without it —
-`temperature` unsupported just makes step 3's retry a plain second attempt.
-Seed variance survives either way, since each seed is its own cache key.
+Fallback-dependent attribution, impact, what-if results, and narration are
+withheld. Confidence requires at least three distinct usable reappraisal seeds
+for a supported twin; autopilot stability cannot mask missing deliberation data.
+Per-twin counts and partial-coverage reasons remain in exported confidence details.
 
-`python3 tools/check_llm_path.py` exercises all of this against a stubbed
-transport: no API key, no spend.
+Bundles expose `meta.coverage`, per-scenario/seed coverage, `meta.synthetic_run`,
+and `meta.publishable`. Use `--synthetic` for mocked trajectories. Synthetic test
+bundles are never publishable model evidence, even when mechanically complete.
+A real release needs complete trajectories and consistent model/cache provenance.
 
-## Invariants the analyzer relies on
+## Verification
 
-- 10 twins x 7 days = 70 rows per file, ordered by day then twin id.
-- `spent == 0` exactly when `choice == "none"`, never null.
-- `primary_driver` always set; `secondary_driver` may be null.
-- Same seed replays byte for byte; a fork shares its parent's random stream and
-  its opening days. Both are asserted by `tools/check_determinism.sh`.
+Run from the repository root:
 
-## Watch out
+```bash
+python3 tests/test_repairs.py -v
+python3 tests/test_b2_sync.py -v
+python3 tests/test_analyzer.py
+python3 tests/test_narrate.py
+python3 tools/check_llm_path.py
+python3 tools/validate.py
+python3 tools/check_pipeline.py --out /tmp/simffee-pipeline-check
+```
 
-- Twin order is fixed by id, and gossip uses its own `Random(seed)` — never the
-  global `random`.
-- Never iterate a `set` of shop ids when building state: Python randomises
-  string hashing per process and two runs of the same seed will differ in key
-  order. Sort first.
-- "Remembered" prices are pinned to the day-1 resolved world, so a price rise
-  keeps reading as a shock on days 5–7. That is a deliberate tuning knob
-  (SPEC 7.3), not a bug — if twins should re-anchor, change it here and say so.
+The pipeline check uses a clearly labeled deterministic stub, never the API. It
+checks all four scenarios and five seeds, strict bundle construction, prefix and
+random-state fork fairness, and warm-cache replay in separate processes with
+different `PYTHONHASHSEED` values. It writes fresh artifacts and refuses to reuse
+an existing nonempty output directory. Its customer choices test mechanics, not
+realistic behavior or confidence calibration.
+
+## Known modeling decisions still requiring review
+
+- T08's marketing raises interest above the skip threshold before day 4; the data
+  does not guarantee her scripted resistance.
+- T10 never notices a competitor discount through regular-shop-only disruption;
+  acquisition needs an approved attention mechanism or revised narrative.
+- `cf_null` has its own day-6 wait shock, unlike the treatment arms; review this
+  control design before interpreting the subtraction as calibrated causal evidence.
+- Do not tune parameters to force the illustrative counts in SPEC §7.
+- The existing cache requires regeneration under the new identity. Do not treat
+  legacy cached decisions or a fallback-heavy offline run as a finished demo.
+- The frontend is still a starter page and is outside this backend repair.
+
+## Determinism invariants
+
+- Ten twins × seven days gives 70 rows per scenario/seed, ordered by day then ID.
+- Spending is zero exactly when the choice is `none`.
+- Habit/latent maps and visited-shop lists use stable ordering.
+- Gossip uses its own `Random(seed)`; forks start with the parent's saved RNG state.
+- Remembered prices remain anchored to day 1. Re-anchoring is a modeling change,
+  not part of this repair.

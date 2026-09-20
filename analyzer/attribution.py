@@ -83,6 +83,9 @@ def switchers(rows, day):
 
 
 def actual_driver(rows, day, secondary_weight=SECONDARY_WEIGHT):
+    if any(r.get("llm_failed") for r in rows if r["day"] <= day):
+        return {"driver": None, "histogram": {}, "switchers": [], "complete": False,
+                "reason": "fallback decisions affect the break-day trajectory"}
     moved = switchers(rows, day)
     hist = {}
     for r in moved:
@@ -112,6 +115,8 @@ def select_evidence(rows, day, driver, shop):
     The resisted twin is the one with the least latent interest to act on, because the
     claim the pair makes is that a shock alone does not move anyone — curiosity does.
     """
+    if any(r.get("llm_failed") for r in rows if r["day"] <= day):
+        return []
     moved = switchers(rows, day)
     on_driver = [r for r in moved if r["primary_driver"] == driver]
     switcher = max(on_driver or moved, key=lambda r: len(r["reasoning"]), default=None)

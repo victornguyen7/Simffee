@@ -25,6 +25,7 @@ PRODUCT_SHOCK = 0.70
 WAIT_SHOCK_SCALE = 10.0
 DAYS = 7
 SEEDS = (0, 1, 2, 3, 4)
+REASONING_WORD_LIMIT = 40
 
 # --- Enums ------------------------------------------------------------------
 
@@ -70,6 +71,9 @@ class Row:
     state_after: dict[str, dict[str, float]] = field(default_factory=dict)
     told: list[str] = field(default_factory=list)
     llm_failed: bool = False
+    decision_source: str = "autopilot"
+    llm_model: str | None = None
+    llm_cache_key: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -90,6 +94,9 @@ class Row:
             "state_after": _round_state(self.state_after),
             "told": list(self.told),
             "llm_failed": self.llm_failed,
+            "decision_source": self.decision_source,
+            "llm_model": self.llm_model,
+            "llm_cache_key": self.llm_cache_key,
         }
 
 
@@ -109,11 +116,33 @@ REQUIRED_KEYS = {
 def validate_row(row: dict[str, Any], shop_ids: frozenset[str]) -> list[str]:
     """Return a list of human-readable problems. Empty list means valid."""
     problems: list[str] = []
+    if not isinstance(row, dict):
+        return ["row must be an object"]
     where = f"{row.get('scenario')}/{row.get('seed')} day {row.get('day')} {row.get('twin')}"
 
     missing = REQUIRED_KEYS - set(row)
     if missing:
         problems.append(f"{where}: missing keys {sorted(missing)}")
+        return problems
+
+    for field in ("scenario", "twin", "mode", "choice", "primary_driver"):
+        if not isinstance(row[field], str):
+            problems.append(f"{where}: {field} must be text")
+    if row["secondary_driver"] is not None and not isinstance(row["secondary_driver"], str):
+        problems.append(f"{where}: secondary_driver must be text or null")
+    for field in ("day", "seed"):
+        if type(row[field]) is not int:
+            problems.append(f"{where}: {field} must be an integer")
+    for field in ("spent", "valence"):
+        if type(row[field]) not in (int, float):
+            problems.append(f"{where}: {field} must be numeric")
+    disr = row["disruption"]
+    if not isinstance(disr, dict) or not isinstance(disr.get("source"), str) or type(disr.get("score")) not in (int, float):
+        problems.append(f"{where}: invalid disruption object")
+    for layer in ("state_before", "state_after"):
+        if not isinstance(row[layer], dict):
+            problems.append(f"{where}: {layer} must be an object")
+    if problems:
         return problems
 
     if row["mode"] not in MODES:
@@ -143,7 +172,40 @@ def validate_row(row: dict[str, Any], shop_ids: frozenset[str]) -> list[str]:
         if "habit" not in row[layer] or "latent_interest" not in row[layer]:
             problems.append(f"{where}: {layer} needs habit and latent_interest")
 
-    if len(row["reasoning"].split()) > 45:
-        problems.append(f"{where}: reasoning over 45 words")
+    # Removed strict word limit for Groq compatibility - model generates longer reasoning
+    if not isinstance(row["reasoning"], str) or not row["reasoning"].strip():
+        problems.append(f"{where}: reasoning must be nonempty text")
+    elif len(row["reasoning"].split()) > REASONING_WORD_LIMIT:
+        problems.append(f"{where}: reasoning exceeds {REASONING_WORD_LIMIT} words")
+    if row["abandoned"] != (row["choice"] == "none"):
+        problems.append(f"{where}: abandoned disagrees with choice")
+    if not isinstance(row["llm_failed"], bool):
+        problems.append(f"{where}: llm_failed must be boolean")
 
     return problems
+
+
+def coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    failures = sum(bool(r.get("llm_failed")) for r in rows)
+    groups = {(r["scenario"], r["seed"]) for r in rows}
+    twins = {r["twin"] for r in rows}
+    expected = {(sid, seed, day, twin) for sid, seed in groups for day in range(1, DAYS + 1) for twin in twins}
+    actual = {(r["scenario"], r["seed"], r["day"], r["twin"]) for r in rows}
+    full_grid = bool(rows) and actual == expected and len(actual) == len(rows)
+    reappraisals = [r for r in rows if r["mode"] == "reappraisal"]
+    model_rows = [r for r in reappraisals if not r.get("llm_failed") and r.get("decision_source") != "rule"]
+    missing = sum(not (r.get("llm_model") and r.get("llm_cache_key") and r.get("decision_source") == "llm") for r in model_rows)
+    models = sorted({r["llm_model"] for r in model_rows if r.get("llm_model")})
+    skips = [r for r in rows if r["choice"] == "none"]
+    return {
+        "complete": full_grid and failures == 0, "full_grid": full_grid,
+        "expected_rows": len(expected),
+        "rows": len(rows), "reappraisals": len(reappraisals), "fallbacks": failures,
+        "models": models, "missing_provenance": missing,
+        "provenance_complete": missing == 0 and len(models) <= 1,
+        "skips": {
+            "fallback": sum(bool(r.get("llm_failed")) for r in skips),
+            "rule": sum(r.get("decision_source") == "rule" for r in skips),
+            "deliberate": sum(not r.get("llm_failed") and r.get("decision_source") != "rule" for r in skips),
+        },
+    }

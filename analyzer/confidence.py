@@ -15,6 +15,7 @@ number. The system saying it does not know is the point (SPEC 6.5).
 STABILITY_WEIGHT = 0.7
 SUPPORT_WEIGHT = 0.3
 SUPPORT_DIVISOR = 3
+MIN_SEEDS_FOR_STABILITY = 3
 
 DRIVER_KEYWORDS = {
     "hours": ("open", "opens", "opened", "closed", "shut", "early", "late", "time", "o'clock", "am", "hour"),
@@ -53,12 +54,15 @@ def stability(rows_by_seed, day, only=None):
     for seed_rows in rows_by_seed:
         for r in seed_rows:
             if r["day"] == day and (only is None or r["twin"] in only):
-                per_twin.setdefault(r["twin"], []).append(r)
+                per_twin.setdefault(r["twin"], {})[r["seed"]] = r
 
     scores, unmeasured, detail = {}, [], {}
     for twin, rows in sorted(per_twin.items()):
-        usable = _usable(rows)
-        if not usable:
+        usable = _usable(rows.values())
+        detail[twin] = {"score": None, "seeds_used": len(usable), "seeds_total": len(rows),
+                        "modes": sorted({r["mode"] for r in usable}),
+                        "reappraisal_seeds_used": sum(r["mode"] == "reappraisal" for r in usable)}
+        if len(usable) < MIN_SEEDS_FOR_STABILITY:
             unmeasured.append(twin)
             continue
         counts = {}
@@ -66,15 +70,16 @@ def stability(rows_by_seed, day, only=None):
             counts[r["choice"]] = counts.get(r["choice"], 0) + 1
         top = max(counts.values())
         scores[twin] = top / len(usable)
-        detail[twin] = {"score": round(scores[twin], 3), "seeds_used": len(usable),
-                        "modes": sorted({r["mode"] for r in usable})}
+        detail[twin]["score"] = round(scores[twin], 3)
 
     value = sum(scores.values()) / len(scores) if scores else None
+    low_sample_reason = f"{len(scores)} of {len(per_twin)} twins measurable; {len(unmeasured)} had fewer than {MIN_SEEDS_FOR_STABILITY} usable seeds" if unmeasured else None
     return {
         "value": None if value is None else round(value, 4),
         "per_twin": detail,
         "unmeasured_twins": unmeasured,
         "measured": len(scores),
+        "low_sample_reason": low_sample_reason,
     }
 
 
@@ -123,11 +128,14 @@ def branch_support(rows, only, from_day, twins):
             "per_twin": detail, "measured": len(scores)}
 
 
-def _combine(stab, supp):
+def _combine(stab, supp, reason=None):
+    reasons = [message for message in (reason, stab.get("low_sample_reason")) if message]
+    reason = ". ".join(reasons) or None
     if stab["value"] is None or supp["value"] is None:
-        missing = "no usable reappraisal rows" if supp["value"] is None else "no measurable twins"
+        missing = "no supported reappraisal with enough usable seeds" if supp["value"] is None else "no measurable twins"
+        reason = f"{missing}. {reason}" if reason else missing
         return {"value": None, "stability": stab["value"], "support": supp["value"],
-                "unmeasured": True, "reason": f"{missing} — every reappraisal was an LLM fallback",
+                "unmeasured": True, "reason": reason,
                 "detail": {"stability": stab, "support": supp}}
 
     value = STABILITY_WEIGHT * stab["value"] + SUPPORT_WEIGHT * supp["value"]
@@ -136,6 +144,8 @@ def _combine(stab, supp):
         "stability": stab["value"],
         "support": supp["value"],
         "unmeasured": False,
+        "reason": reason,
+        "partial": bool(reason),
         "low_confidence": value < 0.5,
         "detail": {"stability": stab, "support": supp},
     }
@@ -143,8 +153,16 @@ def _combine(stab, supp):
 
 def confidence(rows_by_seed, day, twins, default_seed=0):
     """SPEC 6.5 on the headline conclusion: the break day."""
-    return _combine(stability(rows_by_seed, day),
-                    support(rows_by_seed[default_seed], day, twins))
+    stab = stability(rows_by_seed, day)
+    measured_reappraisers = {
+        twin for twin, detail in stab["per_twin"].items()
+        if detail["reappraisal_seeds_used"] >= MIN_SEEDS_FOR_STABILITY
+    }
+    default_rows = next((rs for rs in rows_by_seed if rs and rs[0]["seed"] == default_seed), [])
+    supp = support([r for r in default_rows if r["twin"] in measured_reappraisers], day, twins)
+    failed_samples = sum(r.get("llm_failed", False) for rs in rows_by_seed for r in rs if r["day"] == day)
+    reason = f"{failed_samples} break-day samples excluded as fallbacks" if failed_samples else None
+    return _combine(stab, supp, reason)
 
 
 def whatif_confidence(rows_by_seed, lost_twins, from_day, days, twins, default_seed=0):
@@ -157,5 +175,23 @@ def whatif_confidence(rows_by_seed, lost_twins, from_day, days, twins, default_s
     if not only:
         return {"value": None, "stability": None, "support": None, "unmeasured": True,
                 "reason": "baseline lost nobody, so there is nothing to bring back"}
-    return _combine(stability(rows_by_seed, days, only),
-                    branch_support(rows_by_seed[default_seed], only, from_day, twins))
+    usable_runs, excluded_seeds = [], set()
+    for seed_rows in rows_by_seed:
+        window = [r for r in seed_rows if r["day"] <= days]
+        if any(r.get("llm_failed") for r in window):
+            excluded_seeds.update(r["seed"] for r in window)
+            window = [{**r, "llm_failed": True} for r in window]
+        usable_runs.append(window)
+    stab = stability(usable_runs, days, only)
+    evidence_seeds = {twin: set() for twin in only}
+    for seed_rows in usable_runs:
+        for r in seed_rows:
+            if r["twin"] in only and r["day"] >= from_day and r["mode"] == "reappraisal" and not r.get("llm_failed"):
+                evidence_seeds[r["twin"]].add(r["seed"])
+    measured = {twin for twin, seeds in evidence_seeds.items()
+                if len(seeds) >= MIN_SEEDS_FOR_STABILITY
+                and stab["per_twin"].get(twin, {}).get("score") is not None}
+    default_rows = next((rs for rs in usable_runs if rs and rs[0]["seed"] == default_seed), [])
+    supp = branch_support(default_rows, measured, from_day, twins)
+    reason = f"{len(excluded_seeds)} branch seeds excluded because their trajectories contain fallbacks" if excluded_seeds else None
+    return _combine(stab, supp, reason)

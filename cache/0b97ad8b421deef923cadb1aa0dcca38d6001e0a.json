@@ -1,0 +1,14 @@
+{
+  "_model": "openai/gpt-oss-20b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1049,
+    "output_tokens": 775
+  },
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee closed, so I need coffee before standup. Starbucks is open and my colleague recommends it. I can walk 5 blocks and wait 7 min, fitting my schedule.",
+  "secondary_driver": "product",
+  "valence": 0.5
+}

@@ -1,0 +1,14 @@
+{
+  "_model": "openai/gpt-oss-20b",
+  "_temperature": 0.3,
+  "_usage": {
+    "input_tokens": 1092,
+    "output_tokens": 451
+  },
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee closed, Starbucks too pricey and too long wait, so I skip coffee.",
+  "secondary_driver": "price",
+  "valence": -0.2
+}

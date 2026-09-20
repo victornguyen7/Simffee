@@ -1,5 +1,8 @@
 {
   "id": "baseline",
+  "label": "What we shipped",
+  "role": "baseline",
+  "order": 0,
   "description": "Simffee opens 30 minutes late and raises the latte 3k, both from day 4.",
   "parent": null,
   "overrides": [

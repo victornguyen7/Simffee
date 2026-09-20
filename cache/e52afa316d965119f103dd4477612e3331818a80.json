@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1130,
+    "output_tokens": 74
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "price",
+  "reasoning": "Simffee is closed. Starbucks is 10,000d over budget and takes 7 minutes. I refuse to pay extra to wait, so I'll skip it again.",
+  "secondary_driver": "wait",
+  "valence": 0.3
+}

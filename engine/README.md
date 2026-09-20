@@ -6,9 +6,9 @@ Spec: [../spec/SPEC.md](../spec/SPEC.md) · Plan: [../spec/BACKEND_PLAN.md](../s
 
 ## Run safely
 
-Python 3.11+, stdlib plus `groq` for live requests (`pip install -r requirements.txt`).
+Python 3.11+, stdlib plus `openai` (used against xAI's Responses API) for live requests (`pip install -r requirements.txt`).
 Offline replay, validation, analysis, narration, and stubbed tests need no credentials.
-The engine automatically reads the repository's private `.env` for `GROQ_API_KEY`,
+The engine automatically reads the repository's private `.env` for `XAI_API_KEY`,
 `SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`, and `SIMFFEE_MIN_INTERVAL`. Existing shell
 variables take precedence, and `--model` takes precedence over both. Values may
 be quoted; shell commands and variable expansion are never evaluated. `.env`
@@ -24,13 +24,19 @@ python3 build_runs.py /tmp/simffee-check/runs --offline --out /tmp/simffee-check
 
 `--offline` never calls the API. A cache miss produces a flagged fallback, not a
 customer preference. Every scenario/seed reports coverage even with `--quiet`.
+`--all` runs the promoted set that `runs.json` is built from; add `--include-all` for the
+on-demand `bundle: false` scenarios (ROADMAP B: `s2_entrant`, `s2_entrant_only`,
+`abl_rename`), e.g. `python3 -m engine.cli --all --include-all --seeds 0-2 --offline --out /tmp/x`.
+To bundle them: `python3 build_runs.py /tmp/x --include-all --seeds 0-2 --out /tmp/x.json`
+(reports `analysis.flows`, `analysis.question`, and `analysis.hero_agreement` for the rename test).
 Add `--require-complete` to the engine or bundle command for a release gate:
 exit 1 means invalid data; exit 2 means incomplete/unverified trajectories.
 A partial diagnostic run is not a complete seven-day run.
 
-Live generation requires `GROQ_API_KEY` and explicit approval of model and spend.
-The default model is `groq/compound-mini`, overridden by `SIMFFEE_MODEL` or
-`--model`; `SIMFFEE_MAX_TOKENS` defaults to 1600. No embedded credential fallback
+Live generation requires `XAI_API_KEY` and explicit approval of model and spend.
+The default model is `qwen/qwen3.8-27b` with `SIMFFEE_MAX_TOKENS` 400 — the pair the
+committed `cache/` was filled with; both are in the cache key, so change them only with a
+refill. Override with `SIMFFEE_MODEL` / `--model` and `SIMFFEE_MAX_TOKENS`. No embedded credential fallback
 exists. The CLI reports request attempts and response token usage, including
 invalid JSON responses; it does not invent a dollar estimate for unknown pricing.
 
@@ -48,7 +54,7 @@ invalid JSON responses; it does not invent a dollar estimate for unknown pricing
 | `decide.reappraise`, `experienced_shops` | 2.3, 4.3, 8 | Untried-alternative gate, cache, deliberation, validation |
 | `decide._fallback` | 4.3 | Sanitized, explicitly failed diagnostic decision |
 | `prompt.build` | 4.3 | Grounded identity, availability, options, three-day memory |
-| `llm.complete_json` | 4.3 | Bounded Groq transport and capability fallback |
+| `llm.complete_json` | 4.3 | Bounded xAI Responses-API transport and capability fallback |
 | `cache.key`, `get`, `put` | 10.1 | Versioned decision-input cache |
 | `loop.run_day`, `run` | 4.1, 5.1 | Visits, state updates, snapshots, parent forks |
 | `cli.main` | 4.3 | Execution, per-seed coverage, strict completion gate |

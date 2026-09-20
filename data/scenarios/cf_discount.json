@@ -1,12 +1,16 @@
 {
   "id": "cf_discount",
-  "description": "From day 5, cut the latte to 38k (-15% against the original 45k).",
+  "label": "Reopen 06:30 + cut prices 15%",
+  "role": "whatif",
+  "order": 3,
+  "description": "From day 5, reopen at 06:30 AND cut the latte to 38k (-15% against the original 45k). Both what-if branches fix the door; this one also discounts. A discount behind a shut door reaches nobody, so the two buttons must differ in what they ADD, not in whether anyone can get in (RUN_PLAN / ROADMAP A5).",
   "parent": "baseline",
   "overrides": [
     {
       "from_day": 5,
       "shop": "simffee",
       "set": {
+        "open": "06:30",
         "price.latte": 38000
       }
     }

@@ -10,7 +10,23 @@ import random
 from typing import Any
 
 from .loader import Twin
-from .schema import GOSSIP_WEIGHT, MARKETING_CAP
+from .schema import GOSSIP_WEIGHT, MARKETING_CAP, NEW_ENTRANT_LATENT_BUMP, NEW_ENTRANT_RADIUS_FACTOR
+from .timeutil import manhattan
+
+
+def apply_opening(
+    latent: dict[str, float],
+    twin: Twin,
+    opening: list[str],
+    shops_today: dict[str, dict[str, Any]],
+) -> None:
+    """ROADMAP B2 — opening day. A new shop within 2 x walk tolerance is impossible to miss:
+    + 0.15 latent interest once, whether or not it advertises. Farther away it is just a
+    name, and only marketing and gossip can carry it."""
+    for shop_id in opening:
+        reach = NEW_ENTRANT_RADIUS_FACTOR * twin.profile["walk_tolerance"]
+        if manhattan(twin.home, shops_today[shop_id]["position"]) <= reach:
+            latent[shop_id] = min(1.0, latent.get(shop_id, 0.0) + NEW_ENTRANT_LATENT_BUMP)
 
 
 def apply_marketing(

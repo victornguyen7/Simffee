@@ -1,0 +1,15 @@
+{
+  "_model": "groq/compound-mini",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 2470,
+    "output_tokens": 546
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "price",
+  "reasoning": "Simffee isn’t open yet and Starbucks costs more than my budget, so I skip coffee.",
+  "secondary_driver": "hours",
+  "valence": -0.2
+}

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1077,
+    "output_tokens": 68
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "I'm out of patience and won't pay extra. Starbucks' 7-minute wait and high price make it a deal-breaker. No coffee today.",
+  "secondary_driver": "price",
+  "valence": 0.1
+}

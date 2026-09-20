@@ -1,0 +1,15 @@
+{
+  "actions": [
+    {
+      "action": "restore",
+      "from_day": 5,
+      "item": null,
+      "shop": "simffee",
+      "value": "price.latte"
+    }
+  ],
+  "focus_shop": "simffee",
+  "label": "put the latte price back",
+  "situation": "incumbent_change",
+  "unsupported": []
+}

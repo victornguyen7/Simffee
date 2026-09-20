@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1155,
+    "output_tokens": 75
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is closed, and walking 5 blocks to Starbucks with a 7-minute wait will make me late for standup. I've skipped before in this exact scenario and it was fine.",
+  "secondary_driver": "wait",
+  "valence": 0.0
+}

@@ -1,0 +1,22 @@
+{
+  "actions": [
+    {
+      "action": "restore",
+      "from_day": 5,
+      "item": null,
+      "shop": "simffee",
+      "value": "open"
+    },
+    {
+      "action": "restore",
+      "from_day": 5,
+      "item": null,
+      "shop": "simffee",
+      "value": "price.latte"
+    }
+  ],
+  "focus_shop": "simffee",
+  "label": "Undo all day 4 changes",
+  "situation": "incumbent_change",
+  "unsupported": []
+}

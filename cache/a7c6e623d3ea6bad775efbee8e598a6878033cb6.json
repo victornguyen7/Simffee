@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1103,
+    "output_tokens": 66
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Starbucks is too far, over budget, and takes 7 minutes. I don't have time to wait or pay extra. Skipping is easier.",
+  "secondary_driver": "price",
+  "valence": 0.2
+}

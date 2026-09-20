@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1064,
+    "output_tokens": 70
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Twelve minutes is double my limit. I'm not paying extra to wait, and I'm not going without. I'll just skip it today and go to work.",
+  "secondary_driver": "price",
+  "valence": 0.2
+}

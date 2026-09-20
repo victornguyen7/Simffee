@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import './conclusion.css'
-import { loadRuns, lowConfidence, twinName, type Analysis, type Runs } from '../sim/runs'
+import { loadRuns, lowConfidence, twinName, type Analysis, type Runs, type WhatIf } from '../sim/runs'
+
+function actionable(fix: WhatIf): boolean {
+  return fix.confidence != null && !fix.confidence_detail.unmeasured && !lowConfidence(fix.confidence_detail, fix.confidence)
+}
 
 function percent(value: number | null | undefined): string {
   return value == null ? '—' : `${Math.round(value * 100)}%`
@@ -156,14 +160,9 @@ export default function Conclusion() {
               <div className="conclusion__whatif">
                 {whatif.map((fix, index) => {
                   const low = lowConfidence(fix.confidence_detail, fix.confidence)
-                  const bestReturns = Math.max(
-                    ...whatif
-                      .filter((candidate) => !lowConfidence(candidate.confidence_detail, candidate.confidence))
-                      .map((candidate) => candidate.returns),
-                    -Infinity,
-                  )
-                  const best = !low && fix.returns === bestReturns
                   const measured = fix.confidence != null && !fix.confidence_detail.unmeasured
+                  const bestReturns = Math.max(...whatif.filter(actionable).map((candidate) => candidate.returns), -Infinity)
+                  const best = measured && !low && fix.returns === bestReturns
                   return (
                     <article className={`conclusion__card conclusion__whatif-card ${best ? 'is-best' : ''} ${low ? 'is-low' : ''}`} key={fix.scenario || index}>
                       <h4>{fix.label}</h4>

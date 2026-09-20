@@ -175,6 +175,15 @@
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+.is-low {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.conclusion__whatif-card.is-low {
+  border-color: var(--line);
+}
+
 .conclusion__whatif-card h4 {
   font-size: 15px;
   font-weight: 600;
@@ -203,6 +212,10 @@
 .conclusion__whatif-card p {
   margin: 15px 0 0;
   font-size: 12px;
+}
+
+.conclusion__low {
+  font-style: italic;
 }
 
 .conclusion__footer {

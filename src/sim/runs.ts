@@ -46,6 +46,7 @@ export interface Confidence {
   support?: number
   unmeasured: boolean
   reason: string | null
+  low_confidence?: boolean
 }
 
 export interface WhatIf {
@@ -161,4 +162,8 @@ export function shopOfChoice(choice: string, abandoned: boolean): ShopId | null 
 
 export function twinName(runs: Runs, id: string): string {
   return runs.twins.find((twin) => twin.id === id)?.name ?? id
+}
+
+export function lowConfidence(c: Confidence | null | undefined): boolean {
+  return !!c && !c.unmeasured && c.value != null && (c.low_confidence ?? c.value < 0.5)
 }

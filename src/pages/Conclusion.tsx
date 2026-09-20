@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import './conclusion.css'
-import { loadRuns, twinName, type Analysis, type Runs } from '../sim/runs'
+import { loadRuns, lowConfidence, twinName, type Analysis, type Runs } from '../sim/runs'
 
 function percent(value: number | null | undefined): string {
   return value == null ? '—' : `${Math.round(value * 100)}%`
@@ -41,6 +41,7 @@ export default function Conclusion() {
   const actual = analysis.actual
   const impact = analysis.impact
   const confidence = analysis.confidence
+  const footerLow = lowConfidence(confidence)
   const complete = analysis.complete ?? analysis.break_day != null
 
   return (
@@ -154,18 +155,27 @@ export default function Conclusion() {
               <h3>Which fix targets the mechanism</h3>
               <div className="conclusion__whatif">
                 {whatif.map((fix, index) => {
-                  const best = fix.returns === Math.max(...whatif.map((candidate) => candidate.returns))
+                  const low = lowConfidence(fix.confidence_detail)
+                  const bestReturns = Math.max(
+                    ...whatif
+                      .filter((candidate) => !lowConfidence(candidate.confidence_detail))
+                      .map((candidate) => candidate.returns),
+                    -Infinity,
+                  )
+                  const best = !low && fix.returns === bestReturns
                   const measured = fix.confidence != null && !fix.confidence_detail.unmeasured
                   return (
-                    <article className={`conclusion__card conclusion__whatif-card ${best ? 'is-best' : ''}`} key={fix.scenario || index}>
+                    <article className={`conclusion__card conclusion__whatif-card ${best ? 'is-best' : ''} ${low ? 'is-low' : ''}`} key={fix.scenario || index}>
                       <h4>{fix.label}</h4>
                       <strong className="conclusion__returns">{fix.returns} <span>of {fix.of} come back</span></strong>
                       <ul>
                         {fix.returned.map((id) => <li key={id}>{twinName(runs, id)}</li>)}
                       </ul>
-                      <p className="dim">
-                        Confidence {measured ? percent(fix.confidence) : 'unmeasured'}
-                      </p>
+                      {low ? (
+                        <p className="dim conclusion__low"><em>low confidence — not actionable</em> · {percent(fix.confidence)}</p>
+                      ) : (
+                        <p className="dim">Confidence {measured ? percent(fix.confidence) : 'unmeasured'}</p>
+                      )}
                     </article>
                   )
                 })}
@@ -173,17 +183,20 @@ export default function Conclusion() {
             </section>
           )}
 
-          <footer className="conclusion__footer">
-            {confidence?.unmeasured || confidence?.value == null ? (
-              <p>Confidence unmeasured{confidence?.reason ? `: ${confidence.reason}` : '.'}</p>
-            ) : (
-              <p>
-                Confidence {percent(confidence.value)} across {runs.meta.seeds.length} seeds
-                {confidence.stability != null && ` (stability ${percent(confidence.stability)}`}
-                {confidence.support != null && `, support ${percent(confidence.support)}`}
-                {(confidence.stability != null || confidence.support != null) && ')'}
-              </p>
-            )}
+          <footer className={`conclusion__footer ${footerLow ? 'is-low' : ''}`}>
+            <p>
+              {footerLow && <><em>low confidence — not actionable</em> · </>}
+              {confidence?.unmeasured || confidence?.value == null ? (
+                <>Confidence unmeasured{confidence?.reason ? `: ${confidence.reason}` : '.'}</>
+              ) : (
+                <>
+                  Confidence {percent(confidence.value)} across {runs.meta.seeds.length} seeds
+                  {confidence.stability != null && ` (stability ${percent(confidence.stability)}`}
+                  {confidence.support != null && `, support ${percent(confidence.support)}`}
+                  {(confidence.stability != null || confidence.support != null) && ')'}
+                </>
+              )}
+            </p>
             <a
               href="https://github.com/victornguyen7/Simffee/blob/main/PROTOCOL.md"
               target="_blank"

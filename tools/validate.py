@@ -46,7 +46,8 @@ def check_row(r, twins, shops, where, errs):
             errs.append(f"{where}: twin told itself")
 
 
-def check_file(path, twins, shops, errs):
+def check_file(path, twins, shops, errs, days=EXPECTED_DAYS):
+    """`days` is the run length this file must cover (SPEC_FUNCTIONAL: per scenario)."""
     where = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
     rows, line_numbers = [], []
     for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -61,20 +62,20 @@ def check_file(path, twins, shops, errs):
     for i, r in zip(line_numbers, rows):
         check_row(r, twins, shops, f"{where}:{i}", errs)
 
-    expected = len(twins) * EXPECTED_DAYS
+    expected = len(twins) * days
     if len(rows) != expected:
-        errs.append(f"{where}: {len(rows)} rows, expected {expected} ({len(twins)} twins x {EXPECTED_DAYS} days)")
+        errs.append(f"{where}: {len(rows)} rows, expected {expected} ({len(twins)} twins x {days} days)")
 
     indexed = [r for r in rows if isinstance(r, dict) and type(r.get("day")) is int and isinstance(r.get("twin"), str)]
     seen = {}
     for r in indexed:
-        if not 1 <= r["day"] <= EXPECTED_DAYS:
-            errs.append(f"{where}: day outside 1-{EXPECTED_DAYS}")
+        if not 1 <= r["day"] <= days:
+            errs.append(f"{where}: day outside 1-{days}")
         key = (r["day"], r["twin"])
         if key in seen:
             errs.append(f"{where}: duplicate row for day {r['day']} twin {r['twin']}")
         seen[key] = True
-    for day in range(1, EXPECTED_DAYS + 1):
+    for day in range(1, days + 1):
         missing = twins - {t for d, t in seen if d == day}
         if missing:
             errs.append(f"{where}: day {day} missing twins {sorted(missing)}")

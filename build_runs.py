@@ -144,7 +144,8 @@ def build_analysis(base, shops, scenario_files, twins, groups=None, seeds=None):
 
     if groups is None:
         groups = {sid: [load_rows(base, sid, seed) for seed in seeds] for sid in scenario_files}
-    reports = {sid: {str(seed): coverage(rs) for seed, rs in zip(seeds, runs)}
+    reports = {sid: {str(seed): coverage(rs, int(scenario_files[sid].get("days", days)))
+                     for seed, rs in zip(seeds, runs)}
                for sid, runs in groups.items()}
     if not all(r["complete"] for per_seed in reports.values() for r in per_seed.values()):
         return _incomplete(reports, "incomplete trajectories: fallback decisions prevent causal conclusions")
@@ -245,7 +246,7 @@ def build(base, seeds, scenario_files=None, shops=None, twin_records=None, synth
             if not path.exists():
                 errors.append(f"missing trajectory: {path}")
                 continue
-            check_file(path, set(twin_records), set(shops), errors)
+            check_file(path, set(twin_records), set(shops), errors, int(scenario_files[sid].get("days", days)))
     if errors:
         raise ValueError(f"{len(errors)} errors; first: {errors[0]}")
 
@@ -257,8 +258,9 @@ def build(base, seeds, scenario_files=None, shops=None, twin_records=None, synth
             if any(r["scenario"] != sid or r["seed"] != seed for r in rows):
                 raise ValueError(f"trajectory identity mismatch: {sid}/{seed}")
             all_rows.extend(rows)
-            per_seed[str(seed)] = {"rows": rows, "daily_sales": daily_sales(rows, shops, days),
-                                   "coverage": coverage(rows)}
+            sc_days = int(sc.get("days", days))
+            per_seed[str(seed)] = {"rows": rows, "daily_sales": daily_sales(rows, shops, sc_days),
+                                   "coverage": coverage(rows, sc_days)}
         scenarios[sid] = {
             "label": sc.get("label", sid),
             "role": sc.get("role"),

@@ -62,7 +62,7 @@ MAX_BACKOFF_S = 75.0
 
 _throttle_lock = threading.Lock()
 _last_call_at = 0.0
-STATS = {"attempts": 0, "responses": 0, "input_tokens": 0, "output_tokens": 0}
+STATS = {"attempts": 0, "responses": 0, "input_tokens": 0, "output_tokens": 0, "quota_failures": 0}
 
 
 def reset_stats() -> None:
@@ -212,6 +212,17 @@ def complete_json(
             if unsupported and any(word in message for word in ("response_format", "json_schema", "structured")) and "response_format" in request:
                 _structured_ok = False
                 continue
+            # Sanitised (no provider text reaches a trajectory), but classified, so a run
+            # summary can say *why* a fallback happened. A daily quota is the one that
+            # matters operationally: it is not a bug and it will not fix itself in a retry.
+            if "rate_limit" in message or "429" in message:
+                kind = "quota: daily token limit" if "per day" in message or "tpd" in message else "rate limit"
+                STATS["quota_failures"] = STATS.get("quota_failures", 0) + 1
+                raise RuntimeError(f"LLM transport failed ({kind})") from None
+            if "401" in message or "invalid api key" in message or "authentication" in message:
+                raise RuntimeError("LLM transport failed (authentication)") from None
+            if "404" in message and "model" in message:
+                raise RuntimeError("LLM transport failed (model not found)") from None
             raise RuntimeError("LLM transport failed") from None
     else:
         raise ValueError("could not find a request shape this model accepts")

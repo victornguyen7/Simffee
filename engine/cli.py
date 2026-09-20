@@ -144,6 +144,9 @@ def main() -> int:
     )
     if not report["complete"]:
         print("  INCOMPLETE: diagnostic trajectories only; fallback decisions are not customer evidence.")
+    if transport.get("quota_failures"):
+        print(f"  QUOTA: {transport['quota_failures']} call(s) refused by the provider's rate/daily-token limit. "
+              "Not an engine fault; wait for the window or raise the tier, then re-run with the same cache.")
     if failed:
         return 1
     return 2 if args.require_complete and not (report["complete"] and report["provenance_complete"]) else 0

@@ -1,0 +1,16 @@
+{
+  "_comment": "COST_PLAN 2 — the only place a dollar figure is allowed to originate. Per million tokens, USD. `as_of` is the date the sheet was read; `verified` is whether someone checked the provider page for THIS model id. Unverified rows are labelled as such wherever the figure is shown.",
+  "provider": "groq",
+  "models": {
+    "qwen/qwen3.8-27b": {"input": 0.29, "output": 0.59, "as_of": "2026-09-20", "verified": false,
+                          "note": "assumed from the Qwen3-32B row on Groq's sheet; verify before quoting"},
+    "openai/gpt-oss-20b": {"input": 0.075, "output": 0.30, "as_of": "2026-09-20", "verified": false,
+                            "note": "from a comment in engine/cli.py; verify"},
+    "openai/gpt-oss-120b": {"input": 0.15, "output": 0.60, "as_of": "2026-09-20", "verified": false}
+  },
+  "naive_baselines": {
+    "_comment": "COST_PLAN 1 — what the same run would cost built the obvious way. N1: every twin thinks every day. N0: N1 with the reasoning-model output shape found in the legacy cache (775 out tokens).",
+    "N1_calls_per_twin_day": 1,
+    "N0_output_tokens_per_call": 775
+  }
+}

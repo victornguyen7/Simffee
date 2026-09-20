@@ -169,7 +169,10 @@ def _fallback(twin: Twin, regular: str, shops_today, reason: str) -> Decision:
     STATS["failures"] += 1
     decision = autopilot(twin, regular, shops_today)
     decision["llm_failed"] = True
-    safe_reason = reason if reason in {"offline, not cached", "invalid reply twice", "LLM unavailable", "transport failed"} else "LLM unavailable"
+    allowed = {"offline, not cached", "invalid reply twice", "LLM unavailable", "transport failed",
+               "transport failed: quota: daily token limit", "transport failed: rate limit",
+               "transport failed: authentication", "transport failed: model not found"}
+    safe_reason = reason if reason in allowed else "LLM unavailable"
     decision["reasoning"] = f"[llm unavailable: {safe_reason}] {decision['reasoning']}"
     decision["decision_source"] = "fallback"
     return decision
@@ -254,6 +257,9 @@ def reappraise(
             if attempt == 1:
                 STATS["retries"] += 1
         except Exception as exc:                           # transport, rate limit, auth
-            return _fallback(twin, regular, shops_today, "transport failed")
+            # llm.complete_json already sanitised the message and appended a class in
+            # parentheses; keep only that class so the row says "quota", not a provider dump.
+            kind = str(exc)[len("LLM transport failed"):].strip(" ()") if str(exc).startswith("LLM transport failed") else ""
+            return _fallback(twin, regular, shops_today, f"transport failed: {kind}" if kind else "transport failed")
 
     return _fallback(twin, regular, shops_today, "invalid reply twice")

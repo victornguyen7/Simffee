@@ -14,7 +14,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from analyzer import attribution, breakpoint, pairwise  # noqa: E402
+from analyzer import attribution, breakpoint, confidence, impact, pairwise  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures"
 SHOP = "simffee"
@@ -70,6 +70,36 @@ def main():
 
     changes = pairwise.outcome_changes(base, rows("cf_restore_hours"), from_day=5)
     check("cf_restore_hours diverges for 3 twins", changes["count"], 3)
+
+    print("impact")
+    imp = impact.impact(base, ctrl, SHOP)
+    check("lost_total", imp["lost_total"], oracle["impact"]["lost_total"])
+    check("lost_by_decision", imp["lost_by_decision"], oracle["impact"]["lost_by_decision"])
+    check("lost_anyway", imp["lost_anyway"], oracle["impact"]["lost_anyway"])
+    check("anyway twins", imp["anyway_twins"], oracle["impact"]["anyway_twins"])
+
+    print("confidence")
+    twins = {}
+    for f in sorted((ROOT / "data" / "twins").glob("*.json")):
+        t = json.loads(f.read_text(encoding="utf-8"))
+        twins[t["id"]] = t
+    conf = confidence.confidence([rows("baseline", s) for s in range(5)], brk["break_day"], twins)
+    check("confidence is measurable", conf["unmeasured"], False)
+    check("confidence in range", 0.0 <= conf["value"] <= 1.0, True)
+    check("weights", conf["value"],
+          round(0.7 * conf["stability"] + 0.3 * conf["support"], 4))
+    check("stability below 1.0 (seeds disagree somewhere)", conf["stability"] < 1.0, True)
+
+    all_failed = [[dict(r, llm_failed=True) if r["mode"] == "reappraisal" else r
+                   for r in rows("baseline", s)] for s in range(5)]
+    guarded = confidence.confidence(all_failed, brk["break_day"], twins)
+    check("all-fallback run reports unmeasured, not 1.0", (guarded["value"], guarded["unmeasured"]), (None, True))
+
+    print("evidence")
+    ev = attribution.select_evidence(base, brk["break_day"], actual["driver"], SHOP)
+    check("two cards", [e["kind"] for e in ev], ["switcher", "resisted"])
+    check("switcher moved to a competitor", ev[0]["choice"], "starbucks")
+    check("resisted did not defect", ev[1]["choice"] in (SHOP, "none"), True)
 
     print("\nnaive read considered:")
     for s in naive["considered"]:

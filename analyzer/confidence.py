@@ -1,0 +1,112 @@
+"""SPEC 6.5 — c = 0.7 * stability + 0.3 * support.
+
+stability asks whether the same twin makes the same call across seeds. support asks
+whether the driver it gave is something the twin's own interview actually evidences.
+
+Rows with llm_failed are excluded from stability (SPEC 4.3). That exclusion has a sharp
+edge worth knowing about: in an offline run EVERY reappraisal row is llm_failed, so the
+only rows left are autopilot ones, which agree across seeds by construction and would
+report stability 1.0 on a run where the model never made a single decision. When a twin
+has no usable rows it is reported as unmeasured rather than counted as stable, and if no
+reappraising twin is measurable at all, `value` is None instead of a confident-looking
+number. The system saying it does not know is the point (SPEC 6.5).
+"""
+
+STABILITY_WEIGHT = 0.7
+SUPPORT_WEIGHT = 0.3
+SUPPORT_DIVISOR = 3
+
+DRIVER_KEYWORDS = {
+    "hours": ("open", "opens", "opened", "closed", "shut", "early", "late", "time", "o'clock", "am", "hour"),
+    "price": ("price", "cost", "cheap", "expensive", "pay", "paid", "budget", "deal", "fee", "k ", "money"),
+    "curiosity": ("try", "tried", "trying", "new", "curious", "noticed", "haven't", "never been", "look"),
+    "social": ("told", "tell", "telling", "friend", "sister", "colleague", "recommend", "said", "swear", "talk"),
+    "wait": ("wait", "waiting", "queue", "line", "slow", "quick", "skip"),
+    "habit": ("same", "always", "every", "usual", "routine", "years", "stick", "hassle", "switch"),
+    "distance": ("near", "nearest", "close", "closer", "far", "walk", "block", "minute", "door"),
+    "product": ("menu", "order", "latte", "americano", "cold brew", "item", "roast"),
+    "quality": ("quality", "bean", "roast", "good", "taste", "better"),
+}
+
+
+def _usable(rows):
+    return [r for r in rows if not r.get("llm_failed")]
+
+
+def stability(rows_by_seed, day):
+    """Fraction of seeds giving the same choice on `day`, averaged over twins."""
+    per_twin = {}
+    for seed_rows in rows_by_seed:
+        for r in seed_rows:
+            if r["day"] == day:
+                per_twin.setdefault(r["twin"], []).append(r)
+
+    scores, unmeasured, detail = {}, [], {}
+    for twin, rows in sorted(per_twin.items()):
+        usable = _usable(rows)
+        if not usable:
+            unmeasured.append(twin)
+            continue
+        counts = {}
+        for r in usable:
+            counts[r["choice"]] = counts.get(r["choice"], 0) + 1
+        top = max(counts.values())
+        scores[twin] = top / len(usable)
+        detail[twin] = {"score": round(scores[twin], 3), "seeds_used": len(usable),
+                        "modes": sorted({r["mode"] for r in usable})}
+
+    value = sum(scores.values()) / len(scores) if scores else None
+    return {
+        "value": None if value is None else round(value, 4),
+        "per_twin": detail,
+        "unmeasured_twins": unmeasured,
+        "measured": len(scores),
+    }
+
+
+def support(rows, day, twins):
+    """How much of a switcher's why-transcript evidences the driver it gave.
+
+    `twins` maps twin id -> the twin record from data/twins/.
+    """
+    scores, detail = {}, {}
+    for r in rows:
+        if r["day"] != day or r["mode"] != "reappraisal" or r.get("llm_failed"):
+            continue
+        twin = twins.get(r["twin"])
+        if not twin:
+            continue
+        words = DRIVER_KEYWORDS.get(r["primary_driver"], ())
+        hits = 0
+        for qa in twin["why_transcript"]:
+            text = f"{qa['q']} {qa['a']}".lower()
+            if any(w in text for w in words):
+                hits += 1
+        scores[r["twin"]] = min(1.0, hits / SUPPORT_DIVISOR)
+        detail[r["twin"]] = {"driver": r["primary_driver"], "hits": hits,
+                             "score": round(scores[r["twin"]], 3)}
+
+    value = sum(scores.values()) / len(scores) if scores else None
+    return {"value": None if value is None else round(value, 4),
+            "per_twin": detail, "measured": len(scores)}
+
+
+def confidence(rows_by_seed, day, twins, default_seed=0):
+    stab = stability(rows_by_seed, day)
+    supp = support(rows_by_seed[default_seed], day, twins)
+
+    if stab["value"] is None or supp["value"] is None:
+        missing = "no usable reappraisal rows" if supp["value"] is None else "no measurable twins"
+        return {"value": None, "stability": stab["value"], "support": supp["value"],
+                "unmeasured": True, "reason": f"{missing} — every reappraisal was an LLM fallback",
+                "detail": {"stability": stab, "support": supp}}
+
+    value = STABILITY_WEIGHT * stab["value"] + SUPPORT_WEIGHT * supp["value"]
+    return {
+        "value": round(value, 4),
+        "stability": stab["value"],
+        "support": supp["value"],
+        "unmeasured": False,
+        "low_confidence": value < 0.5,
+        "detail": {"stability": stab, "support": supp},
+    }

@@ -103,3 +103,30 @@ def compare(naive, actual):
         "actual": actual,
         "surprise": bool(naive["driver"] and actual["driver"] and naive["driver"] != actual["driver"]),
     }
+
+
+def select_evidence(rows, day, driver, shop):
+    """SPEC 6.3 — one twin who moved for `driver`, one who took the same shock and did not.
+
+    "Did not switch" means did not defect to a competitor; skipping counts as holding.
+    The resisted twin is the one with the least latent interest to act on, because the
+    claim the pair makes is that a shock alone does not move anyone — curiosity does.
+    """
+    moved = switchers(rows, day)
+    on_driver = [r for r in moved if r["primary_driver"] == driver]
+    switcher = max(on_driver or moved, key=lambda r: len(r["reasoning"]), default=None)
+
+    def latent(r):
+        vals = r["state_before"].get("latent_interest", {}).values()
+        return max(vals) if vals else 0.0
+
+    held = [r for r in rows if r["day"] == day and r["disruption"]["score"] > 0
+            and r["choice"] in (shop, "none") and r is not switcher]
+    resisted = min(held, key=latent, default=None)
+
+    out = []
+    if switcher:
+        out.append(dict(switcher, kind="switcher"))
+    if resisted:
+        out.append(dict(resisted, kind="resisted"))
+    return out

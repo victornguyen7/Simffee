@@ -43,11 +43,13 @@ def load_environment(path: Path | None = None) -> None:
 
 
 load_environment()
-MODEL = os.environ.get("SIMFFEE_MODEL", "groq/compound-mini")
+# Defaults MUST match what cache/ was filled with: both are part of the cache key, so a
+# fresh clone with no .env replays the committed demo only if these agree (RUN_PLAN D2/D3).
+MODEL = os.environ.get("SIMFFEE_MODEL", "qwen/qwen3.8-27b")
 # SPEC 4.3 says 300. Reasoning models spend their budget thinking before they
 # emit the object, so a 300-500 cap truncates the JSON and the reply is thrown
 # away as invalid -- which shows up as retries and fallbacks, not as an error.
-MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", "1600"))
+MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", "400"))
 TIMEOUT_S = 30.0
 
 # Groq's on-demand tier caps requests per minute, and the `compound-*` models

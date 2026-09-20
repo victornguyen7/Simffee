@@ -29,8 +29,9 @@ exit 1 means invalid data; exit 2 means incomplete/unverified trajectories.
 A partial diagnostic run is not a complete seven-day run.
 
 Live generation requires `GROQ_API_KEY` and explicit approval of model and spend.
-The default model is `groq/compound-mini`, overridden by `SIMFFEE_MODEL` or
-`--model`; `SIMFFEE_MAX_TOKENS` defaults to 1600. No embedded credential fallback
+The default model is `qwen/qwen3.8-27b` with `SIMFFEE_MAX_TOKENS` 400 — the pair the
+committed `cache/` was filled with; both are in the cache key, so change them only with a
+refill. Override with `SIMFFEE_MODEL` / `--model` and `SIMFFEE_MAX_TOKENS`. No embedded credential fallback
 exists. The CLI reports request attempts and response token usage, including
 invalid JSON responses; it does not invent a dollar estimate for unknown pricing.
 

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1163,
+    "output_tokens": 63
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Starbucks' 7-minute wait exceeds my 6-minute limit, and it is over budget. I will skip coffee to stay on schedule.",
+  "secondary_driver": "price",
+  "valence": 0.0
+}

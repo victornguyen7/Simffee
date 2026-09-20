@@ -4,6 +4,33 @@
 
 Decisions taken: **synthetic, labeled raw data · local Docker · plan first, build later.**
 
+## Update — after `36b724e` (B1 update, Groq, strict gates)
+
+Four things in the engine changed what this plan can assume. Sections below are edited in place
+where they were wrong; this block is the summary.
+
+1. **The cache key now includes the full twin record and the rendered prompt** (v2 key,
+   CHANGE_REPORT §3.3). `derive --write` rewriting `mechanism` in `data/twins/*.json` therefore
+   invalidates *every* cached decision, not just downstream days. Consequence: **derive runs in
+   two modes.** `--compare` (default) writes nothing — it prints derived vs. hand-typed values per
+   twin and stores the evidence in the `agents` index only. `--write` is used exactly once,
+   *before* the live fill in [RUN_PLAN.md](./RUN_PLAN.md) §4, or not at all. The demo story
+   ("we found these people in the noise") works in compare mode: the derived numbers and their
+   evidence are shown; the engine ran on the same numbers whether a human or a query wrote them.
+2. **Rows carry provenance:** `decision_source` (`autopilot|rule|llm|fallback`), `llm_model`,
+   `llm_cache_key`, `seed`. The `trajectories` mapping adds them as `keyword`. Every ES query the
+   analyzer or search box runs adds `must_not: {term: {llm_failed: true}}` — fallbacks are not
+   evidence anywhere, and ES must not become a side door around the strict gate.
+3. **`build_demo.sh` writes to a fresh directory and never promotes.** `index_runs.py` takes that
+   directory (`index_runs.py "$OUT/runs"`) and is a separate, explicit step, not appended to the
+   wrapper. It refuses to index a run whose `coverage()` is incomplete unless `--allow-incomplete`
+   is passed, in which case it tags every doc `run_complete: false`.
+4. **No LLM anywhere in the analyzer now** (narration is deterministic). ES stays that way too:
+   no NL→DSL, no embeddings that call out. §6 semantic search, if built, embeds locally.
+
+Config: `llm.py`'s `.env` loader accepts only four keys. ES URL comes from the shell env
+`SIMFFEE_ES` or `--es`; do not extend the allow-list for it.
+
 ## 0. The bar
 
 The prize is *"best use of Elasticsearch to turn complex, messy data into insights, answers or
@@ -109,7 +136,10 @@ obvious spam, so dedup shows up on screen.
 One document per row of `runs/{scenario}/{seed}.jsonl`, exactly the BACKEND_PLAN 2.1 shape plus
 `_id = f"{scenario}-{seed}-{day}-{twin}"` for idempotent re-indexing. `reasoning` is `text`;
 everything else is `keyword`/`float`/`integer`. `state_before.habit.*` flattened to
-`habit_simffee`, `habit_starbucks`, `latent_starbucks` for aggregation.
+`habit_simffee`, `habit_starbucks`, `latent_starbucks` for aggregation. Provenance fields from
+the current row contract — `decision_source`, `llm_model`, `llm_cache_key`, `llm_failed` — are
+`keyword`/`boolean` and every query filters `llm_failed: false`. A `run_id` keyword (the output
+directory name) lets several fills coexist and lets the search box pin to the promoted one.
 
 ### 2.5 `agents` — the twins as they stand after derive
 
@@ -119,10 +149,14 @@ person in one `terms` lookup.
 
 ## 3. Derive — SPEC 3.1 as queries
 
-`derive/derive.py --twin T01` prints the queries, the hits, and the numbers; `--write` puts them
-into `data/twins/T01.json` under `mechanism` and a new sibling block `evidence`. Every number gets
-the query that produced it and the top hit, so the UI can show *"this 0.82 came from these 24
-receipts"* and *"this 0.4 came from this sentence."*
+`derive/derive.py --twin T01` prints the queries, the hits, and the numbers, and writes the
+evidence to the `agents` index (**compare mode, default** — `data/` untouched). `--write` also
+puts them into `data/twins/T01.json` under `mechanism` and a new sibling block `evidence`; per the
+update above, that is a one-time step before the live fill, because it invalidates the whole
+cache. Every number gets the query that produced it and the top hit, so the UI can show *"this
+0.82 came from these 24 receipts"* and *"this 0.4 came from this sentence."* Compare mode also
+prints the per-variable delta against the hand-typed value; a delta larger than the SPEC 3.1 band
+width is a finding worth showing, not hiding.
 
 | Variable | SPEC 3.1 rule | ES query | Evidence stored |
 | --- | --- | --- | --- |
@@ -148,14 +182,16 @@ reappraisals). If they don't, tune the band mapping, not the twin files.
 | `confidence.support`: count transcript lines containing any of `DRIVER_KEYWORDS[driver]`, /3, cap 1 | `interviews` `match` query `{twin, text: driver phrase set}`; support = normalised `max_score` (divide by the best score across all twins for that driver, so the scale is 0–1 and comparable) | keyword path stays as `--no-es` |
 | `attribution.select_evidence`: switcher with longest reasoning | `trajectories` query: `day = break_day`, `choice != prev`, `primary_driver = actual`; rank by `match` of `reasoning` against the driver phrase set | longest-reasoning path |
 | — | new `analyzer/search.py`: `answer(question) → {rows, agents, utterances}` for the UI search box. Not free-form NL→DSL; a small set of query templates keyed by intent (`lost_to`, `why_did`, `who_heard`, `returned_under`) with a `match` fallback across `reasoning` + `interviews.text` | absent |
-| — | `index_runs.py`: bulk rows into `trajectories`, idempotent by `_id`; called at the end of `tools/build_demo.sh` | skipped with a note |
+| — | `index_runs.py RUN_DIR`: bulk rows into `trajectories`, idempotent by `_id`, tagged `run_id`; explicit step after `build_demo.sh`, refuses incomplete coverage without `--allow-incomplete` | skipped with a note |
 
 `build_runs.py` gains `--es http://localhost:9200` (default from `SIMFFEE_ES`). With it set and
 reachable, support and evidence go through ES and `analysis.confidence.detail.support.per_twin[*]`
-carries `matched_text` — the sentence that scored. Without it, byte-identical to today.
+carries `matched_text` — the sentence that scored. Without it, byte-identical to today. The
+strict gates are upstream of this and unchanged: an incomplete run has no analysis for ES to
+enrich, with or without the flag.
 
-The number guard in `narrate.py` is unchanged and still applies: ES adds evidence, never numbers
-the model can quote.
+Narration is deterministic and stays that way: ES adds evidence text to the bundle, never a
+number, and never a sentence the renderer did not compute.
 
 ## 5. Demo moments — where ES is visibly doing the work
 
@@ -186,8 +222,9 @@ Each step leaves a running demo if you stop there.
 | 1 | `docker-compose.yml` (ES 8.x single node, security off, 1 GB heap) + `elasticsearch` in `requirements.txt` + `tools/es_up.sh` (waits for green) | `curl :9200` returns cluster info | anyone, 1 h |
 | 2 | `raw/` generator: `ingest/make_raw.py` from the existing `data/twins/*.json` → messy CSV/TXT/JSONL with the planted faults in §2. Deterministic seed. **Labelled synthetic in every file header.** | `raw/` exists, faults visible by eye | B2, 2–3 h |
 | 3 | `ingest/ingest.py --reset`: mappings + bulk load + normalisation | doc counts match; a dedup query shows the planted duplicates | B2, 2 h |
-| 4 | `derive/derive.py --all --write` | `engine.cli --offline` + `check_determinism.sh` still pass; SPEC 7.1 days 1–3 intact | B2 + content, 3–4 h |
-| 5 | `index_runs.py` + `analyzer.support`/`select_evidence` via ES, `--no-es` fallback, tests pass both ways | `test_analyzer.py` green with and without `SIMFFEE_ES` | B2, 2–3 h |
+| 4 | `derive/derive.py --all` (compare mode) | Derived vs hand-typed table printed; deltas inside SPEC 3.1 bands for ≥ 8 of 10 twins; `agents` index populated with evidence | B2 + content, 3–4 h |
+| 4b | `derive --write` — **only if** the team wants derived numbers to be the ones the engine ran on, and **only before** RUN_PLAN §4's fill | `engine.cli --offline` + `check_determinism.sh` still pass; SPEC 7.1 days 1–3 intact | joint call |
+| 5 | `index_runs.py` + `analyzer.support`/`select_evidence` via ES, `--no-es` fallback, tests pass both ways | `test_analyzer.py` green with and without `SIMFFEE_ES`; strict-gate tests in `test_repairs.py` unaffected | B2, 2–3 h |
 | 6 | `analyzer/search.py` + `tools/query_proxy.py` (stdlib `http.server`, one `POST /ask`) + query contract handed to frontend | the three demo questions in §5 return the right rows | B2, 3 h |
 | 7 | UI: footnote on evidence cards, search box on screen 4, raw-vs-derived panel on screen 1 | — | frontend |
 | 8 | Optional: Kibana container + one saved Discover view; §6 semantic | — | if time |
@@ -218,8 +255,9 @@ the answer *is* a query.
 
 | Risk | Mitigation |
 | --- | --- |
-| Infra eats the day; live LLM run still not done | Steps 1–3 are independent of the LLM. Do not start step 4 until B1's live baseline exists — derive changes twin files, which invalidates cache |
-| Derived numbers break SPEC 7.1 | Band mapping is tuned to land on today's values; determinism check is the gate. Twin files stay the single source the engine reads, so a bad derive is one `git checkout data/` away from undone |
+| Infra eats the day; live LLM run still not done | Steps 1–4 (compare mode) never touch `data/` or the cache and can run in parallel with RUN_PLAN. Only 4b conflicts, and it is optional |
+| Derived numbers break SPEC 7.1 | Band mapping is tuned to land on today's values; determinism check is the gate. Twin files stay the single source the engine reads, so a bad `--write` is one `git checkout data/` away from undone — but the cache it invalidated is not; hence compare mode by default |
+| ES becomes a way to show fallback rows as evidence | Every query filters `llm_failed: false`; `index_runs.py` refuses incomplete runs by default; `run_complete` tag on anything indexed with `--allow-incomplete` |
 | Judges see ES as a bolted-on database | The three §5 moments each show a query *producing* a number or an answer. If a moment cannot show that, cut it |
 | Docker not on the demo laptop | `--no-es` runs the whole demo minus search; record the ES moments in the backup video |
 | Container down mid-pitch | `tools/es_up.sh` on a hotkey; proxy returns `{"error": "search unavailable"}` and the UI hides the box |

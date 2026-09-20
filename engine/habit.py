@@ -5,9 +5,13 @@ from __future__ import annotations
 from .schema import ALPHA, DELTA
 
 
-def regular_shop(habit: dict[str, float]) -> str:
-    """argmax habit, ties broken by shop id so runs stay deterministic."""
-    return max(sorted(habit), key=lambda s: habit[s])
+def regular_shop(habit: dict[str, float], present: dict | set | None = None) -> str:
+    """argmax habit, ties broken by shop id so runs stay deterministic.
+
+    `present` restricts the choice to shops that exist today (ROADMAP B1): a habit for a
+    shop that has not opened yet cannot be anyone's regular."""
+    candidates = sorted(s for s in habit if present is None or s in present)
+    return max(candidates, key=lambda s: habit[s])
 
 
 def apply_habit(habit: dict[str, float], choice: str) -> None:

@@ -53,11 +53,46 @@ class Scenario:
     parent: str | None
     overrides: list[dict[str, Any]]
     description: str = ""
+    # SPEC_FUNCTIONAL 2 — all optional, all additive. None means "inherit / default".
+    days: int | None = None
+    focus_shop: str | None = None
+    label: str | None = None
+    role: str | None = None
+    source: dict[str, Any] | None = None
 
     @property
     def from_day(self) -> int:
         """First day this scenario's own overrides bite. 1 when it has none."""
         return min((o["from_day"] for o in self.overrides), default=1)
+
+
+def scenario_from_dict(raw: dict[str, Any]) -> Scenario:
+    """Build a Scenario from its JSON shape; validates the override blocks."""
+    overrides = raw.get("overrides", [])
+    for i, ov in enumerate(overrides):
+        for key in ("from_day", "shop"):
+            if key not in ov:
+                raise ValueError(f"scenario {raw.get('id')!r} override {i} missing {key!r}")
+        if not isinstance(ov["from_day"], int) or ov["from_day"] < 1:
+            raise ValueError(f"scenario {raw.get('id')!r} override {i}: from_day must be an int >= 1")
+        if "set" not in ov and "unset" not in ov:
+            raise ValueError(f"scenario {raw.get('id')!r} override {i} has neither set nor unset")
+        if not isinstance(ov.get("set", {}), dict) or not isinstance(ov.get("unset", []), list):
+            raise ValueError(f"scenario {raw.get('id')!r} override {i}: set must be an object, unset a list")
+    days = raw.get("days")
+    if days is not None and (not isinstance(days, int) or days < 1):
+        raise ValueError(f"scenario {raw.get('id')!r}: days must be an int >= 1")
+    return Scenario(
+        id=raw["id"],
+        parent=raw.get("parent"),
+        overrides=overrides,
+        description=raw.get("description", ""),
+        days=days,
+        focus_shop=raw.get("focus_shop"),
+        label=raw.get("label"),
+        role=raw.get("role"),
+        source=raw.get("source"),
+    )
 
 
 def load_shops(data: Path = DATA) -> dict[str, dict[str, Any]]:
@@ -108,17 +143,24 @@ def load_twins(data: Path = DATA, shop_ids: frozenset[str] | None = None) -> lis
     return twins
 
 
-def load_scenario(scenario_id: str, data: Path = DATA) -> Scenario:
-    raw = json.loads((data / "scenarios" / f"{scenario_id}.json").read_text())
-    return Scenario(
-        id=raw["id"],
-        parent=raw.get("parent"),
-        overrides=raw.get("overrides", []),
-        description=raw.get("description", ""),
-    )
+def load_scenario(scenario_id: str, data: Path = DATA,
+                  extra: dict[str, Scenario] | None = None) -> Scenario:
+    """A scenario by id: from `extra` (ad-hoc, e.g. a user's what-if) first, then data/."""
+    if extra and scenario_id in extra:
+        return extra[scenario_id]
+    path = data / "scenarios" / f"{scenario_id}.json"
+    if not path.exists():
+        raise FileNotFoundError(f"no scenario {scenario_id!r} in {data / 'scenarios'}")
+    return scenario_from_dict(json.loads(path.read_text()))
 
 
-def load_chain(scenario_id: str, data: Path = DATA) -> list[Scenario]:
+def load_scenario_file(path: Path) -> Scenario:
+    """A scenario from any JSON file, for --scenario-file and the live API."""
+    return scenario_from_dict(json.loads(Path(path).read_text()))
+
+
+def load_chain(scenario_id: str, data: Path = DATA,
+               extra: dict[str, Scenario] | None = None) -> list[Scenario]:
     """Root-first chain of scenarios, e.g. [baseline, cf_discount]."""
     chain: list[Scenario] = []
     seen: set[str] = set()
@@ -127,7 +169,38 @@ def load_chain(scenario_id: str, data: Path = DATA) -> list[Scenario]:
         if current in seen:
             raise ValueError(f"scenario cycle at {current}")
         seen.add(current)
-        sc = load_scenario(current, data)
+        sc = load_scenario(current, data, extra)
         chain.append(sc)
         current = sc.parent
     return list(reversed(chain))
+
+
+def discover_scenarios(data: Path = DATA, include_all: bool = False) -> list[str]:
+    """Every scenario id under data/scenarios, parents before children, then by `order`.
+
+    The old ALL_SCENARIOS constant, computed. A fork reads its parent's snapshot, so the
+    parent must run first; ties are broken by the optional `order` key, then by id.
+
+    By default this is the promoted set that runs.json is built from. Scenarios marked
+    `bundle: false` (the S2 situation family, ablations -- ROADMAP B4/B6) are run on demand
+    and only listed with `include_all=True` (CLI: `--include-all`).
+    """
+    raws = {}
+    for path in sorted((data / "scenarios").glob("*.json")):
+        raw = json.loads(path.read_text())
+        if include_all or raw.get("bundle", True):
+            raws[raw["id"]] = raw
+    depth: dict[str, int] = {}
+
+    def _depth(sid: str, trail: tuple[str, ...] = ()) -> int:
+        if sid in depth:
+            return depth[sid]
+        if sid in trail:
+            raise ValueError(f"scenario cycle at {sid}")
+        parent = raws[sid].get("parent")
+        if parent and parent not in raws:
+            raise ValueError(f"scenario {sid!r} has unknown parent {parent!r}")
+        depth[sid] = 0 if not parent else _depth(parent, trail + (sid,)) + 1
+        return depth[sid]
+
+    return sorted(raws, key=lambda s: (_depth(s), raws[s].get("order", 99), s))

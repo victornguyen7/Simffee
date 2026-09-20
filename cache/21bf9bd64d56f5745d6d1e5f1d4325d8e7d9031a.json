@@ -1,0 +1,15 @@
+{
+  "_model": "groq/compound-mini",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 2381,
+    "output_tokens": 798
+  },
+  "_version": 2,
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is closed, so I need a place that’s open now; Starbucks opens at 06:00, fits my schedule, and I like its latte, with a short 7‑minute line.",
+  "secondary_driver": "product",
+  "valence": 0.8
+}

@@ -13,11 +13,11 @@ from pathlib import Path
 from typing import Any
 
 from . import cache, decide
-from .disruption import disruption
-from .gossip import apply_inbox, apply_marketing, gossip
+from .disruption import disruption, with_new_entrant
+from .gossip import apply_inbox, apply_marketing, apply_opening, gossip
 from .habit import apply_habit, regular_shop
 from .loader import DATA, Scenario, Twin, load_chain, load_shops, load_twins
-from .resolve import resolve
+from .resolve import opening_today, resolve
 from .schema import DAYS, HABIT_AUTOPILOT, SEEK_CHANGE_GAP, Row
 
 RUNS = Path(__file__).resolve().parent.parent / "runs"
@@ -26,13 +26,20 @@ RUNS = Path(__file__).resolve().parent.parent / "runs"
 # --- state ------------------------------------------------------------------
 
 
-def init_state(twins: list[Twin]) -> dict[str, Any]:
+def init_state(twins: list[Twin], present: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Day-1 state. `present` is the day-1 shop set (ROADMAP B1): a shop that does not exist
+    yet can carry no habit, no curiosity and no visits, so those entries start at zero. With
+    every shop present (v1) this is the twin's data verbatim."""
+    def exists(shop: str) -> bool:
+        return present is None or shop in present
     return {
-        "habit": {t.id: dict(t.mechanism["habit"]) for t in twins},
-        "latent_interest": {t.id: dict(t.mechanism["latent_interest"]) for t in twins},
+        "habit": {t.id: {s: (v if exists(s) else 0.0) for s, v in t.mechanism["habit"].items()}
+                  for t in twins},
+        "latent_interest": {t.id: {s: (v if exists(s) else 0.0) for s, v in t.mechanism["latent_interest"].items()}
+                            for t in twins},
         "inbox": {t.id: [] for t in twins},
         "history": {t.id: [] for t in twins},
-        "visited": {t.id: sorted(decide.experienced_shops(t, {})) for t in twins},
+        "visited": {t.id: sorted(s for s in decide.experienced_shops(t, {}) if exists(s)) for t in twins},
     }
 
 
@@ -100,10 +107,14 @@ def run_day(
     seed: int,
     offline: bool = False,
     cache_dir: Path = cache.CACHE,
+    opening: list[str] = (),
 ) -> list[Row]:
+    """`opening` names the shops that exist today and did not yesterday (ROADMAP B2): they
+    bump nearby curiosity and register as a `new_entrant` shock. Empty for every v1 day."""
     rows: list[Row] = []
     outgoing: dict[str, list[dict[str, Any]]] = {t.id: [] for t in twins}
     pending: list[tuple[Twin, str, float]] = []
+    entrants = [shops_today[s] for s in opening]
 
     for twin in twins:
         view = _twin_view(state, twin.id)
@@ -112,17 +123,20 @@ def run_day(
         # Yesterday's gossip lands now, then today's marketing.
         apply_inbox(latent, state["inbox"][twin.id])
         state["inbox"][twin.id] = []
-        regular = regular_shop(habit)
+        regular = regular_shop(habit, shops_today)
         apply_marketing(latent, twin, shops_today, regular)
+        apply_opening(latent, twin, opening, shops_today)
 
         disr = disruption(twin, shops_today[regular], remembered[regular])
+        disr = with_new_entrant(disr, twin, [e for s, e in zip(opening, entrants) if s != regular])
         state_before = {"habit": dict(habit), "latent_interest": dict(latent)}
 
         # SPEC 2.5 / 4.1: three gates into reappraisal -- weak habit, a shock
         # bigger than this twin's threshold, or curiosity that has outgrown the
         # habit outright.
         seeks_change = any(
-            v > habit[regular] + SEEK_CHANGE_GAP for s, v in latent.items() if s != regular
+            v > habit[regular] + SEEK_CHANGE_GAP
+            for s, v in latent.items() if s != regular and s in shops_today
         )
         if habit[regular] >= HABIT_AUTOPILOT and disr.score <= twin.disruption_threshold \
                 and not seeks_change:
@@ -175,24 +189,46 @@ def run_day(
 # --- a whole scenario -------------------------------------------------------
 
 
+def scenario_days(chain: list[Scenario], default: int = DAYS) -> int:
+    """Run length: the child's `days`, else the nearest ancestor's, else the default."""
+    for sc in reversed(chain):
+        if sc.days:
+            return sc.days
+    return default
+
+
 def run(
     scenario_id: str,
     seed: int,
-    days: int = DAYS,
+    days: int | None = None,
     data: Path = DATA,
     out: Path = RUNS,
     offline: bool = False,
     cache_dir: Path = cache.CACHE,
+    extra: dict[str, Scenario] | None = None,
 ) -> list[dict[str, Any]]:
     """Run one scenario at one seed. Forks load the parent's snapshot and the
     parent's random stream, so the override is the ONLY difference between the
-    two branches (SPEC 5.1)."""
-    chain = load_chain(scenario_id, data)
+    two branches (SPEC 5.1).
+
+    `days` None means "what the scenario says" (SPEC_FUNCTIONAL 2); an explicit
+    value wins, for diagnostics. `extra` supplies ad-hoc scenarios by id (a
+    user's what-if) that are not files under data/scenarios.
+    """
+    chain = load_chain(scenario_id, data, extra)
     scenario: Scenario = chain[-1]
+    if days is None:
+        days = scenario_days(chain)
     shops = load_shops(data)
     twins = load_twins(data, shop_ids=frozenset(shops))
 
-    remembered = resolve(shops, chain, 1)   # the world the 30-day log remembers
+    # The world the 30-day log remembers: day 1 for every shop that exists then. A shop
+    # that opens later (ROADMAP B1) is remembered as it was on its opening day, so its
+    # own later changes can still read as shocks to the people it wins.
+    remembered = resolve(shops, chain, 1)
+    for day in range(2, days + 1):
+        for sid, shop in resolve(shops, chain, day).items():
+            remembered.setdefault(sid, shop)
 
     start_day = scenario.from_day if scenario.parent else 1
     rows: list[dict[str, Any]] = []
@@ -201,14 +237,14 @@ def run(
         state, rng = load_snapshot(out, scenario.parent, seed, start_day - 1)
         rows.extend(_read_rows(out, scenario.parent, seed, before_day=start_day, as_scenario=scenario_id))
     else:
-        state = init_state(twins)
+        state = init_state(twins, present=resolve(shops, chain, 1))
         rng = random.Random(seed)
 
     for day in range(start_day, days + 1):
         shops_today = resolve(shops, chain, day)
         day_rows = run_day(
             day, twins, state, shops_today, remembered, rng, scenario_id, seed,
-            offline=offline, cache_dir=cache_dir,
+            offline=offline, cache_dir=cache_dir, opening=opening_today(chain, shops, day),
         )
         rows.extend(r.to_dict() for r in day_rows)
         save_snapshot(state, out, scenario_id, seed, day, rng)

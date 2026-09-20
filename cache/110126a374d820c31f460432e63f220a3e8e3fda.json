@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1049,
+    "output_tokens": 73
+  },
+  "_version": 2,
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "I dropped Simffee for Starbucks yesterday because the queue was too long. My patience is low; I am sticking with the place where the wait is manageable. Consistency wins today.",
+  "secondary_driver": "wait",
+  "valence": 0.7
+}

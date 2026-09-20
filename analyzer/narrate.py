@@ -95,7 +95,7 @@ def narrate(analysis, complete_json=None, retries=1):
         "hours": "opening hours", "price": "price", "habit": "habit",
         "curiosity": "curiosity", "social": "word of mouth", "wait": "waiting time",
         "distance": "distance", "product": "product availability", "quality": "quality",
-        "marketing": "marketing",
+        "marketing": "marketing", "closed": "the closure",
     }
     payload = payload_for(analysis)
     if any(type(payload[k]) is not int or payload[k] < 0 for k in
@@ -106,10 +106,37 @@ def narrate(analysis, complete_json=None, retries=1):
     naive, actual = drivers.get(payload["obvious_driver"]), drivers.get(payload["actual_driver"])
     if naive is None or actual is None:
         return {**result, "rejected": "driver is unmeasured"}
+    verb = "jumped" if analysis.get("direction") == "rise" else "broke"
     text = (
-        f"Sales broke on day {payload['break_day']}; the obvious explanation was {naive}. "
+        f"Sales {verb} on day {payload['break_day']}; the obvious explanation was {naive}. "
         f"Recorded decisions pointed to {actual}; {payload['customers_lost']} customers were lost, "
         f"with {payload['lost_due_to_the_change']} attributed to the change and "
         f"{payload['lost_anyway']} also lost in the control."
     )
+    entrant_text = _entrant_sentence(analysis, drivers)
+    if entrant_text:
+        text = entrant_text + " " + text
     return {**result, "narration": text}
+
+
+def _entrant_sentence(analysis, drivers):
+    """ROADMAP B5 — the S2 template leads with the flows: who went to the entrant, and why.
+    Every number is a count read straight from `analysis['flows']`."""
+    question = analysis.get("question") or {}
+    entrant = question.get("entrant")
+    flow = analysis.get("flows")
+    if not entrant or not flow:
+        return None
+    to_them = flow["totals"]["lost_to"].get(entrant["shop"], [])
+    back = flow["totals"]["returned"]
+    kept = flow["end"]["kept"]
+    lost_drivers = {}
+    for day in flow["by_day"]:
+        for driver, n in day["lost_to"].get(entrant["shop"], {}).get("drivers", {}).items():
+            lost_drivers[driver] = lost_drivers.get(driver, 0) + n
+    why = max(lost_drivers, key=lambda d: (lost_drivers[d], d), default=None)
+    why_text = f", mostly citing {drivers.get(why, why)}" if why else ""
+    return (
+        f"A competitor opened on day {entrant['day']}; {len(to_them)} customers went to it at "
+        f"least once{why_text}, {len(kept)} never left, and {len(back)} came back."
+    )

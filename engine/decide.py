@@ -17,6 +17,7 @@ from . import cache, llm, prompt
 from .loader import Twin
 from .schema import AUTOPILOT_VALENCE, DRIVERS, REASONING_WORD_LIMIT, SKIP_LATENT_FLOOR, Disruption
 from .timeutil import is_open_at, manhattan
+from .resolve import display_name
 
 MAX_REASONING_WORDS = REASONING_WORD_LIMIT          # SPEC 4.3 (increased for Groq compatibility)
 
@@ -62,15 +63,19 @@ def options_block(
     twin: Twin,
     state: dict[str, dict[str, float]],
     shops_today: dict[str, dict[str, Any]],
+    day: int | None = None,
 ) -> list[dict[str, Any]]:
-    """The per-shop facts the reappraisal prompt renders into words."""
+    """The per-shop facts the reappraisal prompt renders into words. `day` lets a shop
+    that opened today (ROADMAP B2) say so; v1 shops never do."""
     options = []
     for shop_id, shop in shops_today.items():
         distance = manhattan(twin.home, shop["position"])
         price = price_for(twin, shop)
+        opened_today = day is not None and shop.get("exists_from_day") == day and day > 1
         options.append({
+            **({"opened_today": True} if opened_today else {}),
             "shop": shop_id,
-            "name": shop["name"],
+            "name": display_name(shop),   # prompt.shop_label if set, else name
             "distance": distance,
             "within_walk_tolerance": distance <= twin.profile["walk_tolerance"],
             "price": price,
@@ -168,7 +173,10 @@ def _fallback(twin: Twin, regular: str, shops_today, reason: str) -> Decision:
     STATS["failures"] += 1
     decision = autopilot(twin, regular, shops_today)
     decision["llm_failed"] = True
-    safe_reason = reason if reason in {"offline, not cached", "invalid reply twice", "LLM unavailable", "transport failed"} else "LLM unavailable"
+    allowed = {"offline, not cached", "invalid reply twice", "LLM unavailable", "transport failed",
+               "transport failed: quota: daily token limit", "transport failed: rate limit",
+               "transport failed: authentication", "transport failed: model not found"}
+    safe_reason = reason if reason in allowed else "LLM unavailable"
     decision["reasoning"] = f"[llm unavailable: {safe_reason}] {decision['reasoning']}"
     decision["decision_source"] = "fallback"
     return decision
@@ -189,7 +197,7 @@ def reappraise(
 ) -> Decision:
     """The habit is suspended. The twin consciously weighs the options."""
     latent = state["latent_interest"]
-    highest_latent = max((v for s, v in latent.items() if s != regular), default=0.0)
+    highest_latent = max((v for s, v in latent.items() if s != regular and s in shops_today), default=0.0)
 
     # SPEC 8, tuning note on T08. A deterministic rule, checked before the call:
     # a shock big enough to break the habit still is not enough to switch when
@@ -206,7 +214,7 @@ def reappraise(
             llm_failed=False, decision_source="rule",
         )
 
-    options = options_block(twin, state, shops_today)
+    options = options_block(twin, state, shops_today, day)
     history = state.get("history", [])
     user = prompt.build(
         twin, options, disr.score, disr.source, regular, history, shops_today,
@@ -253,6 +261,9 @@ def reappraise(
             if attempt == 1:
                 STATS["retries"] += 1
         except Exception as exc:                           # transport, rate limit, auth
-            return _fallback(twin, regular, shops_today, "transport failed")
+            # llm.complete_json already sanitised the message and appended a class in
+            # parentheses; keep only that class so the row says "quota", not a provider dump.
+            kind = str(exc)[len("LLM transport failed"):].strip(" ()") if str(exc).startswith("LLM transport failed") else ""
+            return _fallback(twin, regular, shops_today, f"transport failed: {kind}" if kind else "transport failed")
 
     return _fallback(twin, regular, shops_today, "invalid reply twice")

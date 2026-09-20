@@ -1,0 +1,15 @@
+{
+  "actions": [
+    {
+      "action": "set_open",
+      "from_day": 5,
+      "item": null,
+      "shop": "simffee",
+      "value": "06:00"
+    }
+  ],
+  "focus_shop": "simffee",
+  "label": "Open at 6am",
+  "situation": "incumbent_change",
+  "unsupported": []
+}

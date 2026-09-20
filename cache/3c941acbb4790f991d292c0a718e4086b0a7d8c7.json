@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1109,
+    "output_tokens": 74
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "My coffee routine is strictly 6:40 at Simffee. Since it opens at 7:00, I will not wait or walk further; I will skip it.",
+  "secondary_driver": "hours",
+  "valence": 0.2
+}

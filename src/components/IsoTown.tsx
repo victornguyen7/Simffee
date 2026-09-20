@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import type { Row, Runs } from '../types'
 import { agentsAt } from '../town/agents'
-import { drawBubble, drawGround, drawPerson, drawPet, drawProp } from '../town/draw'
+import { drawAnimal, drawBubble, drawGround, drawPerson, drawPet, drawProp } from '../town/draw'
 import {
   GRID,
   PENS,
@@ -9,6 +9,7 @@ import {
   TILE_W,
   idx,
   tileToScreen,
+  type Pen,
   type Town,
 } from '../town/model'
 
@@ -18,6 +19,14 @@ interface Pet {
   kind: 'cat' | 'dog'
   pos: [number, number]
   target: [number, number]
+}
+
+interface Livestock {
+  kind: 'sheep' | 'cow' | 'chicken' | 'duck'
+  pen: Pen
+  pos: [number, number]
+  target: [number, number]
+  idleUntil: number
 }
 
 interface Props {
@@ -46,6 +55,51 @@ function petTarget(town: Town): [number, number] {
   return candidates[Math.floor(Math.random() * candidates.length)] ?? [8, 8]
 }
 
+function unit(seed: number): number {
+  const value = Math.sin(seed * 12.9898) * 43758.5453
+  return value - Math.floor(value)
+}
+
+function livestockPoint(pen: Pen, seed: number): [number, number] {
+  const minX = pen.x + 1.2
+  const maxX = pen.x + pen.w - 1.2
+  const minY = pen.y + 1.2
+  const maxY = pen.y + pen.h - 1.2
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const x = minX + (maxX - minX) * unit(seed + attempt * 2)
+    const y = minY + (maxY - minY) * unit(seed + attempt * 2 + 1)
+    if (Math.hypot(x - (pen.x + 1), y - (pen.y + 1)) >= 0.7) return [x, y]
+  }
+  return [maxX, maxY]
+}
+
+function createLivestock(): Livestock[] {
+  const counts: Record<Pen['kind'], number> = { sheep: 7, cow: 4, poultry: 8 }
+  const animals: Livestock[] = []
+  let seed = 41
+  for (const pen of PENS) {
+    for (let i = 0; i < counts[pen.kind]; i++) {
+      const kind =
+        pen.kind === 'sheep'
+          ? 'sheep'
+          : pen.kind === 'cow'
+            ? 'cow'
+            : i % 3 === 0
+              ? 'duck'
+              : 'chicken'
+      animals.push({
+        kind,
+        pen,
+        pos: livestockPoint(pen, seed),
+        target: livestockPoint(pen, seed + 100),
+        idleUntil: 0,
+      })
+      seed += 7
+    }
+  }
+  return animals
+}
+
 export default function IsoTown({
   runs,
   town,
@@ -57,9 +111,10 @@ export default function IsoTown({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef({ runs, town, rows, phase, selectedTwin })
-  const cameraRef = useRef({ x: 0, y: 0, zoom: 1 })
+  const cameraRef = useRef({ x: 0, y: 0, zoom: 1.5 })
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const petsRef = useRef<Pet[]>([])
+  const livestockRef = useRef<Livestock[]>([])
 
   useEffect(() => {
     stateRef.current = { runs, town, rows, phase, selectedTwin }
@@ -70,6 +125,7 @@ export default function IsoTown({
       { kind: 'cat', pos: petTarget(town), target: petTarget(town) },
       { kind: 'dog', pos: petTarget(town), target: petTarget(town) },
     ]
+    livestockRef.current = createLivestock()
   }, [town])
 
   useEffect(() => {
@@ -113,9 +169,30 @@ export default function IsoTown({
         pet.pos = [pet.pos[0] + (dx / distance) * step, pet.pos[1] + (dy / distance) * step]
       }
 
+      for (const livestock of livestockRef.current) {
+        if (livestock.idleUntil > t) continue
+        const dx = livestock.target[0] - livestock.pos[0]
+        const dy = livestock.target[1] - livestock.pos[1]
+        const distance = Math.hypot(dx, dy)
+        if (distance < 0.04) {
+          livestock.pos = livestock.target
+          if (Math.random() < 0.7) {
+            livestock.idleUntil = t + 900 + Math.random() * 2200
+          } else {
+            livestock.target = livestockPoint(livestock.pen, Math.random() * 10000)
+          }
+          continue
+        }
+        const step = Math.min(distance, elapsed * 0.15)
+        livestock.pos = [
+          livestock.pos[0] + (dx / distance) * step,
+          livestock.pos[1] + (dy / distance) * step,
+        ]
+      }
+
       const cam = cameraRef.current
       const originX = rect.width / 2 + cam.x
-      const originY = rect.height / 2 - (GRID * TILE_H) / 2 + cam.y
+      const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
       ctx.save()
       ctx.translate(originX, originY)
       ctx.scale(cam.zoom, cam.zoom)
@@ -144,7 +221,7 @@ export default function IsoTown({
             draw: () => {
               ctx.save()
               ctx.translate(sx, sy)
-              drawProp(ctx, prop, t, x * 31 + y)
+              drawProp(ctx, prop, t)
               ctx.restore()
             },
           })
@@ -164,6 +241,19 @@ export default function IsoTown({
         })
       }
 
+      for (const livestock of livestockRef.current) {
+        const [sx, sy] = tileToScreen(livestock.pos[0], livestock.pos[1])
+        items.push({
+          depth: livestock.pos[0] + livestock.pos[1] + 0.4,
+          draw: () => {
+            ctx.save()
+            ctx.translate(sx, sy)
+            drawAnimal(ctx, livestock.kind, t, livestock.pos[0] * 31 + livestock.pos[1])
+            ctx.restore()
+          },
+        })
+      }
+
       agents.forEach((a, i) => {
         const [sx, sy] = tileToScreen(a.pos[0], a.pos[1])
         items.push({
@@ -172,7 +262,7 @@ export default function IsoTown({
             ctx.save()
             ctx.translate(sx, sy)
             drawPerson(ctx, i, a.walking, t, sel === a.twin.id)
-            ctx.font = '9px ui-sans-serif, system-ui, sans-serif'
+            ctx.font = '11px ui-sans-serif, system-ui, sans-serif'
             ctx.textAlign = 'center'
             ctx.fillStyle = 'rgba(30,30,30,0.7)'
             ctx.fillText(a.twin.name, 0, 8)
@@ -209,7 +299,7 @@ export default function IsoTown({
     const rect = canvas.getBoundingClientRect()
     const cam = cameraRef.current
     const originX = rect.width / 2 + cam.x
-    const originY = rect.height / 2 - (GRID * TILE_H) / 2 + cam.y
+    const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
     const px = (clientX - rect.left - originX) / cam.zoom
     const py = (clientY - rect.top - originY) / cam.zoom
     const agents = agentsAt(runs, rows, phase, selectedTwin)
@@ -227,7 +317,7 @@ export default function IsoTown({
     const rect = canvas.getBoundingClientRect()
     const cam = cameraRef.current
     const originX = rect.width / 2 + cam.x
-    const originY = rect.height / 2 - (GRID * TILE_H) / 2 + cam.y
+    const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
     const px = (clientX - rect.left - originX) / cam.zoom
     const py = (clientY - rect.top - originY) / cam.zoom
     let hit: { id: 'simffee' | 'starbucks'; depth: number } | null = null
@@ -285,7 +375,7 @@ export default function IsoTown({
         cam.zoom = Math.min(2.2, Math.max(0.45, cam.zoom * (e.deltaY > 0 ? 0.92 : 1.08)))
       }}
       onDoubleClick={() => {
-        cameraRef.current = { x: 0, y: 0, zoom: 1 }
+        cameraRef.current = { x: 0, y: 0, zoom: 1.5 }
       }}
       aria-label={`Isometric town, ${GRID} by ${GRID} tiles, tile size ${TILE_W} by ${TILE_H}`}
     />

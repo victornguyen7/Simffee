@@ -1,6 +1,6 @@
 import type { Shop, Twin } from '../types'
 
-export const GRID = 17
+export const GRID = 19
 export const TILE_W = 64
 export const TILE_H = 32
 
@@ -20,10 +20,6 @@ export type Prop =
   | 'fountain'
   | 'fence'
   | 'gate'
-  | 'sheep'
-  | 'cow'
-  | 'chicken'
-  | 'duck'
   | 'trough'
   | 'coop'
 
@@ -41,16 +37,16 @@ export interface Pen {
 }
 
 export const PENS: Pen[] = [
-  { kind: 'sheep', x: 0, y: 0, w: 4, h: 4 },
-  { kind: 'poultry', x: 13, y: 0, w: 4, h: 3 },
-  { kind: 'cow', x: 0, y: 13, w: 4, h: 4 },
+  { kind: 'sheep', x: 0, y: 0, w: 5, h: 5 },
+  { kind: 'poultry', x: 14, y: 0, w: 5, h: 4 },
+  { kind: 'cow', x: 0, y: 14, w: 5, h: 5 },
 ]
 
 export const idx = (x: number, y: number) => y * GRID + x
 export const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < GRID && y < GRID
 
 /** A world cell (0..4) of the simulation grid sits on this town tile. */
-export const cellToTile = (cx: number, cy: number): [number, number] => [cx * 2 + 4, cy * 2 + 4]
+export const cellToTile = (cx: number, cy: number): [number, number] => [cx * 2 + 5, cy * 2 + 5]
 
 /** Deterministic pseudo random so the default town is stable across reloads. */
 function rand(seed: number) {
@@ -76,10 +72,10 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
   }
 
   // a pond in the far corner plus a sandy shore
-  for (let x = 13; x < 16; x++) {
-    for (let y = 13; y < 16; y++) {
+  for (let x = 15; x < 18; x++) {
+    for (let y = 15; y < 18; y++) {
       if (ground[idx(x, y)] === 'path') continue
-      ground[idx(x, y)] = x === 13 || y === 13 ? 'sand' : 'water'
+      ground[idx(x, y)] = x === 15 || y === 15 ? 'sand' : 'water'
     }
   }
 
@@ -108,7 +104,6 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
   for (const pen of PENS) {
     const gateY = pen.y + Math.floor(pen.h / 2)
     const gateX = pen.kind === 'poultry' ? pen.x : pen.x + pen.w - 1
-    const animal: Prop = pen.kind === 'sheep' ? 'sheep' : pen.kind === 'cow' ? 'cow' : 'chicken'
 
     for (let x = pen.x; x < pen.x + pen.w; x++) {
       for (let y = pen.y; y < pen.y + pen.h; y++) {
@@ -129,10 +124,6 @@ export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: s
     const corner = inner.shift()
     if (corner) props[idx(corner[0], corner[1])] = pen.kind === 'poultry' ? 'coop' : 'trough'
 
-    const animalCount = Math.max(1, Math.floor(inner.length * 0.5))
-    for (const [x, y] of inner.slice(0, animalCount)) {
-      props[idx(x, y)] = pen.kind === 'poultry' && r() < 1 / 3 ? 'duck' : animal
-    }
   }
 
   for (let x = 0; x < GRID; x++) {

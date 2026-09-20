@@ -138,9 +138,9 @@ function shopBuilding(
   ctx.fillStyle = shade(wall, -0.45)
   ctx.fillRect(8, -28, 13, 22)
   ctx.fillStyle = sign
-  ctx.fillRect(-20, -52, 40, 12)
+  ctx.fillRect(-28, -54, 56, 14)
   ctx.fillStyle = '#ffffff'
-  ctx.font = 'bold 8px ui-monospace, monospace'
+  ctx.font = 'bold 11px ui-monospace, monospace'
   ctx.textAlign = 'center'
   ctx.fillText(label, 0, -43)
 }
@@ -170,7 +170,12 @@ function fence(ctx: CanvasRenderingContext2D, gate: boolean) {
   }
 }
 
-function animal(ctx: CanvasRenderingContext2D, kind: 'sheep' | 'cow' | 'chicken' | 'duck', t: number, seed: number) {
+export function drawAnimal(
+  ctx: CanvasRenderingContext2D,
+  kind: 'sheep' | 'cow' | 'chicken' | 'duck',
+  t: number,
+  seed: number,
+) {
   const bob = Math.sin(t / 600 + seed) * 1
   shadow(ctx, kind === 'cow' ? 12 : 9, 5)
   ctx.save()
@@ -279,7 +284,7 @@ export function drawPet(ctx: CanvasRenderingContext2D, kind: 'cat' | 'dog', t: n
   ctx.restore()
 }
 
-export function drawProp(ctx: CanvasRenderingContext2D, prop: Prop, t: number, seed = 0) {
+export function drawProp(ctx: CanvasRenderingContext2D, prop: Prop, t: number) {
   switch (prop) {
     case 'tree':
       tree(ctx, '#63b05a', '#4a8f46')
@@ -363,12 +368,6 @@ export function drawProp(ctx: CanvasRenderingContext2D, prop: Prop, t: number, s
     case 'gate':
       fence(ctx, true)
       break
-    case 'sheep':
-    case 'cow':
-    case 'chicken':
-    case 'duck':
-      animal(ctx, prop, t, seed)
-      break
     case 'trough':
       trough(ctx)
       break
@@ -420,7 +419,7 @@ export function drawPerson(
 
 export function drawBubble(ctx: CanvasRenderingContext2D, text: string, tone: 'think' | 'talk') {
   const maxWidth = 168
-  ctx.font = '11px ui-sans-serif, system-ui, sans-serif'
+  ctx.font = '12px ui-sans-serif, system-ui, sans-serif'
   const words = text.split(' ')
   const lines: string[] = []
   let line = ''

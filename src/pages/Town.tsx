@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import './town.css'
 import { clampCamera, render, renderOverlay, type Camera } from '../sim/townRender'
 import { BUILDINGS, hitDoor, type Building } from '../sim/town'
+import { createCars, createCritters, stepCars, stepCritters } from '../sim/critters'
 import { createVillagers, stepVillagers } from '../sim/villagers'
 import { AGENTS, type ShopId } from '../sim/engine'
 
@@ -29,6 +30,8 @@ export default function Town({ onEnterShop }: Props) {
   const hoverRef = useRef<string | null>(null)
   const dragRef = useRef<{ x: number; y: number; camX: number; camY: number } | null>(null)
   const villagersRef = useRef(createVillagers())
+  const crittersRef = useRef(createCritters())
+  const carsRef = useRef(createCars())
   const offscreenRef = useRef<HTMLCanvasElement | null>(null)
   const movedRef = useRef(false)
   const [hovered, setHovered] = useState<Building | null>(null)
@@ -88,9 +91,22 @@ export default function Town({ onEnterShop }: Props) {
       const h = wrap.clientHeight
 
       stepVillagers(villagersRef.current)
+      stepCritters(crittersRef.current)
+      stepCars(carsRef.current)
 
       // world, at a third of the resolution
-      render(offCtx, camRef.current, w, h, hoverRef.current, tick, dpr / PIXEL, villagersRef.current)
+      render(
+        offCtx,
+        camRef.current,
+        w,
+        h,
+        hoverRef.current,
+        tick,
+        dpr / PIXEL,
+        villagersRef.current,
+        crittersRef.current,
+        carsRef.current
+      )
 
       // blow it up with hard pixel edges
       ctx.setTransform(1, 0, 0, 1, 0, 0)

@@ -11,6 +11,7 @@ import {
   type Building,
   type Decor
 } from './town'
+import { critterMoving, type Car, type Critter } from './critters'
 import { isWalking, type Villager } from './villagers'
 
 export interface Camera {
@@ -38,227 +39,393 @@ function rect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h:
   ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h))
 }
 
-function outlined(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  fill: string,
-  lw = 2
-): void {
-  rect(ctx, x - lw, y - lw, w + lw * 2, h + lw * 2, OUTLINE)
-  rect(ctx, x, y, w, h, fill)
+// ------------------------------------------------------------------ scenery
+//
+// Everything below is plotted on the same art pixel grid the buildings use, so
+// a leaf, a roof tile and a car door are all exactly the same size on screen.
+// That shared grid is what makes a scene read as pixel art. Mixing smooth
+// curves in with it is what made the old trees look pasted on.
+
+/** World pixels per art pixel. Matches drawHome and drawShop on purpose. */
+const AU = Math.max(2, Math.round(T / 9))
+
+type Pen = (ax: number, ay: number, aw: number, ah: number, c: string) => void
+
+/**
+ * Returns a plotter anchored at a world point, with ay measured upward from the
+ * ground line. Snapping the anchor to the grid keeps every sprite aligned.
+ */
+function plot(ctx: CanvasRenderingContext2D, cx: number, baseY: number): Pen {
+  const ox = Math.round(cx / AU) * AU
+  const oy = Math.round(baseY / AU) * AU
+  return (ax, ay, aw, ah, c) => {
+    if (aw <= 0 || ah <= 0) return
+    ctx.fillStyle = c
+    ctx.fillRect(ox + ax * AU, oy + ay * AU, aw * AU, ah * AU)
+  }
 }
 
-// ------------------------------------------------------------------ scenery
+/** Same, but mirrored when facing left, so one drawing serves both directions. */
+function flipPen(P: Pen, facing: number): Pen {
+  if (facing >= 0) return P
+  return (ax, ay, aw, ah, c) => P(-ax - aw, ay, aw, ah, c)
+}
+
+/**
+ * Stacks rows of given half widths into a rounded mass with an outline, a lit
+ * upper left and a shaded lower right. Foliage, rocks and fleece are all this.
+ */
+function blob(P: Pen, halves: number[], top: number, fill: string, light: string, dark: string, edge: string): void {
+  const n = halves.length
+  P(-halves[0], top - 1, halves[0] * 2, 1, edge)
+  P(-halves[n - 1], top + n, halves[n - 1] * 2, 1, edge)
+  for (let i = 0; i < n; i++) {
+    const h = halves[i]
+    P(-h - 1, top + i, h * 2 + 2, 1, edge)
+    P(-h, top + i, h * 2, 1, fill)
+  }
+  for (let i = 0; i < n; i++) {
+    const h = halves[i]
+    if (i < n * 0.45) P(-h + 1, top + i, Math.max(1, Math.round(h * 0.85)), 1, light)
+    if (i > n * 0.62) P(0, top + i, Math.max(1, h - 1), 1, dark)
+  }
+}
+
+const TREE_SHAPE = [3, 5, 7, 8, 9, 9, 9, 8, 6, 4]
+const TREE_GREENS = [
+  ['#4f7a3f', '#6f9f54', '#3a5c2e'],
+  ['#57813f', '#79a95c', '#405f2f'],
+  ['#4a7342', '#699a57', '#365733']
+]
 
 function drawTree(ctx: CanvasRenderingContext2D, d: Decor): void {
-  const s = T * (0.9 + d.variant * 0.12)
-  shadow(ctx, d.x, d.y, s * 0.5, s * 0.16)
-  outlined(ctx, d.x - s * 0.1, d.y - s * 0.9, s * 0.2, s * 0.9, '#6b4a33', 1)
+  const P = plot(ctx, d.x, d.y)
+  const scale = 1 + (d.variant % 3) * 0.16
+  const halves = TREE_SHAPE.map((h) => Math.max(1, Math.round(h * scale)))
+  const g = TREE_GREENS[d.variant % 3]
+  const trunkH = 5
 
-  const greens = ['#4f7f47', '#5d8d4f', '#456f3e', '#67985a']
-  const g = greens[d.variant % greens.length]
-  const puffs: [number, number, number][] = [
-    [0, -1.55, 0.72],
-    [-0.5, -1.2, 0.55],
-    [0.5, -1.2, 0.55],
-    [0, -1.05, 0.6]
-  ]
-  ctx.fillStyle = OUTLINE
-  for (const [ox, oy, r] of puffs) {
-    ctx.beginPath()
-    ctx.arc(d.x + ox * s, d.y + oy * s, r * s + 2, 0, Math.PI * 2)
-    ctx.fill()
-  }
-  ctx.fillStyle = g
-  for (const [ox, oy, r] of puffs) {
-    ctx.beginPath()
-    ctx.arc(d.x + ox * s, d.y + oy * s, r * s, 0, Math.PI * 2)
-    ctx.fill()
-  }
-  ctx.fillStyle = 'rgba(255,255,255,0.14)'
-  ctx.beginPath()
-  ctx.arc(d.x - s * 0.25, d.y - s * 1.75, s * 0.3, 0, Math.PI * 2)
-  ctx.fill()
+  shadow(ctx, d.x, d.y, AU * halves[halves.length - 1] * 1.1, AU * 1.7)
+
+  P(-2, -trunkH, 4, trunkH, '#3a2718')
+  P(-1, -trunkH, 2, trunkH, '#6b4a33')
+  P(-1, -trunkH, 1, trunkH, '#8b6546')
+
+  blob(P, halves, -trunkH - halves.length + 1, g[0], g[1], g[2], '#25401e')
 }
 
+/** Pines are drawn as stacked tiers, each starting narrow so the steps show. */
+const PINE_SHAPE = [1, 2, 3, 2, 3, 4, 5, 3, 4, 5, 6, 7]
+
 function drawPine(ctx: CanvasRenderingContext2D, d: Decor): void {
-  const s = T * (0.85 + d.variant * 0.1)
-  shadow(ctx, d.x, d.y, s * 0.42, s * 0.14)
-  outlined(ctx, d.x - s * 0.09, d.y - s * 0.6, s * 0.18, s * 0.6, '#63442f', 1)
+  const P = plot(ctx, d.x, d.y)
+  const scale = 1 + (d.variant % 3) * 0.14
+  const halves = PINE_SHAPE.map((h) => Math.max(1, Math.round(h * scale)))
+  const trunkH = 4
+  const fill = '#39663a'
+  const light = '#4f8748'
+  const dark = '#264a2a'
+  const edge = '#1b3520'
 
-  const layers = [
-    [1.9, 0.78],
-    [1.45, 0.62],
-    [1.0, 0.46]
-  ]
-  const g = ['#3f6b40', '#48784a', '#37603a'][d.variant % 3]
-  for (const [top, half] of layers) {
-    ctx.fillStyle = OUTLINE
-    ctx.beginPath()
-    ctx.moveTo(d.x, d.y - top * s - 3)
-    ctx.lineTo(d.x - half * s - 3, d.y - (top - 0.62) * s)
-    ctx.lineTo(d.x + half * s + 3, d.y - (top - 0.62) * s)
-    ctx.closePath()
-    ctx.fill()
+  shadow(ctx, d.x, d.y, AU * halves[halves.length - 1] * 1.1, AU * 1.6)
 
-    ctx.fillStyle = g
-    ctx.beginPath()
-    ctx.moveTo(d.x, d.y - top * s)
-    ctx.lineTo(d.x - half * s, d.y - (top - 0.62) * s)
-    ctx.lineTo(d.x + half * s, d.y - (top - 0.62) * s)
-    ctx.closePath()
-    ctx.fill()
+  P(-2, -trunkH, 4, trunkH, '#3a2718')
+  P(-1, -trunkH, 2, trunkH, '#6b4a33')
+
+  const top = -trunkH - halves.length + 1
+  for (let i = 0; i < halves.length; i++) {
+    const h = halves[i]
+    const y = top + i
+    P(-h - 1, y, h * 2 + 2, 1, edge)
+    P(-h, y, h * 2, 1, fill)
+    P(-h + 1, y, Math.max(1, Math.round(h * 0.7)), 1, light)
+    // a tier restarts wherever the row narrows, so shade the row above it
+    if (i > 0 && h < halves[i - 1]) P(-halves[i - 1], y - 1, halves[i - 1] * 2, 1, dark)
   }
+  P(-1, top - 1, 2, 1, edge)
 }
 
 function drawBush(ctx: CanvasRenderingContext2D, d: Decor): void {
-  const s = T * (0.4 + d.variant * 0.08)
-  shadow(ctx, d.x, d.y, s * 1.1, s * 0.3)
-  const g = ['#567f4c', '#618c56', '#4c7344'][d.variant % 3]
-  ctx.fillStyle = OUTLINE
-  for (const ox of [-0.6, 0, 0.6]) {
-    ctx.beginPath()
-    ctx.arc(d.x + ox * s, d.y - s * 0.5, s * 0.72 + 2, 0, Math.PI * 2)
-    ctx.fill()
-  }
-  ctx.fillStyle = g
-  for (const ox of [-0.6, 0, 0.6]) {
-    ctx.beginPath()
-    ctx.arc(d.x + ox * s, d.y - s * 0.5, s * 0.72, 0, Math.PI * 2)
-    ctx.fill()
+  const P = plot(ctx, d.x, d.y)
+  const scale = 1 + (d.variant % 3) * 0.2
+  const halves = [2, 4, 5, 5, 4].map((h) => Math.max(1, Math.round(h * scale)))
+  shadow(ctx, d.x, d.y, AU * halves[2] * 1.1, AU * 1.2)
+  blob(P, halves, -halves.length, '#4d7a42', '#699a55', '#375c31', '#22401f')
+  if (d.variant % 2 === 0) {
+    P(-2, -4, 1, 1, '#e4737f')
+    P(2, -3, 1, 1, '#e4737f')
   }
 }
 
 function drawFlowers(ctx: CanvasRenderingContext2D, d: Decor): void {
-  const colors = ['#e88fa5', '#f2d06b', '#c98ae0', '#f0997a']
-  const c = colors[d.variant % colors.length]
-  for (let i = 0; i < 3; i++) {
-    const x = d.x + (i - 1) * T * 0.26
-    const y = d.y - (i % 2) * T * 0.12
-    rect(ctx, x - 1, y - T * 0.24, 2, T * 0.24, '#4f7a45')
-    ctx.fillStyle = c
-    ctx.beginPath()
-    ctx.arc(x, y - T * 0.28, T * 0.12, 0, Math.PI * 2)
-    ctx.fill()
-    rect(ctx, x - 1, y - T * 0.29, 2, 2, '#fff3c4')
+  const P = plot(ctx, d.x, d.y)
+  const bloom = ['#e88fa5', '#f2d06b', '#c98ae0', '#f0f0f0'][d.variant % 4]
+  const spots = [
+    [-3, 0],
+    [0, -1],
+    [3, 0],
+    [1, 1]
+  ]
+  for (const [sx, sy] of spots) {
+    P(sx, sy - 3, 1, 3, '#4d7a42')
+    P(sx - 1, sy - 4, 3, 1, bloom)
+    P(sx, sy - 5, 1, 1, bloom)
+    P(sx, sy - 4, 1, 1, '#fff3c4')
   }
 }
 
 function drawRock(ctx: CanvasRenderingContext2D, d: Decor): void {
-  const s = T * (0.24 + d.variant * 0.06)
-  shadow(ctx, d.x, d.y, s * 1.3, s * 0.4)
-  ctx.fillStyle = OUTLINE
-  ctx.beginPath()
-  ctx.ellipse(d.x, d.y - s * 0.4, s * 1.1 + 2, s * 0.8 + 2, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = '#9c9488'
-  ctx.beginPath()
-  ctx.ellipse(d.x, d.y - s * 0.4, s * 1.1, s * 0.8, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = '#b5ada0'
-  ctx.beginPath()
-  ctx.ellipse(d.x - s * 0.3, d.y - s * 0.65, s * 0.4, s * 0.25, 0, 0, Math.PI * 2)
-  ctx.fill()
+  const P = plot(ctx, d.x, d.y)
+  const scale = 1 + (d.variant % 3) * 0.25
+  const halves = [2, 4, 5, 4].map((h) => Math.max(1, Math.round(h * scale)))
+  shadow(ctx, d.x, d.y, AU * halves[2] * 1.1, AU * 1.1)
+  blob(P, halves, -halves.length, '#9d9a92', '#bcb9b0', '#6f6d67', '#46443f')
+}
+
+function drawStump(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 4, AU * 1.1)
+  P(-4, -4, 8, 4, '#3f2a1c')
+  P(-3, -4, 6, 3, '#6b4a33')
+  P(-3, -4, 2, 3, '#835c40')
+  P(-4, -5, 8, 1, '#3f2a1c')
+  P(-3, -5, 6, 1, '#a07a56')
+  P(-1, -5, 2, 1, '#c09a72')
+}
+
+function drawLog(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 8, AU * 1.2)
+  P(-8, -4, 16, 4, '#3f2a1c')
+  P(-7, -4, 14, 3, '#6b4a33')
+  P(-7, -4, 14, 1, '#8b6546')
+  P(-7, -3, 2, 2, '#a07a56')
+  P(5, -3, 2, 2, '#a07a56')
+}
+
+function drawHaystack(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  const halves = [2, 4, 6, 7, 7]
+  shadow(ctx, d.x, d.y, AU * 8, AU * 1.5)
+  blob(P, halves, -halves.length, '#d9b45c', '#efd085', '#b08d3e', '#7a5f28')
+  for (let i = -5; i < 6; i += 3) P(i, -3, 1, 3, '#b08d3e')
 }
 
 function drawLamp(ctx: CanvasRenderingContext2D, d: Decor, tick: number): void {
-  shadow(ctx, d.x, d.y, T * 0.3, T * 0.1)
-  outlined(ctx, d.x - T * 0.1, d.y - T * 2.4, T * 0.2, T * 2.4, '#4c4038', 1)
-  outlined(ctx, d.x - T * 0.32, d.y - T * 2.95, T * 0.64, T * 0.55, '#5c4e42', 1)
+  const P = plot(ctx, d.x, d.y)
+  const glow = 0.72 + Math.sin(tick / 34 + d.x) * 0.1
 
-  const glow = 0.72 + Math.sin(tick / 40) * 0.08
-  ctx.fillStyle = `rgba(255, 224, 150, ${glow})`
-  ctx.beginPath()
-  ctx.arc(d.x, d.y - T * 2.68, T * 0.5, 0, Math.PI * 2)
-  ctx.fill()
-  rect(ctx, d.x - T * 0.18, d.y - T * 2.85, T * 0.36, T * 0.36, '#ffe9a8')
+  shadow(ctx, d.x, d.y, AU * 2.4, AU * 0.9)
+  P(-2, -1, 4, 1, '#3b3129')
+  P(-1, -14, 2, 14, '#3b3129')
+  P(-1, -14, 1, 14, '#57493c')
+
+  P(-3, -19, 6, 5, '#3b3129')
+  P(-2, -18, 4, 3, `rgba(255,226,150,${glow.toFixed(2)})`)
+  P(-2, -18, 2, 1, 'rgba(255,245,210,0.95)')
+  P(-2, -20, 4, 1, '#3b3129')
+  P(-1, -21, 2, 1, '#3b3129')
+
+  ctx.fillStyle = `rgba(255,222,140,${(glow * 0.16).toFixed(2)})`
+  ctx.fillRect(Math.round(d.x - AU * 7), Math.round(d.y - AU * 23), AU * 14, AU * 12)
+}
+
+function drawLantern(ctx: CanvasRenderingContext2D, d: Decor, tick: number): void {
+  const P = plot(ctx, d.x, d.y)
+  const glow = 0.6 + Math.sin(tick / 26 + d.x * 0.4) * 0.16
+  P(-1, -8, 2, 8, '#4a3a2c')
+  P(-2, -12, 4, 4, '#3b3129')
+  P(-1, -11, 2, 2, `rgba(255,214,130,${glow.toFixed(2)})`)
+  P(-2, -13, 4, 1, '#3b3129')
 }
 
 function drawBench(ctx: CanvasRenderingContext2D, d: Decor): void {
-  shadow(ctx, d.x, d.y, T * 0.85, T * 0.18)
-  outlined(ctx, d.x - T * 0.75, d.y - T * 0.5, T * 1.5, T * 0.22, '#8a6a47', 1)
-  outlined(ctx, d.x - T * 0.75, d.y - T * 0.95, T * 1.5, T * 0.2, '#9a7a55', 1)
-  rect(ctx, d.x - T * 0.62, d.y - T * 0.3, T * 0.14, T * 0.32, '#5c4a35')
-  rect(ctx, d.x + T * 0.48, d.y - T * 0.3, T * 0.14, T * 0.32, '#5c4a35')
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 6, AU * 1.1)
+  P(-6, -3, 2, 3, '#4a3527')
+  P(4, -3, 2, 3, '#4a3527')
+  P(-7, -5, 14, 2, '#5e4230')
+  P(-7, -5, 14, 1, '#8a6a47')
+  P(-7, -8, 14, 2, '#5e4230')
+  P(-7, -8, 14, 1, '#8a6a47')
+  P(-7, -9, 1, 4, '#4a3527')
+  P(6, -9, 1, 4, '#4a3527')
 }
 
 function drawPlanter(ctx: CanvasRenderingContext2D, d: Decor): void {
-  shadow(ctx, d.x, d.y, T * 0.45, T * 0.14)
-  outlined(ctx, d.x - T * 0.34, d.y - T * 0.5, T * 0.68, T * 0.5, d.variant === 1 ? '#b5744d' : '#9a7a55', 1)
-  const g = '#4f7f47'
-  ctx.fillStyle = g
-  for (const ox of [-0.22, 0, 0.22]) {
-    ctx.beginPath()
-    ctx.arc(d.x + ox * T, d.y - T * 0.62, T * 0.22, 0, Math.PI * 2)
-    ctx.fill()
-  }
-  ctx.fillStyle = '#f2d06b'
-  ctx.beginPath()
-  ctx.arc(d.x + T * 0.1, d.y - T * 0.75, T * 0.09, 0, Math.PI * 2)
-  ctx.fill()
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 4, AU * 1)
+  P(-4, -5, 8, 5, '#5e4230')
+  P(-3, -5, 6, 4, '#8a6a47')
+  P(-3, -5, 6, 1, '#a58558')
+  P(-3, -7, 6, 2, '#4d7a42')
+  P(-3, -7, 3, 1, '#699a55')
+  const bloom = ['#e88fa5', '#f2d06b', '#c98ae0', '#f6f2e6'][d.variant % 4]
+  P(-3, -8, 1, 1, bloom)
+  P(0, -8, 1, 1, bloom)
+  P(2, -8, 1, 1, bloom)
 }
 
 function drawCrate(ctx: CanvasRenderingContext2D, d: Decor): void {
-  shadow(ctx, d.x, d.y, T * 0.42, T * 0.13)
-  outlined(ctx, d.x - T * 0.34, d.y - T * 0.68, T * 0.68, T * 0.68, '#a97f58', 1)
-  ctx.strokeStyle = 'rgba(0,0,0,0.2)'
-  ctx.lineWidth = 1.5
-  ctx.beginPath()
-  ctx.moveTo(d.x - T * 0.34, d.y - T * 0.68)
-  ctx.lineTo(d.x + T * 0.34, d.y)
-  ctx.moveTo(d.x + T * 0.34, d.y - T * 0.68)
-  ctx.lineTo(d.x - T * 0.34, d.y)
-  ctx.stroke()
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 4, AU * 1)
+  P(-4, -8, 8, 8, '#4a3527')
+  P(-3, -8, 6, 7, '#a5794c')
+  P(-3, -8, 6, 1, '#c29767')
+  P(-3, -8, 1, 7, '#c29767')
+  P(-3, -5, 6, 1, '#7d5a38')
+  P(-1, -8, 1, 7, '#7d5a38')
 }
 
 function drawBarrel(ctx: CanvasRenderingContext2D, d: Decor): void {
-  shadow(ctx, d.x, d.y, T * 0.4, T * 0.13)
-  outlined(ctx, d.x - T * 0.3, d.y - T * 0.78, T * 0.6, T * 0.78, '#8e6239', 1)
-  rect(ctx, d.x - T * 0.3, d.y - T * 0.58, T * 0.6, T * 0.08, '#6b4726')
-  rect(ctx, d.x - T * 0.3, d.y - T * 0.26, T * 0.6, T * 0.08, '#6b4726')
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 3.4, AU * 1)
+  P(-4, -9, 8, 9, '#4a3527')
+  P(-3, -9, 6, 8, '#9a6b42')
+  P(-3, -9, 2, 8, '#bb8a5c')
+  P(2, -9, 1, 8, '#7a5233')
+  P(-3, -7, 6, 1, '#5d4a33')
+  P(-3, -3, 6, 1, '#5d4a33')
+  P(-3, -10, 6, 1, '#7a5233')
 }
 
 function drawFence(ctx: CanvasRenderingContext2D, d: Decor): void {
-  const w = T * 2.6
-  const x0 = d.x - w / 2
-  rect(ctx, x0, d.y - T * 0.42, w, T * 0.1, '#c9b48f')
-  rect(ctx, x0, d.y - T * 0.22, w, T * 0.1, '#c9b48f')
-  for (let i = 0; i <= 5; i++) {
-    const px = x0 + (w / 5) * i
-    rect(ctx, px - 2, d.y - T * 0.58, 4, T * 0.6, '#d8c5a2')
-    rect(ctx, px - 2, d.y - T * 0.62, 4, 4, '#c0ab86')
+  const P = plot(ctx, d.x, d.y)
+  const span = 10 + d.variant * 3
+  P(-span, -5, span * 2, 1, '#c9b492')
+  P(-span, -8, span * 2, 1, '#c9b492')
+  P(-span, -5, span * 2, 1, '#8a7355')
+  for (let i = -span; i <= span; i += 4) {
+    P(i, -11, 2, 11, '#8a7355')
+    P(i, -11, 1, 11, '#ddcaa6')
+    P(i, -12, 2, 1, '#ddcaa6')
   }
 }
 
 function drawMailbox(ctx: CanvasRenderingContext2D, d: Decor): void {
-  shadow(ctx, d.x, d.y, T * 0.22, T * 0.08)
-  rect(ctx, d.x - 2, d.y - T * 0.8, 4, T * 0.8, '#6b5540')
-  outlined(ctx, d.x - T * 0.24, d.y - T * 1.12, T * 0.48, T * 0.34, '#7a94a8', 1)
-  rect(ctx, d.x + T * 0.18, d.y - T * 1.16, 3, T * 0.2, '#c2564f')
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 2, AU * 0.8)
+  P(-1, -8, 2, 8, '#5e4230')
+  P(-4, -13, 8, 5, '#3f4f5e')
+  P(-3, -12, 6, 3, '#7a94a8')
+  P(-3, -12, 6, 1, '#9db4c4')
+  P(4, -12, 1, 3, '#c85a4a')
 }
 
 function drawBistro(ctx: CanvasRenderingContext2D, d: Decor): void {
-  shadow(ctx, d.x, d.y, T * 0.7, T * 0.18)
-  // table
-  rect(ctx, d.x - 2, d.y - T * 0.6, 4, T * 0.6, '#6b5540')
-  ctx.fillStyle = OUTLINE
-  ctx.beginPath()
-  ctx.ellipse(d.x, d.y - T * 0.62, T * 0.42 + 2, T * 0.2 + 2, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = d.variant === 1 ? '#e6d3b3' : '#d9c4a0'
-  ctx.beginPath()
-  ctx.ellipse(d.x, d.y - T * 0.62, T * 0.42, T * 0.2, 0, 0, Math.PI * 2)
-  ctx.fill()
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 6, AU * 1.2)
   // two chairs
-  for (const ox of [-T * 0.72, T * 0.72]) {
-    outlined(ctx, d.x + ox - T * 0.2, d.y - T * 0.52, T * 0.4, T * 0.14, '#8a6a47', 1)
-    outlined(ctx, d.x + ox - T * 0.2, d.y - T * 0.9, T * 0.4, T * 0.12, '#8a6a47', 1)
+  for (const cx of [-7, 5]) {
+    P(cx, -6, 3, 6, '#5e4230')
+    P(cx, -9, 3, 3, '#7a5a3d')
+    P(cx, -9, 1, 3, '#9a7a53')
   }
-  // a cup on the table
-  rect(ctx, d.x - 3, d.y - T * 0.78, 6, T * 0.16, '#fdfaf3')
+  // pedestal table
+  P(-1, -7, 2, 7, '#8a7355')
+  P(-5, -9, 10, 2, '#4a3527')
+  P(-5, -10, 10, 1, '#f2e8d5')
+  P(-5, -10, 5, 1, '#fffaf0')
+  if (d.variant % 2 === 0) {
+    P(1, -12, 2, 2, '#f6f2e6')
+    P(1, -11, 2, 1, '#8a5a34')
+  }
+}
+
+function drawWell(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 8, AU * 2)
+  // stone ring
+  P(-8, -8, 16, 8, '#5c5850')
+  P(-7, -8, 14, 7, '#9d9a92')
+  P(-7, -8, 14, 1, '#bcb9b0')
+  for (let i = -7; i < 7; i += 3) P(i, -6, 1, 6, '#7d7a73')
+  P(-6, -9, 12, 1, '#6f6d67')
+  P(-5, -10, 10, 1, '#2b3640')
+  // posts and roof
+  P(-6, -22, 2, 13, '#5e4230')
+  P(4, -22, 2, 13, '#5e4230')
+  for (let r = 0; r < 5; r++) {
+    const half = 3 + r * 2
+    P(-half, -27 + r, half * 2, 1, '#6d4232')
+    P(-half, -27 + r, Math.max(1, half), 1, '#8a5a40')
+  }
+  P(-1, -28, 2, 1, '#4a2f22')
+  // bucket
+  P(-2, -14, 4, 4, '#4a3527')
+  P(-1, -14, 2, 3, '#9a6b42')
+}
+
+function drawSignpost(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 3, AU * 1)
+  P(-1, -16, 2, 16, '#5e4230')
+  P(-1, -16, 1, 16, '#8a6a47')
+  const dir = d.variant % 2 === 0 ? 1 : -1
+  for (const [ay, col] of [
+    [-15, '#b5653a'],
+    [-11, '#4f6b52']
+  ] as [number, string][]) {
+    const x = dir === 1 ? 0 : -9
+    P(x, ay, 9, 3, '#4a3527')
+    P(x + (dir === 1 ? 0 : 1), ay, 8, 2, col)
+    P(x + (dir === 1 ? 0 : 1), ay, 8, 1, tint(col, 0.22))
+  }
+}
+
+function drawCart(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 8, AU * 1.4)
+  // wheels
+  for (const wx of [-6, 3]) {
+    P(wx, -5, 4, 4, '#3a2718')
+    P(wx + 1, -4, 2, 2, '#8a6a47')
+  }
+  // bed
+  P(-9, -9, 18, 4, '#4a3527')
+  P(-8, -9, 16, 3, '#9a6b42')
+  P(-8, -9, 16, 1, '#bb8a5c')
+  // produce
+  P(-6, -12, 4, 3, '#c85a4a')
+  P(-1, -11, 3, 2, '#e0a83e')
+  P(3, -12, 3, 3, '#5f8c46')
+  // handle
+  P(8, -13, 2, 5, '#5e4230')
+}
+
+/** A market stall, the thing that most makes the street feel like a village. */
+function drawStall(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  const stripe = ['#c2694a', '#4f6b52', '#3f6a8c', '#a5643f'][d.variant % 4]
+
+  shadow(ctx, d.x, d.y, AU * 10, AU * 1.6)
+
+  // posts
+  P(-10, -20, 2, 20, '#5e4230')
+  P(8, -20, 2, 20, '#5e4230')
+  P(-10, -20, 1, 20, '#8a6a47')
+  P(8, -20, 1, 20, '#8a6a47')
+
+  // counter
+  P(-11, -10, 22, 4, '#4a3527')
+  P(-10, -10, 20, 3, '#a5794c')
+  P(-10, -10, 20, 1, '#c29767')
+
+  // goods on the counter
+  P(-8, -13, 3, 3, '#c85a4a')
+  P(-4, -12, 3, 2, '#e0a83e')
+  P(0, -13, 3, 3, '#5f8c46')
+  P(4, -12, 4, 2, '#8a5a34')
+
+  // striped canopy, scalloped along the bottom like the cafe awnings
+  P(-12, -24, 24, 4, '#4a3527')
+  for (let i = -12; i < 12; i += 2) {
+    P(i, -24, 1, 3, stripe)
+    P(i + 1, -24, 1, 3, '#f4e6d2')
+  }
+  P(-12, -24, 24, 1, 'rgba(255,255,255,0.28)')
+  for (let i = -12; i < 12; i += 2) P(i, -21, 1, 1, stripe)
+  P(-12, -25, 24, 1, '#4a3527')
 }
 
 function drawDecor(ctx: CanvasRenderingContext2D, d: Decor, tick: number): void {
@@ -289,6 +456,206 @@ function drawDecor(ctx: CanvasRenderingContext2D, d: Decor, tick: number): void 
       return drawMailbox(ctx, d)
     case 'bistro':
       return drawBistro(ctx, d)
+    case 'well':
+      return drawWell(ctx, d)
+    case 'signpost':
+      return drawSignpost(ctx, d)
+    case 'haystack':
+      return drawHaystack(ctx, d)
+    case 'stall':
+      return drawStall(ctx, d)
+    case 'stump':
+      return drawStump(ctx, d)
+    case 'log':
+      return drawLog(ctx, d)
+    case 'cart':
+      return drawCart(ctx, d)
+    case 'lantern':
+      return drawLantern(ctx, d, tick)
+  }
+}
+
+// ------------------------------------------------------------------- animals
+
+function drawCritter(ctx: CanvasRenderingContext2D, c: Critter): void {
+  const moving = critterMoving(c)
+  // a one pixel bob while walking, which is all a small sprite needs
+  const bob = moving && Math.floor(c.anim / 9) % 2 === 0 ? -1 : 0
+  const P = flipPen(plot(ctx, c.x, c.y + bob * AU), c.facing)
+  const legDown = moving && Math.floor(c.anim / 9) % 2 === 0
+
+  switch (c.kind) {
+    case 'chicken': {
+      shadow(ctx, c.x, c.y, AU * 2.6, AU * 0.8)
+      P(-1, -1, 1, 1, '#d8992f')
+      P(1, -1, 1, 1, legDown ? '#d8992f' : '#b87f26')
+      P(-3, -6, 6, 5, '#d8d2c6')
+      P(-2, -6, 5, 4, '#f6f2e6')
+      P(-2, -6, 3, 2, '#fffdf7')
+      P(1, -4, 2, 3, '#d8d2c6')
+      P(2, -9, 3, 3, '#f6f2e6')
+      P(3, -9, 2, 2, '#fffdf7')
+      P(3, -10, 2, 1, '#c85a4a')
+      P(5, -8, 1, 1, '#d8992f')
+      P(3, -8, 1, 1, '#3a2718')
+      P(-4, -8, 2, 3, '#d8d2c6')
+      break
+    }
+    case 'duck': {
+      shadow(ctx, c.x, c.y, AU * 2.6, AU * 0.8)
+      P(-1, -1, 1, 1, '#e0a83e')
+      P(1, -1, 1, 1, legDown ? '#e0a83e' : '#c08f2c')
+      P(-3, -6, 6, 5, '#efe6cf')
+      P(-2, -6, 5, 4, '#fbf6e8')
+      P(-4, -7, 2, 3, '#e6dcc2')
+      P(2, -9, 3, 3, '#5f8c46')
+      P(3, -9, 2, 2, '#77a659')
+      P(5, -8, 2, 1, '#e0a83e')
+      P(3, -8, 1, 1, '#3a2718')
+      break
+    }
+    case 'cat': {
+      const coat = ['#d98b48', '#4a4540', '#e8e2d6'][c.variant % 3]
+      shadow(ctx, c.x, c.y, AU * 3, AU * 0.8)
+      P(-3, -1, 1, 1, tint(coat, -0.4))
+      P(0, -1, 1, 1, legDown ? tint(coat, -0.4) : tint(coat, -0.2))
+      P(-4, -5, 8, 4, coat)
+      P(-4, -5, 8, 1, tint(coat, 0.22))
+      P(-4, -2, 8, 1, tint(coat, -0.25))
+      P(3, -9, 4, 4, coat)
+      P(3, -9, 3, 2, tint(coat, 0.22))
+      P(3, -10, 1, 1, tint(coat, -0.3))
+      P(5, -10, 1, 1, tint(coat, -0.3))
+      P(5, -8, 1, 1, '#2f3a2c')
+      P(-6, -9, 2, 5, coat)
+      P(-6, -10, 2, 1, tint(coat, 0.2))
+      break
+    }
+    case 'dog': {
+      const coat = ['#a5794c', '#6b4a33', '#d8c8a8'][c.variant % 3]
+      shadow(ctx, c.x, c.y, AU * 3.4, AU * 0.9)
+      P(-4, -2, 2, 2, tint(coat, -0.35))
+      P(1, -2, 2, 2, legDown ? tint(coat, -0.35) : tint(coat, -0.15))
+      P(-5, -7, 10, 5, coat)
+      P(-5, -7, 10, 1, tint(coat, 0.22))
+      P(-5, -3, 10, 1, tint(coat, -0.28))
+      P(4, -11, 4, 4, coat)
+      P(4, -11, 3, 2, tint(coat, 0.2))
+      P(8, -9, 1, 1, '#2f2620')
+      P(6, -10, 1, 1, '#2f2620')
+      P(3, -12, 2, 2, tint(coat, -0.3))
+      P(-7, -10, 2, 4, coat)
+      break
+    }
+    case 'sheep': {
+      shadow(ctx, c.x, c.y, AU * 4, AU * 1)
+      P(-4, -2, 2, 2, '#4a4540')
+      P(1, -2, 2, 2, legDown ? '#4a4540' : '#5f5a53')
+      blob(P, [3, 5, 6, 5], -8, '#f2ece0', '#fffdf7', '#cfc7b6', '#9a9184')
+      P(4, -10, 4, 4, '#4a4540')
+      P(4, -10, 3, 2, '#5f5a53')
+      P(7, -9, 1, 1, '#f2ece0')
+      break
+    }
+    case 'cow': {
+      shadow(ctx, c.x, c.y, AU * 5.5, AU * 1.2)
+      P(-6, -3, 2, 3, '#4a4540')
+      P(2, -3, 2, 3, legDown ? '#4a4540' : '#5f5a53')
+      P(-8, -11, 16, 8, '#efe9dd')
+      P(-8, -11, 16, 1, '#fffdf7')
+      P(-8, -4, 16, 1, '#c9c2b4')
+      P(-6, -10, 4, 3, '#3f3a35')
+      P(0, -8, 5, 3, '#3f3a35')
+      P(7, -14, 5, 5, '#efe9dd')
+      P(7, -14, 4, 2, '#fffdf7')
+      P(10, -12, 2, 2, '#d8a0a8')
+      P(9, -11, 1, 1, '#3a2718')
+      P(7, -15, 1, 1, '#c9c2b4')
+      P(11, -15, 1, 1, '#c9c2b4')
+      P(-10, -13, 2, 6, '#efe9dd')
+      break
+    }
+  }
+}
+
+// ------------------------------------------------------------------- traffic
+
+function drawCar(ctx: CanvasRenderingContext2D, c: Car, tick: number): void {
+  const P = flipPen(plot(ctx, c.x, c.y), c.dir)
+  const body = ['#c4584a', '#4a7fb0', '#e0b24e', '#6b8f5a', '#b6bac2', '#8a6ab0'][c.variant % 6]
+  const light = tint(body, 0.26)
+  const dark = tint(body, -0.26)
+  const edge = tint(body, -0.6)
+  const glass = '#bcd8e4'
+  const rolling = c.wait <= 0
+  const spin = rolling && Math.floor(tick / 5) % 2 === 0
+
+  const wheel = (wx: number, size = 3): void => {
+    P(wx, -size, size, size, '#22201f')
+    P(wx + (spin ? 1 : 0), -size + 1, 1, 1, '#7a746c')
+  }
+
+  switch (c.kind) {
+    case 'car': {
+      shadow(ctx, c.x, c.y, AU * 9, AU * 1.4)
+      wheel(-6)
+      wheel(3)
+      P(-9, -7, 18, 4, edge)
+      P(-8, -7, 16, 3, body)
+      P(-8, -7, 16, 1, light)
+      P(-8, -5, 16, 1, dark)
+      P(-5, -11, 10, 4, edge)
+      P(-4, -11, 8, 3, body)
+      P(-4, -10, 3, 2, glass)
+      P(1, -10, 3, 2, glass)
+      P(8, -6, 1, 1, '#ffe9a8')
+      P(-9, -6, 1, 1, '#d8604a')
+      break
+    }
+    case 'van': {
+      shadow(ctx, c.x, c.y, AU * 10, AU * 1.5)
+      wheel(-7)
+      wheel(4)
+      P(-10, -13, 20, 10, edge)
+      P(-9, -13, 18, 9, body)
+      P(-9, -13, 18, 1, light)
+      P(-9, -5, 18, 1, dark)
+      P(2, -12, 6, 4, glass)
+      P(-8, -12, 9, 5, '#f6f2e6')
+      P(-7, -11, 7, 3, tint(body, -0.1))
+      P(9, -7, 1, 1, '#ffe9a8')
+      P(-10, -7, 1, 1, '#d8604a')
+      break
+    }
+    case 'truck': {
+      shadow(ctx, c.x, c.y, AU * 12, AU * 1.6)
+      wheel(-10, 4)
+      wheel(-3, 4)
+      wheel(6, 4)
+      P(-13, -14, 12, 10, '#4a3527')
+      P(-12, -14, 10, 9, '#a5794c')
+      P(-12, -14, 10, 1, '#c29767')
+      for (let i = -12; i < -2; i += 3) P(i, -12, 1, 7, '#7d5a38')
+      P(-1, -12, 13, 8, edge)
+      P(0, -12, 11, 7, body)
+      P(0, -12, 11, 1, light)
+      P(5, -11, 6, 3, glass)
+      P(11, -6, 1, 1, '#ffe9a8')
+      break
+    }
+    case 'bike': {
+      shadow(ctx, c.x, c.y, AU * 5, AU * 1)
+      wheel(-5)
+      wheel(2)
+      P(-4, -6, 7, 2, edge)
+      P(-4, -6, 7, 1, body)
+      P(3, -9, 2, 4, edge)
+      P(-2, -12, 4, 6, '#4a5f7a')
+      P(-2, -12, 4, 1, '#66809e')
+      P(-1, -16, 3, 4, '#e8c49a')
+      P(-1, -17, 3, 2, '#3a2f28')
+      break
+    }
   }
 }
 
@@ -645,6 +1012,8 @@ type Drawable =
   | { sort: number; kind: 'building'; b: Building }
   | { sort: number; kind: 'decor'; d: Decor }
   | { sort: number; kind: 'villager'; v: Villager }
+  | { sort: number; kind: 'critter'; c: Critter }
+  | { sort: number; kind: 'car'; car: Car }
 
 export function render(
   ctx: CanvasRenderingContext2D,
@@ -654,7 +1023,9 @@ export function render(
   hoveredDoorId: string | null,
   tick: number,
   dpr: number,
-  villagers: Villager[]
+  villagers: Villager[],
+  critters: Critter[] = [],
+  cars: Car[] = []
 ): void {
   // One transform for everything. Device pixel ratio is folded in here so the
   // screen-to-world maths in Town.tsx stays a plain cam + offset / zoom.
@@ -676,6 +1047,8 @@ export function render(
   for (const d of DECOR) items.push({ sort: d.y, kind: 'decor', d })
 
   for (const v of villagers) items.push({ sort: v.y, kind: 'villager', v })
+  for (const c of critters) items.push({ sort: c.y, kind: 'critter', c })
+  for (const car of cars) items.push({ sort: car.y, kind: 'car', car })
 
   items.sort((a, b) => a.sort - b.sort)
 
@@ -688,6 +1061,10 @@ export function render(
       else drawHome(ctx, item.b, hovered, tick)
     } else if (item.kind === 'decor') {
       drawDecor(ctx, item.d, tick)
+    } else if (item.kind === 'critter') {
+      drawCritter(ctx, item.c)
+    } else if (item.kind === 'car') {
+      drawCar(ctx, item.car, tick)
     } else {
       const v = item.v
       shadow(ctx, v.x, v.y, T * 0.28, T * 0.1)

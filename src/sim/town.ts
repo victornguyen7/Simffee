@@ -164,6 +164,14 @@ export type DecorKind =
   | 'fence'
   | 'mailbox'
   | 'bistro'
+  | 'well'
+  | 'signpost'
+  | 'haystack'
+  | 'stall'
+  | 'stump'
+  | 'log'
+  | 'cart'
+  | 'lantern'
 
 export interface Decor {
   kind: DecorKind
@@ -215,15 +223,19 @@ function buildDecor(): Decor[] {
   }
 
   // dense woods at the very top and bottom, framing the town
-  place('pine', 60, T * 0.4, [T * 0.5, T * 5])
-  place('pine', 40, T * 0.4, [WORLD_H - T * 8, WORLD_H - T])
-  place('tree', 46, T * 0.5, [WORLD_H - T * 16, WORLD_H - T * 2])
-  place('tree', 34, T * 0.6, [T * 2, ROAD_TOP - T * 3])
-  place('bush', 90, T * 0.3)
-  place('flowers', 110, T * 0.22)
-  place('rock', 34, T * 0.3)
-  place('crate', 14, T * 0.4)
-  place('barrel', 12, T * 0.4)
+  place('pine', 90, T * 0.4, [T * 0.5, T * 6])
+  place('pine', 62, T * 0.4, [WORLD_H - T * 9, WORLD_H - T])
+  place('tree', 70, T * 0.5, [WORLD_H - T * 17, WORLD_H - T * 2])
+  place('tree', 52, T * 0.6, [T * 2, ROAD_TOP - T * 3])
+  place('bush', 150, T * 0.3)
+  place('flowers', 210, T * 0.22)
+  place('rock', 52, T * 0.3)
+  place('stump', 22, T * 0.35)
+  place('log', 18, T * 0.4)
+  place('crate', 22, T * 0.4)
+  place('barrel', 20, T * 0.4)
+  place('haystack', 20, T * 0.5, [WORLD_H - T * 14, WORLD_H - T * 2])
+  place('lantern', 26, T * 0.3)
 
   const lampY = ROAD_TOP - T * 1.4
   for (let x = T * 4; x < WORLD_W - T * 2; x += T * 9) {
@@ -244,6 +256,20 @@ function buildDecor(): Decor[] {
       out.push({ kind: 'planter', x: b.box.x + b.box.w + T * 0.6, y: b.box.y + b.box.h + T * 0.1, variant: 1 })
     }
   }
+
+  // a market row along the north pavement, between the two cafes
+  const stallY = ROAD_TOP - T * 3.1
+  for (let i = 0; i < 6; i++) {
+    out.push({ kind: 'stall', x: WORLD_W * 0.26 + i * T * 7.2, y: stallY, variant: i % 4 })
+    out.push({ kind: 'crate', x: WORLD_W * 0.26 + i * T * 7.2 + T * 2.1, y: stallY + T * 0.7, variant: i % 4 })
+  }
+
+  // landmarks, so the eye has somewhere to land while panning
+  out.push({ kind: 'well', x: WORLD_W * 0.5, y: ROAD_TOP - T * 6.4, variant: 0 })
+  out.push({ kind: 'cart', x: WORLD_W * 0.5 - T * 4.4, y: ROAD_TOP - T * 5.6, variant: 0 })
+  out.push({ kind: 'signpost', x: WORLD_W * 0.5 + T * 3.6, y: ROAD_BOTTOM + T * 2.2, variant: 0 })
+  out.push({ kind: 'signpost', x: WORLD_W * 0.16, y: ROAD_BOTTOM + T * 2.2, variant: 1 })
+  out.push({ kind: 'well', x: WORLD_W * 0.82, y: WORLD_H - T * 10, variant: 1 })
 
   // benches around the middle plaza
   const plaza = PLAZAS[PLAZAS.length - 1]

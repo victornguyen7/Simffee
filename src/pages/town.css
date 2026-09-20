@@ -189,3 +189,59 @@
   font-size: 12px;
   line-height: 1.55;
 }
+
+/* ---------------------------------------------------- simulation controls */
+
+.town__sim {
+  position: absolute;
+  left: 50%;
+  bottom: 3.2rem;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  z-index: 4;
+}
+
+.town__days,
+.town__scenarios {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.28rem 0.45rem;
+  box-shadow: 0 6px 18px rgb(47 38 32 / 14%);
+}
+
+.town__sim button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.24rem 0.6rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.town__sim button:hover {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.town__sim button.is-on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.town__day {
+  font-size: 0.82rem;
+  color: var(--text);
+  font-weight: 600;
+  padding: 0 0.3rem;
+  white-space: nowrap;
+}

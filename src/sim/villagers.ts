@@ -1,5 +1,14 @@
-import { AGENTS } from './engine'
-import { BUILDINGS, DECOR, T, WAYPOINTS, type DecorKind, type Waypoint } from './town'
+import {
+  BUILDINGS,
+  DECOR,
+  T,
+  WAYPOINTS,
+  homeDoorSpot,
+  shopDoorSpot,
+  type DecorKind,
+  type ShopId,
+  type Waypoint
+} from './town'
 import type { Facing } from './sprites'
 
 export interface Villager {
@@ -19,6 +28,16 @@ export interface Villager {
   chat: { text: string; ttl: number } | null
   /** Frames before this villager will strike up another conversation. */
   chatCooldown: number
+  /**
+   * Where the model says this person is buying coffee today, or null if they
+   * went without. This is the whole point of the village: the walk is the
+   * model's decision made visible.
+   */
+  errand: ShopId | null
+  /** Set once they have arrived and said their piece, so they head home after. */
+  errandDone: boolean
+  /** The twin's own sentence explaining today's choice. */
+  reason: string | null
 }
 
 /**
@@ -115,12 +134,13 @@ function pickTarget(self?: Villager, all?: Villager[]): Waypoint {
 }
 
 export function createVillagers(): Villager[] {
-  return AGENTS.map((agent, index) => {
-    const spot = homeSpot(agent.id)
+  const homes = BUILDINGS.filter((b) => b.kind === 'home')
+  return homes.map((home, index) => {
+    const spot = homeSpot(home.id)
     return {
-      id: agent.id,
+      id: home.id,
       index,
-      name: agent.name.split(' ')[0],
+      name: home.label,
       x: spot.x,
       y: spot.y,
       target: spot,
@@ -129,9 +149,54 @@ export function createVillagers(): Villager[] {
       pause: Math.floor(Math.random() * 90),
       stuck: 0,
       chat: null,
-      chatCooldown: Math.floor(Math.random() * 180)
+      chatCooldown: Math.floor(Math.random() * 180),
+      errand: null,
+      errandDone: false,
+      reason: null
     }
   })
+}
+
+/**
+ * Hands the village a day from the run. Everyone who bought coffee sets off
+ * towards the shop the model chose; everyone who went without stays around
+ * home. Switching scenario re-runs this, which is what makes a counterfactual
+ * something you can watch rather than read.
+ */
+export function setDay(
+  villagers: Villager[],
+  rows: { twin: string; choice: string; abandoned: boolean; reasoning: string }[]
+): void {
+  for (const v of villagers) {
+    const row = rows.find((r) => r.twin === v.id)
+
+    v.errandDone = false
+    v.chat = null
+    v.pause = Math.floor(Math.random() * 40)
+    v.stuck = 0
+
+    if (!row) {
+      v.errand = null
+      v.reason = null
+      continue
+    }
+
+    v.reason = row.reasoning
+    v.errand =
+      !row.abandoned && (row.choice === 'simffee' || row.choice === 'starbucks')
+        ? (row.choice as ShopId)
+        : null
+
+    v.target = v.errand ? shopDoorSpot(v.errand) : homeDoorSpot(v.id)
+  }
+}
+
+/** Names arrive with the run, so the tags match the twins that were simulated. */
+export function setVillagerNames(villagers: Villager[], twins: { id: string; name: string }[]): void {
+  for (const v of villagers) {
+    const t = twins.find((x) => x.id === v.id)
+    if (t) v.name = t.name
+  }
 }
 
 /**
@@ -145,9 +210,11 @@ const CHAT_RANGE = T * 2.6
 function maybeChat(villagers: Villager[]): void {
   for (const a of villagers) {
     if (a.chat || a.chatCooldown > 0) continue
+    if (a.errand && !a.errandDone) continue
 
     for (const b of villagers) {
       if (b === a || b.chat || b.chatCooldown > 0) continue
+      if (b.errand && !b.errandDone) continue
 
       const dx = b.x - a.x
       const dy = b.y - a.y
@@ -190,7 +257,9 @@ export function stepVillagers(villagers: Villager[]): void {
         v.chat = null
         v.pause = 0
         v.stuck = 0
-        v.target = WAYPOINTS[Math.floor(Math.random() * WAYPOINTS.length)]
+        v.target = v.errandDone
+          ? homeDoorSpot(v.id)
+          : WAYPOINTS[Math.floor(Math.random() * WAYPOINTS.length)]
       }
     }
 
@@ -205,6 +274,18 @@ export function stepVillagers(villagers: Villager[]): void {
     if (Math.abs(dx) < SPEED && Math.abs(dy) < SPEED) {
       v.x = v.target.x
       v.y = v.target.y
+
+      if (v.errand && !v.errandDone) {
+        // arrived for coffee: say why, then head home
+        v.errandDone = true
+        v.facing = 'up'
+        const ttl = 260 + Math.floor(Math.random() * 120)
+        if (v.reason) v.chat = { text: v.reason, ttl }
+        v.pause = ttl
+        v.target = homeDoorSpot(v.id)
+        continue
+      }
+
       v.target = pickTarget(v, villagers)
       v.pause = 30 + Math.floor(Math.random() * 150)
       continue

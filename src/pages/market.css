@@ -97,3 +97,27 @@
   color: #c2564f;
   font-weight: 600;
 }
+
+.market__scenarios {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 0.25rem;
+}
+
+.market__scenarios button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.market__scenarios button.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}

@@ -4,7 +4,9 @@ import { clampCamera, render, renderOverlay, type Camera } from '../sim/townRend
 import { BUILDINGS, hitDoor, type Building } from '../sim/town'
 import { createCars, createCritters, stepCars, stepCritters } from '../sim/critters'
 import { createVillagers, stepVillagers } from '../sim/villagers'
-import { AGENTS, type ShopId } from '../sim/engine'
+import { applyRunsToTown, type ShopId } from '../sim/town'
+import { setDay, setVillagerNames } from '../sim/villagers'
+import { loadRuns, rowsFor, scenarioIds, type Runs } from '../sim/runs'
 
 interface Props {
   onEnterShop: (shop: ShopId) => void
@@ -36,6 +38,42 @@ export default function Town({ onEnterShop }: Props) {
   const movedRef = useRef(false)
   const [hovered, setHovered] = useState<Building | null>(null)
   const [selected, setSelected] = useState<Building | null>(null)
+  const [runs, setRuns] = useState<Runs | null>(null)
+  const [scenario, setScenario] = useState('baseline')
+  const [day, setDayNum] = useState(1)
+  const [playing, setPlaying] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  // pull the model output once
+  useEffect(() => {
+    let alive = true
+    loadRuns()
+      .then((r) => {
+        if (!alive) return
+        applyRunsToTown(r.twins, r.shops)
+        setVillagerNames(villagersRef.current, r.twins)
+        setRuns(r)
+      })
+      .catch((e: Error) => alive && setLoadError(e.message))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // hand the village the current day, whenever day or scenario changes
+  useEffect(() => {
+    if (!runs) return
+    setDay(villagersRef.current, rowsFor(runs, scenario, runs.meta.default_seed, day))
+  }, [runs, scenario, day])
+
+  // auto play the week, looping back to day one
+  useEffect(() => {
+    if (!runs || !playing) return
+    const id = window.setInterval(() => {
+      setDayNum((d) => (d >= runs.meta.days ? 1 : d + 1))
+    }, 7000)
+    return () => window.clearInterval(id)
+  }, [runs, playing])
 
   const toWorld = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current
@@ -217,51 +255,96 @@ export default function Town({ onEnterShop }: Props) {
         )}
       </div>
 
-        {selected && selected.kind === 'home' && (() => {
-          const agent = AGENTS.find((a) => a.id === selected.id)
-          if (!agent) return null
+        {selected && selected.kind === 'home' && runs && (() => {
+          const twin = runs.twins.find((t) => t.id === selected.id)
+          if (!twin) return null
+          const p = twin.profile as Record<string, string | number>
+          const row = rowsFor(runs, scenario, runs.meta.default_seed, day).find(
+            (r) => r.twin === twin.id
+          )
           return (
             <aside className="resident">
               <button className="resident__close" onClick={() => setSelected(null)} aria-label="Close">
                 ×
               </button>
-              <h3 className="resident__name">{agent.name}</h3>
-              <p className="resident__role">{agent.archetype}</p>
+              <h3 className="resident__name">{twin.name}</h3>
+              <p className="resident__role">
+                {String(p.occupation ?? '')} · {String(p.age ?? '')}
+              </p>
 
               <dl className="resident__stats">
                 <div>
-                  <dt>Lives at</dt>
-                  <dd>{agent.home_location.toFixed(1)} on main street</dd>
+                  <dt>Usual order</dt>
+                  <dd>{String(p.usual_order ?? '')}</dd>
                 </div>
                 <div>
-                  <dt>Budget</dt>
-                  <dd>${agent.daily_budget.toFixed(2)} a day</dd>
+                  <dt>Usual time</dt>
+                  <dd>{String(p.usual_time ?? '')}</dd>
                 </div>
                 <div>
-                  <dt>Wants coffee</dt>
-                  <dd>{Math.round(agent.visit_frequency * 100)}% of days</dd>
+                  <dt>Daily budget</dt>
+                  <dd>{Math.round(Number(p.daily_budget_vnd ?? 0) / 1000)}k</dd>
                 </div>
                 <div>
-                  <dt>Will walk</dt>
-                  <dd>{agent.distance_tolerance.toFixed(1)} units</dd>
+                  <dt>Will wait</dt>
+                  <dd>{String(p.wait_tolerance_min ?? '')} min</dd>
                 </div>
-                <div>
-                  <dt>Cares about price</dt>
-                  <dd>{Math.round(agent.price_sensitivity * 100)}%</dd>
-                </div>
-                <div>
-                  <dt>Cares about new things</dt>
-                  <dd>{Math.round(agent.novelty_seeking * 100)}%</dd>
-                </div>
+                {row && (
+                  <div>
+                    <dt>Day {day}</dt>
+                    <dd>
+                      {row.abandoned ? 'went without' : row.choice}
+                      {row.primary_driver ? ` · ${row.primary_driver}` : ''}
+                    </dd>
+                  </div>
+                )}
               </dl>
 
-              <p className="resident__notes">{agent.notes}</p>
+              {row && <p className="resident__notes">{row.reasoning}</p>}
+
+              {twin.why_excerpt?.slice(0, 2).map((w, i) => (
+                <p className="resident__notes" key={i}>
+                  <strong>{w.q}</strong>
+                  <br />
+                  {w.a}
+                </p>
+              ))}
             </aside>
           )
         })()}
 
+      {runs && (
+        <div className="town__sim">
+          <div className="town__days">
+            <button onClick={() => setPlaying((p) => !p)}>{playing ? 'pause' : 'play'}</button>
+            <span className="town__day">
+              day {day} of {runs.meta.days}
+            </span>
+            <button onClick={() => setDayNum((d) => (d >= runs.meta.days ? 1 : d + 1))}>next</button>
+          </div>
+
+          <div className="town__scenarios">
+            {scenarioIds(runs).map((id) => (
+              <button
+                key={id}
+                className={id === scenario ? 'is-on' : ''}
+                onClick={() => {
+                  setScenario(id)
+                  setDayNum(1)
+                }}
+                title={runs.scenarios[id].label}
+              >
+                {runs.scenarios[id].label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {loadError && <p className="town__help">runs.json did not load: {loadError}</p>}
+
       <p className="town__help">
-        Drag to explore the village. Open a shop door to go inside, or a house to meet who lives there.
+        {runs ? runs.meta.synthetic_label : 'Loading the run.'}
       </p>
     </div>
   )

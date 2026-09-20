@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Town from './pages/Town'
 import Shop from './pages/Shop'
 import Market from './pages/Market'
-import type { ShopId } from './sim/engine'
+import type { ShopId } from './sim/runs'
 
 type Scene = { name: 'town' } | { name: 'interior'; shop: ShopId } | { name: 'market' }
 

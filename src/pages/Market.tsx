@@ -1,120 +1,136 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './market.css'
-import { AGENTS, SHOPS, runAll, selfTest, type ShopId } from '../sim/engine'
+import { loadRuns, rowsFor, scenarioIds, type Runs } from '../sim/runs'
 
-const SHOP_IDS: ShopId[] = ['brewhouse', 'simffee']
-
+/**
+ * The model page. This reads what the Python engine produced and shows it
+ * straight. Nothing here recomputes a decision, so what you see is exactly
+ * what the run contains.
+ */
 export default function Market() {
-  const run = useMemo(() => runAll(), [])
-  const check = useMemo(() => selfTest(), [])
+  const [runs, setRuns] = useState<Runs | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [scenario, setScenario] = useState('baseline')
 
-  const totals = SHOP_IDS.map((id) => ({
-    id,
-    name: SHOPS.find((s) => s.id === id)?.name ?? id,
-    visits: run.days.reduce((sum, d) => sum + d.visits[id], 0),
-    revenue: run.days.reduce((sum, d) => sum + d.revenue[id], 0)
-  }))
+  useEffect(() => {
+    let alive = true
+    loadRuns()
+      .then((r) => alive && setRuns(r))
+      .catch((e: Error) => alive && setError(e.message))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const days = useMemo(() => {
+    if (!runs) return []
+    const seed = runs.meta.default_seed
+    return Array.from({ length: runs.meta.days }, (_, i) => ({
+      day: i + 1,
+      rows: rowsFor(runs, scenario, seed, i + 1)
+    }))
+  }, [runs, scenario])
+
+  if (error) {
+    return (
+      <div className="market">
+        <div className="check check--bad">runs.json did not load: {error}</div>
+      </div>
+    )
+  }
+
+  if (!runs) return <div className="market"><p className="dim">Loading the run.</p></div>
+
+  const shopIds = Object.keys(runs.shops)
 
   return (
     <div className="market">
       <header className="market__head">
-        <h1 className="market__title">Seven day run</h1>
-        <p className={`check check--${check.pass ? 'ok' : 'bad'}`}>
-          {check.pass ? 'engine matches the spec worked example' : 'engine does NOT match the spec'}
+        <h2 className="market__title">The model</h2>
+        <p className="dim">
+          Generated {new Date(runs.meta.generated_at).toLocaleString()} · seed{' '}
+          {runs.meta.default_seed} of {runs.meta.seeds.length}
         </p>
       </header>
 
-      {!check.pass && (
-        <pre className="check__details">{check.details.join('\n')}</pre>
-      )}
+      <div className="check">{runs.meta.synthetic_label}</div>
 
-      <section>
-        <h2 className="market__h2">Visits and revenue</h2>
-        <table className="grid">
-          <thead>
-            <tr>
-              <th>Day</th>
-              <th>Novelty</th>
-              {SHOP_IDS.map((id) => (
-                <th key={id}>{id === 'simffee' ? 'Simffee' : 'Brewhouse'}</th>
-              ))}
-              <th>Mean satisfaction (Simffee)</th>
-              <th>Unmet</th>
-            </tr>
-          </thead>
-          <tbody>
-            {run.days.map((d) => {
-              const sims = d.satisfaction.filter((s) => s.shop === 'simffee')
-              const mean = sims.length === 0 ? null : sims.reduce((a, b) => a + b.value, 0) / sims.length
-              return (
-                <tr key={d.day}>
-                  <td>{d.day}</td>
-                  <td className="dim">{d.novelty.simffee.toFixed(3)}</td>
-                  {SHOP_IDS.map((id) => (
-                    <td key={id}>
-                      {d.visits[id]} <span className="dim">${d.revenue[id].toFixed(2)}</span>
-                    </td>
-                  ))}
-                  <td className={mean !== null && mean < 0 ? 'bad' : ''}>
-                    {mean === null ? '—' : mean.toFixed(3)}
+      <div className="market__scenarios">
+        {scenarioIds(runs).map((id) => (
+          <button
+            key={id}
+            className={id === scenario ? 'is-on' : ''}
+            onClick={() => setScenario(id)}
+          >
+            {runs.scenarios[id].label}
+          </button>
+        ))}
+      </div>
+
+      <h3 className="market__h">Purchases by day</h3>
+      <table className="grid">
+        <thead>
+          <tr>
+            <th>Day</th>
+            {shopIds.map((id) => (
+              <th key={id}>{runs.shops[id].name}</th>
+            ))}
+            <th>Went without</th>
+            <th>Takings</th>
+          </tr>
+        </thead>
+        <tbody>
+          {days.map(({ day, rows }) => {
+            const count = (id: string) => rows.filter((r) => !r.abandoned && r.choice === id).length
+            const without = rows.filter((r) => r.abandoned).length
+            const takings = rows.reduce((sum, r) => sum + (r.spent || 0), 0)
+            return (
+              <tr key={day}>
+                <td>{day}</td>
+                {shopIds.map((id) => (
+                  <td key={id}>{count(id)}</td>
+                ))}
+                <td className={without ? 'bad' : 'dim'}>{without}</td>
+                <td className="grid__total">{Math.round(takings / 1000)}k</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      <h3 className="market__h">Every twin, day by day</h3>
+      <table className="grid">
+        <thead>
+          <tr>
+            <th>Twin</th>
+            {days.map((d) => (
+              <th key={d.day}>D{d.day}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {runs.twins.map((t) => (
+            <tr key={t.id}>
+              <td>{t.name}</td>
+              {days.map((d) => {
+                const row = d.rows.find((r) => r.twin === t.id)
+                if (!row) return <td key={d.day} className="dim">·</td>
+                if (row.abandoned) return <td key={d.day} className="bad">none</td>
+                return (
+                  <td
+                    key={d.day}
+                    className={row.choice === 'simffee' ? 'good' : 'dim'}
+                    title={row.reasoning}
+                  >
+                    {row.choice === 'simffee' ? 'S' : 'X'}
                   </td>
-                  <td className="dim">{d.unmet_demand.length}</td>
-                </tr>
-              )
-            })}
-            <tr className="grid__total">
-              <td>All</td>
-              <td />
-              {totals.map((t) => (
-                <td key={t.id}>
-                  {t.visits} <span className="dim">${t.revenue.toFixed(2)}</span>
-                </td>
-              ))}
-              <td />
-              <td />
+                )
+              })}
             </tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2 className="market__h2">Agent ledger</h2>
-        <table className="grid">
-          <thead>
-            <tr>
-              <th>Agent</th>
-              <th>Archetype</th>
-              <th>Brewhouse</th>
-              <th>Simffee</th>
-              <th>End loyalty (Simffee)</th>
-              <th>End perception (Simffee)</th>
-              <th>Won?</th>
-            </tr>
-          </thead>
-          <tbody>
-            {AGENTS.map((a) => {
-              const brew = run.days.filter((d) =>
-                d.choices.some((c) => c.agent_id === a.id && c.chosen === 'brewhouse')
-              ).length
-              const sim = run.days.filter((d) =>
-                d.choices.some((c) => c.agent_id === a.id && c.chosen === 'simffee')
-              ).length
-              const end = run.finalState[a.id]
-              return (
-                <tr key={a.id}>
-                  <td>{a.name}</td>
-                  <td className="dim">{a.archetype}</td>
-                  <td>{brew}</td>
-                  <td className={sim > 0 ? 'good' : 'dim'}>{sim}</td>
-                  <td>{end.loyalty.simffee.toFixed(3)}</td>
-                  <td>{end.perception.simffee.toFixed(3)}</td>
-                  <td>{sim > 0 ? 'yes' : 'never'}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </section>
+          ))}
+        </tbody>
+      </table>
+      <p className="dim">S is Simffee, X is Starbucks. Hover a cell for the twin's own reason.</p>
     </div>
   )
 }

@@ -4,7 +4,22 @@
  * it read as a town rather than a row of houses.
  */
 
-import { AGENTS, SHOPS, type ShopId } from './engine'
+/**
+ * The village no longer imports the old TypeScript engine. The model is Python
+ * and its output arrives as runs.json, so the town only needs to know the shape
+ * of the place. Names and prices are filled in from the run at startup.
+ */
+export type { ShopId } from './runs'
+import type { ShopId } from './runs'
+
+/** Ten house plots along the street, spread so the rows stagger nicely. */
+const HOME_SLOTS = [0.7, 1.9, 3.1, 4.3, 5.5, 6.7, 7.9, 9.1, 10.0, 2.5]
+
+/** Starbucks is the incumbent on the left, Simffee the newcomer opposite. */
+const SHOP_DEFS: { id: ShopId; name: string; location: number }[] = [
+  { id: 'starbucks', name: 'Starbucks', location: 3.0 },
+  { id: 'simffee', name: 'Simffee Coffee', location: 6.6 }
+]
 
 export const T = 28
 export const TILES_PER_UNIT = 8
@@ -54,17 +69,17 @@ export const BUILDINGS: Building[] = []
 /** Three depth rows north of the road, so the neighbourhood has layers. */
 const HOME_ROWS = [6.5, 14, 21.5]
 
-AGENTS.forEach((agent, i) => {
+HOME_SLOTS.forEach((slot, i) => {
   const w = Math.round(T * 3.4)
   const h = Math.round(T * 3.6)
   const row = HOME_ROWS[i % HOME_ROWS.length]
-  const box: Rect = { x: unitToX(agent.home_location) - w / 2, y: Math.round(row * T), w, h }
+  const box: Rect = { x: unitToX(slot) - w / 2, y: Math.round(row * T), w, h }
 
   BUILDINGS.push({
-    id: agent.id,
+    id: `T${String(i + 1).padStart(2, '0')}`,
     kind: 'home',
-    label: agent.name.split(' ')[0],
-    sublabel: agent.archetype,
+    label: `T${String(i + 1).padStart(2, '0')}`,
+    sublabel: '',
     box,
     door: doorOf(box),
     roof: HOME_ROOFS[i % HOME_ROOFS.length],
@@ -72,7 +87,7 @@ AGENTS.forEach((agent, i) => {
   })
 })
 
-for (const shop of SHOPS) {
+for (const shop of SHOP_DEFS) {
   const w = Math.round(T * 6)
   const h = Math.round(T * 4.6)
   const box: Rect = { x: unitToX(shop.location) - w / 2, y: ROAD_BOTTOM + T * 2.2, w, h }
@@ -82,7 +97,7 @@ for (const shop of SHOPS) {
     kind: 'shop',
     shopId: shop.id,
     label: shop.name,
-    sublabel: `$${shop.price.toFixed(2)}`,
+    sublabel: '',
     box,
     door: doorOf(box),
     roof: shop.id === 'simffee' ? '#c07a3e' : '#6b5040',
@@ -281,3 +296,43 @@ function buildDecor(): Decor[] {
 }
 
 export const DECOR: Decor[] = buildDecor()
+
+
+/**
+ * Names and prices come from the run, so the village always shows whatever the
+ * Python side actually simulated rather than a copy that can drift out of date.
+ */
+export function applyRunsToTown(
+  twins: { id: string; name: string }[],
+  shops: Record<string, { name: string; price: Record<string, number> }>
+): void {
+  for (const b of BUILDINGS) {
+    if (b.kind === 'home') {
+      const twin = twins.find((t) => t.id === b.id)
+      if (twin) {
+        b.label = twin.name
+        b.sublabel = twin.id
+      }
+      continue
+    }
+    const info = shops[b.shopId as string]
+    if (!info) continue
+    b.label = info.name
+    const latte = info.price?.latte
+    b.sublabel = typeof latte === 'number' ? `latte ${Math.round(latte / 1000)}k` : ''
+  }
+}
+
+/** Where a villager stands when they go for coffee. */
+export function shopDoorSpot(shopId: ShopId): Waypoint {
+  const b = BUILDINGS.find((x) => x.shopId === shopId)
+  if (!b) return WAYPOINTS[0]
+  return { x: b.door.x + b.door.w / 2, y: b.box.y + b.box.h + T * 1.1 }
+}
+
+/** Where a villager stands outside their own front door. */
+export function homeDoorSpot(twinId: string): Waypoint {
+  const b = BUILDINGS.find((x) => x.id === twinId && x.kind === 'home')
+  if (!b) return WAYPOINTS[0]
+  return { x: b.door.x + b.door.w / 2, y: b.box.y + b.box.h + T * 0.9 }
+}

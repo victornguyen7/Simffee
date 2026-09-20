@@ -67,10 +67,17 @@ function requestedTime(lower: string, verb: 'open' | 'clos'): number | null {
   const m = new RegExp(`\\b${verb}\\w*\\s+(?:at\\s+|until\\s+|till\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b`).exec(lower)
   if (!m) return null
   let h = Number(m[1])
-  if (h > 24) return null
-  if (m[3] === 'pm' && h < 12) h += 12
-  else if (!m[3] && verb === 'clos' && h <= 6) h += 12
-  return h * 60 + Number(m[2] ?? 0)
+  const minutes = Number(m[2] ?? 0)
+  if (minutes > 59) return null
+  if (m[3]) {
+    if (h < 1 || h > 12) return null
+    if (h === 12) h = 0
+    if (m[3] === 'pm') h += 12
+  } else {
+    if (h > 23) return null
+    if (verb === 'clos' && h <= 6) h += 12
+  }
+  return h * 60 + minutes
 }
 
 const clock = (hhmm: string | undefined): number | null => {
@@ -105,16 +112,27 @@ function features(text: string, setup: SketchSetup | null): Features {
   const nowClose = clock(focus?.close) ?? 18 * 60
   if (wantOpen != null && wantOpen !== nowOpen) f.add(wantOpen < nowOpen ? 'earlier' : 'later')
   if (wantClose != null && wantClose !== nowClose) f.add(wantClose < nowClose ? 'earlier' : 'later')
+  if (!setup) return { f, rival: null }
+  // Named rival: the longest full-name match wins; a distinctive word of a name only counts
+  // when it does not point at more than one shop.
   let rival: string | null = null
-  if (!setup) return { f, rival }
+  let rivalLen = 0
+  const partial: string[] = []
   for (const [id, shop] of Object.entries(setup.shops)) {
     const name = shop.name.toLowerCase()
-    if (id !== setup.focus && (lower.includes(name) || name.split(/\s+/).some((part) => part.length > 3 && f.has(part)))) {
-      f.add('competitor')
-      f.add('rival')
-      rival ??= id
+    if (id !== setup.focus) {
+      if (lower.includes(name)) {
+        if (name.length > rivalLen) [rival, rivalLen] = [id, name.length]
+      } else if (name.split(/\s+/).some((part) => part.length > 3 && f.has(part))) {
+        partial.push(id)
+      }
     }
     for (const p of shop.products) if (lower.includes(p.toLowerCase())) f.add('product')
+  }
+  if (!rival && partial.length === 1) rival = partial[0]
+  if (rival || partial.length) {
+    f.add('competitor')
+    f.add('rival')
   }
   if (focus && Object.keys(focus.price).some((p) => lower.includes(p.toLowerCase()))) f.add('price')
   return { f, rival }

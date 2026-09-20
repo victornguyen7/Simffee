@@ -134,7 +134,7 @@ LEVERS = [
          setup=["rival", "price"], s1=+1, s2=+1,
          headline="{rival} raising prices sends {seg} looking for value",
          primary="{n} {seg} who paid {rival} out of habit switch to {shop} once the bill changes",
-         secondary="{m} of them bring their whole table with them",
+         secondary="{m} tablemates who never came before follow them over",
          secondary0="{rival} loyalists pay up and stay",
          drivers=["price", "competition"]),
     dict(id="rival_promo", tags=["competitor", "rival", "promotion", "promo", "two-for-one", "deal", "their discount"],

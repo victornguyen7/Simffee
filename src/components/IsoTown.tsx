@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Row, Runs } from '../types'
-import { agentsAt, routeBetween } from '../town/agents'
+import { agentsAt, routeBetween, type Route } from '../town/agents'
 import { drawAnimal, drawBubble, drawGround, drawPerson, drawPet, drawProp } from '../town/draw'
 import {
   GRID,
@@ -34,6 +34,8 @@ interface Pet {
   kind: 'cat' | 'dog'
   pos: [number, number]
   target: [number, number]
+  route: Route
+  wp: number
 }
 
 interface Livestock {
@@ -68,6 +70,13 @@ function petTarget(town: Town): [number, number] {
     }
   }
   return candidates[Math.floor(Math.random() * candidates.length)] ?? [8, 8]
+}
+
+function createPet(town: Town, kind: Pet['kind']): Pet {
+  const pos = petTarget(town)
+  const target = petTarget(town)
+  const route = routeBetween(town, pos, target)
+  return { kind, pos, target, route, wp: route.length > 1 ? 1 : 0 }
 }
 
 function unit(seed: number): number {
@@ -136,10 +145,7 @@ export default function IsoTown({
   }, [runs, town, rows, phase, selectedTwin])
 
   useEffect(() => {
-    petsRef.current = [
-      { kind: 'cat', pos: petTarget(town), target: petTarget(town) },
-      { kind: 'dog', pos: petTarget(town), target: petTarget(town) },
-    ]
+    petsRef.current = [createPet(town, 'cat'), createPet(town, 'dog')]
     livestockRef.current = createLivestock()
   }, [town])
 
@@ -173,16 +179,18 @@ export default function IsoTown({
       const elapsed = previous === 0 ? 0 : Math.min(100, t - previous) / 1000
       previous = t
       for (const pet of petsRef.current) {
-        const route = routeBetween(tn, [Math.round(pet.pos[0]), Math.round(pet.pos[1])], pet.target)
-        const waypoint = route[1] ?? pet.target
+        const waypoint = pet.route[pet.wp] ?? pet.target
         const dx = waypoint[0] - pet.pos[0]
         const dy = waypoint[1] - pet.pos[1]
         const distance = Math.hypot(dx, dy)
-        if (distance < 0.04) {
+        if (distance < 0.02) {
           pet.pos = waypoint
-          if (waypoint[0] === pet.target[0] && waypoint[1] === pet.target[1]) {
+          pet.wp += 1
+          if (pet.wp >= pet.route.length) {
             pet.pos = pet.target
             pet.target = petTarget(tn)
+            pet.route = routeBetween(tn, [Math.round(pet.pos[0]), Math.round(pet.pos[1])], pet.target)
+            pet.wp = pet.route.length > 1 ? 1 : 0
           }
           continue
         }

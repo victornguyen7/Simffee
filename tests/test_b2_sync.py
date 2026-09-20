@@ -66,7 +66,7 @@ class B2Integration(unittest.TestCase):
         self.assertEqual({r['driver'] for r in result['detail']['support']['per_twin'].values()}, {'price'})
 
     def test_bundle_keeps_upstream_contract_and_local_details(self):
-        scenarios = {f.stem: json.loads(f.read_text()) for f in (ROOT / 'data/scenarios').glob('*.json')}
+        scenarios = build_runs.load_scenarios(ROOT / 'data/scenarios')   # bundle scenarios only
         result = build_runs.build_analysis(FIX, self.shops, scenarios, self.twins)
         for row in result['impact']['per_twin']:
             self.assertIn('cf_null', row)

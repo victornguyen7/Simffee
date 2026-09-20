@@ -1,121 +1,62 @@
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import Town from './pages/Town'
+import Shop from './pages/Shop'
+import Market from './pages/Market'
+import Conclusion from './pages/Conclusion'
+import WhatIf from './pages/WhatIf'
+import type { ShopId } from './sim/runs'
+
+type Scene =
+  | { name: 'town' }
+  | { name: 'interior'; shop: ShopId }
+  | { name: 'market' }
+  | { name: 'conclusion' }
+  | { name: 'whatif' }
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [scene, setScene] = useState<Scene>({ name: 'town' })
+  const fullBleed = scene.name !== 'market' && scene.name !== 'conclusion' && scene.name !== 'whatif'
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
+    <div className={`shell ${fullBleed ? 'shell--full' : ''}`}>
+      {/* Small floating controls so the scene underneath stays visible. */}
+      <div className={`hud ${fullBleed ? 'hud--float' : ''}`}>
+        <span className="hud__mark">Simffee</span>
+
+        {scene.name !== 'town' && (
+          <button className="hud__btn" onClick={() => setScene({ name: 'town' })}>
+            ← town
+          </button>
+        )}
+
         <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          className={`hud__btn ${scene.name === 'market' ? 'hud__btn--on' : ''}`}
+          onClick={() => setScene(scene.name === 'market' ? { name: 'town' } : { name: 'market' })}
         >
-          Count is {count}
+          model
         </button>
-      </section>
+        <button
+          className={`hud__btn ${scene.name === 'conclusion' ? 'hud__btn--on' : ''}`}
+          onClick={() => setScene(scene.name === 'conclusion' ? { name: 'town' } : { name: 'conclusion' })}
+        >
+          why
+        </button>
+        <button
+          className={`hud__btn ${scene.name === 'whatif' ? 'hud__btn--on' : ''}`}
+          onClick={() => setScene(scene.name === 'whatif' ? { name: 'town' } : { name: 'whatif' })}
+        >
+          ask
+        </button>
+      </div>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <main className={`shell__body ${fullBleed ? 'shell__body--full' : ''}`}>
+        {scene.name === 'town' && <Town onEnterShop={(shop) => setScene({ name: 'interior', shop })} />}
+        {scene.name === 'interior' && <Shop shop={scene.shop} />}
+        {scene.name === 'market' && <Market />}
+        {scene.name === 'conclusion' && <Conclusion />}
+        {scene.name === 'whatif' && <WhatIf />}
+      </main>
+    </div>
   )
 }
 

@@ -1,0 +1,47 @@
+{
+  "_comment": "SPEC 6.2 / SPEC_FUNCTIONAL 6 — how loudly each kind of change shouts at a founder reading the change list. Price is deliberately loud: it is the first thing anyone blames. Magnitudes are compared, so only ratios matter. `exists_from_day` is a competitor opening: the founder's reflex is \"everyone went to try the new place\", i.e. curiosity.",
+  "price": {
+    "driver": "price",
+    "per_fraction": 5.0
+  },
+  "open": {
+    "driver": "hours",
+    "fixed": 0.3
+  },
+  "close": {
+    "driver": "hours",
+    "fixed": 0.3
+  },
+  "products_removed": {
+    "driver": "product",
+    "fixed": 0.5
+  },
+  "products_added": {
+    "driver": "product",
+    "fixed": 0.2
+  },
+  "avg_wait_min": {
+    "driver": "wait",
+    "per_unit": 0.05
+  },
+  "quality": {
+    "driver": "quality",
+    "per_unit": 2.0
+  },
+  "marketing.reach": {
+    "driver": "marketing",
+    "per_unit": 1.0
+  },
+  "marketing.message": {
+    "driver": "marketing",
+    "fixed": 0.05
+  },
+  "permanently_closed": {
+    "driver": "closed",
+    "fixed": 1.0
+  },
+  "exists_from_day": {
+    "driver": "curiosity",
+    "fixed": 0.6
+  }
+}

@@ -1,111 +1,233 @@
+/* Coffee shop palette. Everything else reads these variables, so changing the
+   look later means editing this block and nothing else. */
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --bg: #f6f1e8;
+  --surface: #fffdf9;
+  --line: #e2d6c4;
+  --text: #2f2620;
+  --muted: #8a7a68;
+  --accent: #c07a3e;
+  --accent-dim: #e3c9ac;
+  --on-accent: #fff8f0;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --font: 'Segoe UI Variable Display', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+* {
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
 body {
-  margin: 0;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
   font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell__bar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.shell__wordmark {
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.shell__tagline {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.shell__body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 28px 24px 56px;
+}
+
+.shell__bar {
+  gap: 14px;
+}
+
+.shell__back,
+.shell__link {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.shell__back:hover,
+.shell__link:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.shell__link {
+  margin-left: auto;
+}
+
+.shell__body {
+  padding: 20px 24px 40px;
+}
+
+
+.shell__bar {
+  gap: 14px;
+}
+
+.shell__back,
+.shell__link {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.shell__back:hover,
+.shell__link:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.shell__link {
+  margin-left: auto;
+}
+
+/* Full bleed: the scene owns the whole tab and the header floats on top of it. */
+
+.shell--full {
+  position: relative;
+}
+
+.shell__bar--float {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  right: 16px;
+  z-index: 10;
+  border-bottom: none;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 16px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+
+.shell__body--full {
+  padding: 0;
+  display: block;
+  overflow: hidden;
+}
+/* ---- replace any earlier block of mine at the end of src/index.css ---- */
+
+.shell--full {
+  position: relative;
+  overflow: hidden;
+}
+
+.shell__body--full {
+  padding: 0;
+  display: block;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* compact floating controls */
+
+.hud {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 14px 18px;
+}
+
+.hud--float {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  padding: 0;
+}
+
+.hud__mark {
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 11px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+}
+
+.hud__btn {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 6px 11px;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.14);
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.hud__btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.hud__btn--on {
+  border-color: var(--accent);
+  color: var(--text);
 }

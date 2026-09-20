@@ -1,0 +1,17 @@
+{
+  "id": "s2_entrant_only",
+  "label": "Starbucks opens, we change nothing",
+  "role": "situation",
+  "situation": "competitor_enters",
+  "bundle": false,
+  "order": 11,
+  "description": "ROADMAP B4 control for S2: the entrant arrives on day 4 but Simffee keeps 06:30 and the 45k latte. Forked from s2_entrant at day 4 with the hours/price shift removed via `unset`, so days 1-3 are shared byte for byte and the only difference between the two branches is what Simffee did.",
+  "parent": "s2_entrant",
+  "overrides": [
+    {
+      "from_day": 4,
+      "shop": "simffee",
+      "unset": ["open", "price.latte"]
+    }
+  ]
+}

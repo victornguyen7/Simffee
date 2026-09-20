@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1094,
+    "output_tokens": 79
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "distance",
+  "reasoning": "Simffee is closed for twenty minutes. The long walk to Starbucks plus the near-eight-minute queue threatens my 07:00 start. I’d rather skip coffee than risk being late for my class.",
+  "secondary_driver": "wait",
+  "valence": 0.6
+}

@@ -1,0 +1,15 @@
+{
+  "_model": "groq/compound-mini",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 2376,
+    "output_tokens": 663
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "price",
+  "reasoning": "I can't afford Starbucks' 70,000d latte, and the 7‑minute line exceeds my 6‑minute patience, so I skip coffee today.",
+  "secondary_driver": "wait",
+  "valence": -0.2
+}

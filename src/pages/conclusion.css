@@ -1,0 +1,249 @@
+.conclusion {
+  width: 100%;
+  max-width: 1000px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.conclusion__head {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.conclusion h2 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.conclusion h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.conclusion__headline h1 {
+  margin: 0;
+  font-size: clamp(26px, 5vw, 42px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+}
+
+.conclusion__headline h1 span {
+  color: var(--muted);
+  font-size: 0.55em;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.conclusion__narration {
+  margin: 15px 0 0;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.conclusion__reading,
+.conclusion__whatif {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.conclusion__card {
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.conclusion__card h3,
+.conclusion__card h4 {
+  margin: 0;
+}
+
+.conclusion__card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.conclusion__driver {
+  display: block;
+  margin-top: 22px;
+  font-size: 25px;
+  line-height: 1;
+  text-transform: capitalize;
+}
+
+.conclusion__card p {
+  margin: 10px 0 0;
+}
+
+.conclusion__pill {
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.conclusion__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 20px;
+}
+
+.conclusion__bar-row {
+  display: grid;
+  grid-template-columns: 76px 1fr 32px;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.conclusion__bar-track {
+  height: 7px;
+  overflow: hidden;
+  background: var(--bg);
+  border-radius: 999px;
+}
+
+.conclusion__bar {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+}
+
+.conclusion__section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.conclusion__impact {
+  margin: 0 0 10px;
+}
+
+.conclusion__evidence {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.conclusion__quote {
+  padding: 15px 17px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.conclusion__quote-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.conclusion__quote blockquote {
+  margin: 13px 0 10px;
+  font-size: 15px;
+}
+
+.conclusion__quote p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.conclusion__whatif-card {
+  position: relative;
+}
+
+.conclusion__whatif-card.is-best {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.is-low {
+  font-style: italic;
+  opacity: 0.75;
+}
+
+.conclusion__whatif-card.is-low {
+  border-color: var(--line);
+}
+
+.conclusion__whatif-card h4 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.conclusion__returns {
+  display: block;
+  margin-top: 20px;
+  font-size: 27px;
+  line-height: 1;
+}
+
+.conclusion__returns span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.conclusion__whatif-card ul {
+  min-height: 48px;
+  margin: 18px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.conclusion__whatif-card p {
+  margin: 15px 0 0;
+  font-size: 12px;
+}
+
+.conclusion__low {
+  font-style: italic;
+}
+
+.conclusion__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.conclusion__footer p {
+  margin: 0;
+}
+
+.conclusion__footer a {
+  color: var(--accent);
+}
+
+@media (max-width: 700px) {
+  .conclusion__reading,
+  .conclusion__whatif,
+  .conclusion__evidence {
+    grid-template-columns: 1fr;
+  }
+
+  .conclusion__card-head {
+    flex-direction: column;
+  }
+}

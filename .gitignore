@@ -29,3 +29,6 @@ __pycache__/
 *.pyc
 .env
 .env.*
+
+# incompatible v1 cache entries moved aside during the A5 promotion; not the demo
+cache-legacy/

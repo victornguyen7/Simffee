@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.6",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1592,
+    "output_tokens": 2648
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "I leave for coffee at 7:30 every day. Simffee is 3 blocks with a short wait and cheap americano, so I go rather than skip.",
+  "secondary_driver": "distance",
+  "valence": 0.3
+}

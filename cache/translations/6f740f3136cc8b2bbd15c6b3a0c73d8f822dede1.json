@@ -1,0 +1,15 @@
+{
+  "actions": [
+    {
+      "action": "drop_item",
+      "from_day": 5,
+      "item": "cold_brew",
+      "shop": "simffee",
+      "value": null
+    }
+  ],
+  "focus_shop": "simffee",
+  "label": "Dropping cold brew from the menu",
+  "situation": "incumbent_change",
+  "unsupported": []
+}

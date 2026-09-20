@@ -150,7 +150,8 @@ def load():
     scenarios = {}
     for f in sorted((DATA / "scenarios").glob("*.json")):
         s = json.loads(f.read_text(encoding="utf-8"))
-        scenarios[s["id"]] = s
+        if s.get("bundle", True):           # the S2 family is run by the engine, not scripted
+            scenarios[s["id"]] = s
     return twins, shops, scenarios
 
 

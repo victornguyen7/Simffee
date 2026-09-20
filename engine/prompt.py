@@ -11,6 +11,7 @@ from typing import Any
 
 from .loader import Twin
 from .schema import DRIVERS
+from .resolve import display_name
 from .timeutil import is_open_at
 
 # Which why-transcript lines matter depends on what shocked the twin today.
@@ -21,6 +22,7 @@ SOURCE_KEYWORDS: dict[str, tuple[str, ...]] = {
     "product": ("order", "menu", "drink", "latte", "americano", "cold brew", "usual"),
     "wait": ("wait", "queue", "line", "slow", "quick", "fast", "minutes"),
     "closed": ("closed", "shut", "gone"),
+    "new_entrant": ("new", "try", "curious", "opened", "different", "brand", "chain"),
     "none": ("habit", "always", "every day", "routine", "same", "switch", "hassle"),
 }
 
@@ -115,9 +117,16 @@ def build(
 
     # 2 — today
     out.append("\n## This morning")
-    regular_name = shops_today[regular]["name"]
+    regular_name = display_name(shops_today[regular])
+    new_places = [opt["name"] for opt in options if opt.get("opened_today") and opt["shop"] != regular]
     if disr_source == "none":
         out.append(f"It is {p['usual_time']}. Nothing unusual about {regular_name} today.")
+    elif disr_source == "new_entrant":
+        out.append(
+            f"It is {p['usual_time']}. Nothing has changed at {regular_name}, your usual place, "
+            f"but a new coffee shop opened today: {' and '.join(new_places) or 'another place'}. "
+            f"Everyone is talking about it."
+        )
     else:
         out.append(
             f"It is {p['usual_time']}. Something is off at {regular_name}, "
@@ -143,6 +152,8 @@ def build(
         ]
         if not opt["has_usual_order"]:
             bits.append(f"no {p['usual_order']} on the menu")
+        if opt.get("opened_today"):
+            bits.append("opened today -- brand new, nobody you know has been yet")
         if opt["marketing"]:
             bits.append(f"currently advertising \"{opt['marketing']}\"")
         label = f"{opt['name']} (your usual place)" if opt["shop"] == regular else opt["name"]
@@ -184,6 +195,8 @@ def _shock_sentence(source: str, shop: dict, twin: Twin) -> str:
         return f"the queue is running about {shop['avg_wait_min']} minutes."
     if source == "closed":
         return "it has closed for good."
+    if source == "new_entrant":
+        return "nothing, actually -- but a new coffee shop opened nearby today."
     return "something feels different."
 
 

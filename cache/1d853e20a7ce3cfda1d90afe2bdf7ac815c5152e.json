@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.6",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1852,
+    "output_tokens": 2814
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "price",
+  "reasoning": "Simffee's 48k is still way less than the 65k I notice at Starbucks every time. The five blocks and four-minute wait are fine, I want my 8:15 latte.",
+  "secondary_driver": "wait",
+  "valence": 0.6
+}

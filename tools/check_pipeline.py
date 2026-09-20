@@ -40,7 +40,7 @@ def stub(system, user, schema, temperature):
 
 def run_command(args, log, expected=0, env=None):
     result = subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True, env=env)
-    log.write_text(result.stdout + result.stderr)
+    log.write_text(result.stdout + result.stderr, encoding="utf-8")
     if result.returncode != expected:
         raise AssertionError(f'{args[0]} returned {result.returncode}, expected {expected}; see {log}')
     return result
@@ -120,7 +120,7 @@ def main():
 
     run_command(['build_runs.py', str(generated), '--offline', '--synthetic', '--require-complete',
                  '--out', str(out / 'stubbed-bundle.json')], out / 'stubbed-build.log')
-    bundle = json.loads((out / 'stubbed-bundle.json').read_text())
+    bundle = json.loads((out / 'stubbed-bundle.json').read_text(encoding="utf-8"))
     assert bundle['meta']['synthetic_run'] and not bundle['meta']['publishable']
     assert bundle['meta']['coverage']['complete']
     assert bundle['analysis']['complete'] and bundle['analysis']['narration']
@@ -152,6 +152,8 @@ def main():
     new_skips = sum(r['day'] == 5 and r['twin'] in previous_switchers and r['choice'] == 'none' for r in baseline)
     assert previous_switchers and old_skips == len(previous_switchers) and new_skips == 0
 
+    # The committed cache/ is the demo (SPEC 10.4). Seeds 0-2 must replay complete and
+    # publishable with zero API calls; seeds 3-4 were never filled and must be rejected.
     diagnostic = out / 'offline-diagnostic-runs'
     run_command(['-m', 'engine.cli', '--all', '--seeds', '0-4', '--offline', '--quiet', '--require-complete',
                  '--out', str(diagnostic), '--cache', str(ROOT / 'cache')], out / 'offline-diagnostic.log', expected=2)
@@ -161,10 +163,21 @@ def main():
     run_command(['build_runs.py', str(diagnostic), '--offline', '--require-complete',
                  '--out', str(out / 'must-not-exist.json')], out / 'strict-rejection.log', expected=2)
     assert not (out / 'must-not-exist.json').exists()
-    diagnostic_bundle = json.loads((out / 'offline-diagnostic-bundle.json').read_text())
+    diagnostic_bundle = json.loads(
+        (out / 'offline-diagnostic-bundle.json').read_text(encoding="utf-8"))
     assert diagnostic_bundle['analysis']['impact'] is None
     assert diagnostic_bundle['analysis']['narration'] is None
     assert not diagnostic_bundle['meta']['publishable']
+
+    promoted = out / 'promoted-runs'
+    run_command(['-m', 'engine.cli', '--all', '--seeds', '0-2', '--offline', '--quiet', '--require-complete',
+                 '--out', str(promoted), '--cache', str(ROOT / 'cache')], out / 'promoted.log')
+    run_command(['build_runs.py', str(promoted), '--offline', '--require-complete', '--seeds', '0-2',
+                 '--out', str(out / 'promoted-bundle.json')], out / 'promoted-build.log')
+    promoted_bundle = json.loads((out / 'promoted-bundle.json').read_text(encoding="utf-8"))
+    assert promoted_bundle['meta']['publishable'], 'committed cache must rebuild a publishable bundle'
+    assert promoted_bundle['analysis']['surprise'] is True
+    assert promoted_bundle['analysis']['confidence']['value'] is not None
 
     report = {
         'kind': 'offline verification; stub choices are NOT real model output',
@@ -177,12 +190,13 @@ def main():
         'repaired_stubbed_analysis': {k: v for k, v in bundle['analysis'].items() if k not in ('evidence', 'coverage')},
         'day5_old_gate_skips': old_skips, 'day5_repaired_skips': new_skips,
         'offline_diagnostic': summary(diagnostic),
-        'real_model_verification': 'blocked: compatible live cache requires approved provider/model and budget',
+        'real_model_verification': {'publishable': promoted_bundle['meta']['publishable'], 'models': promoted_bundle['meta']['coverage']['models'], 'confidence': promoted_bundle['analysis']['confidence']['value']},
     }
-    (out / 'verification.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    (out / 'verification.json').write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding="utf-8")
     print(f'PASS: {checked_rows} rows, 15 fork prefixes, 10 fork RNG states, two byte-identical replays')
     print(f'SYNTHETIC paired gate check: day-5 forced skips {old_skips} -> {new_skips}')
-    print(f'Offline production completeness correctly rejected; report: {out / "verification.json"}')
+    print(f'Seeds 3-4 correctly rejected; seeds 0-2 rebuild a publishable bundle from cache/ ({promoted_bundle["meta"]["coverage"]["models"]}); report: {out / "verification.json"}')
     return 0
 
 

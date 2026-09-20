@@ -47,7 +47,8 @@ elif [[ -e "$OUT" && ( ! -d "$OUT" || -n "$(ls -A "$OUT")" ) ]]; then
   exit 2
 fi
 mkdir -p "$OUT"
-ENGINE_ARGS=(--all --seeds 0-4 --quiet --require-complete --out "$OUT/runs" --cache "$CACHE")
+SEEDS="${SEEDS:-0-2}"   # the committed cache covers seeds 0-2; SEEDS=0-4 needs a live fill
+ENGINE_ARGS=(--all --seeds "$SEEDS" --quiet --require-complete --out "$OUT/runs" --cache "$CACHE")
 if [[ -n "$MODEL" ]]; then ENGINE_ARGS+=(--model "$MODEL"); fi
 if [[ "$OFFLINE" -eq 1 ]]; then ENGINE_ARGS+=(--offline); fi
 
@@ -58,6 +59,6 @@ echo "== 2/3 validate =="
 python3 tools/validate.py "$OUT/runs"
 
 echo "== 3/3 build runs.json =="
-python3 build_runs.py "$OUT/runs" --offline --require-complete --out "$OUT/runs.json"
+python3 build_runs.py "$OUT/runs" --offline --require-complete --seeds "$SEEDS" --out "$OUT/runs.json"
 
 echo "== done: $OUT/runs.json =="

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Row, Runs } from '../types'
-import { agentsAt } from '../town/agents'
+import { agentsAt, routeBetween } from '../town/agents'
 import { drawAnimal, drawBubble, drawGround, drawPerson, drawPet, drawProp } from '../town/draw'
 import {
   GRID,
@@ -14,7 +14,7 @@ import {
 } from '../town/model'
 
 const HOME_ZOOM = 1.3
-const PIXEL = 2
+const PIXEL = 3
 
 interface Pet {
   kind: 'cat' | 'dog'
@@ -50,7 +50,7 @@ function petTarget(town: Town): [number, number] {
     for (let x = 0; x < GRID; x++) {
       const ground = town.ground[idx(x, y)]
       if (penTile(x, y) || town.props[idx(x, y)] !== 'none') continue
-      if (ground === 'path' || ground === 'plaza' || ground === 'grass') candidates.push([x, y])
+      if (ground === 'path' || ground === 'plaza' || ground === 'sand') candidates.push([x, y])
     }
   }
   return candidates[Math.floor(Math.random() * candidates.length)] ?? [8, 8]
@@ -158,12 +158,17 @@ export default function IsoTown({
       const elapsed = previous === 0 ? 0 : Math.min(100, t - previous) / 1000
       previous = t
       for (const pet of petsRef.current) {
-        const dx = pet.target[0] - pet.pos[0]
-        const dy = pet.target[1] - pet.pos[1]
+        const route = routeBetween(tn, [Math.round(pet.pos[0]), Math.round(pet.pos[1])], pet.target)
+        const waypoint = route[1] ?? pet.target
+        const dx = waypoint[0] - pet.pos[0]
+        const dy = waypoint[1] - pet.pos[1]
         const distance = Math.hypot(dx, dy)
         if (distance < 0.04) {
-          pet.pos = pet.target
-          pet.target = petTarget(tn)
+          pet.pos = waypoint
+          if (waypoint[0] === pet.target[0] && waypoint[1] === pet.target[1]) {
+            pet.pos = pet.target
+            pet.target = petTarget(tn)
+          }
           continue
         }
         const step = Math.min(distance, elapsed * 0.35)
@@ -208,7 +213,7 @@ export default function IsoTown({
         }
       }
 
-      const agents = agentsAt(r, rws, ph, sel)
+      const agents = agentsAt(r, tn, rws, ph, sel)
       type Item = { depth: number; draw: () => void; overlay?: () => void }
       const items: Item[] = []
 
@@ -263,7 +268,7 @@ export default function IsoTown({
             ctx.save()
             ctx.translate(sx, sy)
             drawPerson(ctx, i, a.walking, t, sel === a.twin.id)
-            ctx.font = '11px ui-sans-serif, system-ui, sans-serif'
+            ctx.font = '14px ui-sans-serif, system-ui, sans-serif'
             ctx.textAlign = 'center'
             ctx.fillStyle = 'rgba(30,30,30,0.7)'
             ctx.fillText(a.twin.name, 0, 8)
@@ -303,7 +308,7 @@ export default function IsoTown({
     const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
     const px = (clientX - rect.left - originX) / cam.zoom
     const py = (clientY - rect.top - originY) / cam.zoom
-    const agents = agentsAt(runs, rows, phase, selectedTwin)
+    const agents = agentsAt(runs, town, rows, phase, selectedTwin)
     for (const a of agents) {
       const [sx, sy] = tileToScreen(a.pos[0], a.pos[1])
       if (Math.abs(px - sx) < 11 && py - sy < 6 && py - sy > -32) return a.twin.id

@@ -1,5 +1,5 @@
 import type { Row, Runs, Twin } from '../types'
-import { cellToTile } from './model'
+import { cellToTile, GRID, idx, type Town } from './model'
 
 export interface AgentState {
   twin: Twin
@@ -10,19 +10,118 @@ export interface AgentState {
   bubble: { text: string; tone: 'think' | 'talk' } | null
 }
 
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t
+const routeCache = new Map<string, [number, number][]>()
+
+function routeKey(from: [number, number], to: [number, number]) {
+  return `${from[0]},${from[1]}>${to[0]},${to[1]}`
 }
 
-/** Walk along the lanes: first on the x axis, then on the y axis. */
-function pathPoint(from: [number, number], to: [number, number], t: number): [number, number] {
-  const legX = Math.abs(to[0] - from[0])
-  const legY = Math.abs(to[1] - from[1])
-  const total = legX + legY
-  if (total === 0) return from
-  const travelled = t * total
-  if (travelled <= legX) return [lerp(from[0], to[0], legX === 0 ? 1 : travelled / legX), from[1]]
-  return [to[0], lerp(from[1], to[1], legY === 0 ? 1 : (travelled - legX) / legY)]
+function isWalkable(town: Town, x: number, y: number, start: [number, number], goal: [number, number]) {
+  if ((x === start[0] && y === start[1]) || (x === goal[0] && y === goal[1])) return true
+  return (
+    town.ground[idx(x, y)] === 'path' ||
+    town.ground[idx(x, y)] === 'plaza' ||
+    town.ground[idx(x, y)] === 'sand'
+  ) && town.props[idx(x, y)] === 'none'
+}
+
+export function routeBetween(town: Town, from: [number, number], to: [number, number]): [number, number][] {
+  const start: [number, number] = [Math.round(from[0]), Math.round(from[1])]
+  const goal: [number, number] = [Math.round(to[0]), Math.round(to[1])]
+  const key = routeKey(start, goal)
+  const cached = routeCache.get(key)
+  if (cached) return cached
+  if (start[0] === goal[0] && start[1] === goal[1]) {
+    const same = [start]
+    routeCache.set(key, same)
+    return same
+  }
+
+  const queue: [number, number][] = [start]
+  const previous = new Map<string, [number, number] | null>([[start.join(','), null]])
+  for (let head = 0; head < queue.length; head++) {
+    const current = queue[head]
+    if (current[0] === goal[0] && current[1] === goal[1]) break
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const next: [number, number] = [current[0] + dx, current[1] + dy]
+      const nextKey = next.join(',')
+      if (
+        next[0] < 0 ||
+        next[1] < 0 ||
+        next[0] >= GRID ||
+        next[1] >= GRID ||
+        previous.has(nextKey) ||
+        !isWalkable(town, next[0], next[1], start, goal)
+      ) {
+        continue
+      }
+      previous.set(nextKey, current)
+      queue.push(next)
+    }
+  }
+
+  const route: [number, number][] = []
+  let current: [number, number] | undefined = goal
+  while (current) {
+    route.push(current)
+    current = previous.get(current.join(',')) ?? undefined
+  }
+  if (!previous.has(goal.join(','))) {
+    const fallback = [from, to]
+    routeCache.set(key, fallback)
+    return fallback
+  }
+  route.reverse()
+  routeCache.set(key, route)
+  return route
+}
+
+function pointOnRoute(route: [number, number][], progress: number): [number, number] {
+  if (route.length === 1) return route[0]
+  const lengths = route.slice(1).map((point, i) => Math.hypot(point[0] - route[i][0], point[1] - route[i][1]))
+  const total = lengths.reduce((sum, length) => sum + length, 0)
+  let distance = Math.max(0, Math.min(1, progress)) * total
+  for (let i = 0; i < lengths.length; i++) {
+    if (distance <= lengths[i]) {
+      const ratio = lengths[i] === 0 ? 1 : distance / lengths[i]
+      return [
+        route[i][0] + (route[i + 1][0] - route[i][0]) * ratio,
+        route[i][1] + (route[i + 1][1] - route[i][1]) * ratio,
+      ]
+    }
+    distance -= lengths[i]
+  }
+  return route[route.length - 1]
+}
+
+function routedPoint(town: Town, from: [number, number], to: [number, number], progress: number) {
+  return pointOnRoute(routeBetween(town, from, to), progress)
+}
+
+function wanderTarget(town: Town, home: [number, number]): [number, number] {
+  const queue: { point: [number, number]; distance: number }[] = [{ point: home, distance: 0 }]
+  const seen = new Set([home.join(',')])
+  for (let head = 0; head < queue.length; head++) {
+    const { point, distance } = queue[head]
+    if (distance >= 2 && isWalkable(town, point[0], point[1], home, home)) return point
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const next: [number, number] = [point[0] + dx, point[1] + dy]
+      const key = next.join(',')
+      if (
+        next[0] < 0 ||
+        next[1] < 0 ||
+        next[0] >= GRID ||
+        next[1] >= GRID ||
+        seen.has(key) ||
+        !isWalkable(town, next[0], next[1], home, home)
+      ) {
+        continue
+      }
+      seen.add(key)
+      queue.push({ point: next, distance: distance + 1 })
+    }
+  }
+  return home
 }
 
 export function targetTile(runs: Runs, row: Row | undefined, twin: Twin): [number, number] {
@@ -50,7 +149,13 @@ const QUEUE_SPOTS: [number, number][] = [
  * 0–0.55 walking to the chosen shop, 0.55–0.85 standing there thinking,
  * 0.85–1 heading home while the gossip lands.
  */
-export function agentsAt(runs: Runs, rows: Row[], phase: number, selected: string | null): AgentState[] {
+export function agentsAt(
+  runs: Runs,
+  town: Town,
+  rows: Row[],
+  phase: number,
+  selected: string | null,
+): AgentState[] {
   const byTwin = new Map(rows.map((r) => [r.twin, r]))
   const taken = new Map<string, number>()
   return runs.twins.map((twin) => {
@@ -66,16 +171,28 @@ export function agentsAt(runs: Runs, rows: Row[], phase: number, selected: strin
     let pos: [number, number]
     let walking = true
     if (skipped) {
-      // a skipped coffee: a short loop around the block and back home
-      const wander: [number, number] = [home[0] + 1, home[1] + 1]
-      pos = phase < 0.5 ? pathPoint(home, wander, phase / 0.5) : pathPoint(wander, home, (phase - 0.5) / 0.5)
+      // a skipped coffee: a short loop along the nearest lane and back home
+      const wander = wanderTarget(town, home)
+      pos = phase < 0.5
+        ? routedPoint(town, home, wander, phase / 0.5)
+        : routedPoint(town, wander, home, (phase - 0.5) / 0.5)
     } else if (phase < 0.55) {
-      pos = pathPoint(home, dest, phase / 0.55)
+      const routeProgress = phase / 0.55
+      pos = routedPoint(town, home, base, routeProgress)
+      if (routeProgress > 0.9) {
+        const blend = (routeProgress - 0.9) / 0.1
+        pos = [pos[0] + spot[0] * blend, pos[1] + spot[1] * blend]
+      }
     } else if (phase < 0.85) {
       pos = dest
       walking = false
     } else {
-      pos = pathPoint(dest, home, (phase - 0.85) / 0.15)
+      const routeProgress = (phase - 0.85) / 0.15
+      pos = routedPoint(town, base, home, routeProgress)
+      if (routeProgress < 0.1) {
+        const blend = 1 - routeProgress / 0.1
+        pos = [pos[0] + spot[0] * blend, pos[1] + spot[1] * blend]
+      }
     }
 
     let bubble: AgentState['bubble'] = null

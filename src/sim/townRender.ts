@@ -2,6 +2,7 @@ import { drawCustomer, paletteForCustomer } from './sprites'
 import {
   BUILDINGS,
   DECOR,
+  PENS,
   PLAZAS,
   ROAD_BOTTOM,
   ROAD_TOP,
@@ -428,8 +429,111 @@ function drawStall(ctx: CanvasRenderingContext2D, d: Decor): void {
   P(-12, -25, 24, 1, '#4a3527')
 }
 
+const FENCE_DARK = '#6b4a33'
+const FENCE_LIGHT = '#c9a06f'
+
+function drawPost(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  P(-1, -9, 3, 9, FENCE_DARK)
+  P(-1, -9, 1, 9, FENCE_LIGHT)
+  P(-1, -10, 3, 1, FENCE_LIGHT)
+}
+
+/** One span of paddock fence: two rails between a pair of posts. */
+function drawRail(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  const half = Math.round(T / AU)
+  P(-half, -7, half * 2, 2, FENCE_DARK)
+  P(-half, -7, half * 2, 1, FENCE_LIGHT)
+  P(-half, -3, half * 2, 2, FENCE_DARK)
+  P(-half, -3, half * 2, 1, FENCE_LIGHT)
+  P(-half - 1, -9, 3, 9, FENCE_DARK)
+  P(-half - 1, -9, 1, 9, FENCE_LIGHT)
+  P(-half - 1, -10, 3, 1, FENCE_LIGHT)
+}
+
+function drawGate(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  P(-7, -9, 14, 9, '#f4ead6')
+  P(-6, -8, 12, 7, '#a56f3c')
+  P(-6, -8, 12, 1, '#c98f56')
+  P(-6, -5, 12, 1, '#7d5230')
+  P(-6, -2, 12, 1, '#7d5230')
+  P(-1, -8, 2, 7, '#7d5230')
+  P(-8, -10, 2, 10, FENCE_DARK)
+  P(6, -10, 2, 10, FENCE_DARK)
+  P(-8, -11, 16, 1, FENCE_DARK)
+  P(-8, -11, 16, 1, FENCE_LIGHT)
+}
+
+function drawTrough(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 7, AU * 1)
+  P(-7, -5, 14, 5, '#4a3527')
+  P(-6, -5, 12, 4, '#8a6a47')
+  P(-6, -5, 12, 1, '#a58558')
+  P(-5, -4, 10, 2, d.variant === 1 ? '#5b8fb0' : '#d9b45c')
+  P(-5, -4, 5, 1, d.variant === 1 ? '#8cbdd6' : '#efd085')
+}
+
+function drawCoop(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  shadow(ctx, d.x, d.y, AU * 10, AU * 1.6)
+  P(-8, -12, 16, 12, '#4a3527')
+  P(-7, -12, 14, 11, '#b8865a')
+  P(-7, -12, 14, 1, '#d4a677')
+  for (let i = -6; i < 7; i += 3) P(i, -11, 1, 10, '#946a44')
+  P(-2, -6, 4, 5, '#3a2718')
+  P(-9, -7, 18, 2, '#4a3527')
+  P(-8, -8, 16, 1, '#c85a4a')
+  for (let r = 0; r < 5; r++) {
+    const half = 4 + r * 2
+    P(-half, -17 + r, half * 2, 1, '#a94b3d')
+    P(-half, -17 + r, half, 1, '#c85a4a')
+  }
+  P(-1, -18, 2, 1, '#4a2f22')
+  P(4, -4, 2, 4, '#e0a83e')
+}
+
+function drawBarn(ctx: CanvasRenderingContext2D, d: Decor): void {
+  const P = plot(ctx, d.x, d.y)
+  const wall = d.variant === 1 ? '#a94b3d' : '#8a5a40'
+  const light = tint(wall, 0.2)
+  shadow(ctx, d.x, d.y, AU * 14, AU * 2)
+  P(-12, -16, 24, 16, '#3a2718')
+  P(-11, -16, 22, 15, wall)
+  P(-11, -16, 22, 1, light)
+  for (let i = -10; i < 11; i += 4) P(i, -15, 1, 14, tint(wall, -0.2))
+  P(-4, -9, 8, 8, '#3a2718')
+  P(-3, -8, 3, 7, '#5e4230')
+  P(0, -8, 3, 7, '#5e4230')
+  P(-3, -8, 1, 7, '#8a6a47')
+  P(0, -8, 1, 7, '#8a6a47')
+  P(-1, -14, 2, 2, '#f6efe2')
+  for (let r = 0; r < 7; r++) {
+    const half = 4 + r * 1.5
+    const h = Math.round(half)
+    P(-h, -23 + r, h * 2, 1, '#5b4638')
+    P(-h, -23 + r, h, 1, '#7a6050')
+    if (r % 2 === 1) P(-h, -23 + r, h * 2, 1, '#4a3a30')
+  }
+  P(-13, -17, 26, 1, '#3a2718')
+}
+
 function drawDecor(ctx: CanvasRenderingContext2D, d: Decor, tick: number): void {
   switch (d.kind) {
+    case 'post':
+      return drawPost(ctx, d)
+    case 'rail':
+      return drawRail(ctx, d)
+    case 'gate':
+      return drawGate(ctx, d)
+    case 'trough':
+      return drawTrough(ctx, d)
+    case 'coop':
+      return drawCoop(ctx, d)
+    case 'barn':
+      return drawBarn(ctx, d)
     case 'tree':
       return drawTree(ctx, d)
     case 'pine':
@@ -804,15 +908,16 @@ function shopMetrics(b: Building) {
     AH,
     ROOF_ROWS,
     CORNICE,
-    WALL_TOP: CORNICE + 4,
+    WALL_TOP: CORNICE + 7,
     x0,
     y0,
-    /** Centre of the three row cornice board, where the painted name sits. */
+    /** Centre of the six row cornice board, where the painted name sits. */
     nameX: x0 + (AW / 2) * U,
-    nameY: y0 + (CORNICE + 1.5) * U,
-    /** Centre of the little hanging sign. */
-    signX: x0 + (AW + 2.5) * U,
-    signY: y0 + (CORNICE + 7.5) * U
+    nameY: y0 + (CORNICE + 3) * U,
+    /** Centre of the hanging sign, which carries the latte price. */
+    signX: x0 + (AW + 9) * U,
+    signY: y0 + (CORNICE + 13) * U,
+    signW: 18 * U
   }
 }
 
@@ -866,9 +971,11 @@ function drawShop(ctx: CanvasRenderingContext2D, b: Building, hovered: boolean, 
   P(-1, ROOF_ROWS - 1, AW + 2, 1, roofDark)
 
   // cornice board, where the painted name goes
-  P(-1, CORNICE, AW + 2, 4, tint(trim, -0.5))
-  P(0, CORNICE, AW, 3, trim)
+  P(-1, CORNICE, AW + 2, 7, tint(trim, -0.5))
+  P(0, CORNICE, AW, 6, trim)
   P(0, CORNICE, AW, 1, tint(trim, 0.22))
+  P(1, CORNICE + 1, AW - 2, 1, tint(trim, -0.2))
+  P(1, CORNICE + 4, AW - 2, 1, tint(trim, -0.2))
 
   // shopfront
   P(0, WALL_TOP, AW, AH - WALL_TOP, wallEdge)
@@ -926,10 +1033,12 @@ function drawShop(ctx: CanvasRenderingContext2D, b: Building, hovered: boolean, 
   P(Math.round(AW * 0.1), gY + 2, 3, 2, on ? '#ffd76b' : '#b99a52')
 
   // hanging sign on a bracket
-  P(AW, CORNICE + 2, 3, 1, tint(trim, -0.3))
-  P(AW + 2, CORNICE + 3, 1, 2, tint(trim, -0.3))
-  P(AW - 1, CORNICE + 5, 7, 5, tint(trim, -0.5))
-  P(AW, CORNICE + 6, 5, 3, '#f6efe2')
+  P(AW, CORNICE + 6, 12, 1, tint(trim, -0.3))
+  P(AW + 5, CORNICE + 7, 1, 2, tint(trim, -0.3))
+  P(AW + 12, CORNICE + 7, 1, 2, tint(trim, -0.3))
+  P(AW - 1, CORNICE + 9, 20, 8, tint(trim, -0.5))
+  P(AW, CORNICE + 10, 18, 6, '#f6efe2')
+  P(AW, CORNICE + 10, 18, 1, '#fffdf7')
 }
 
 function drawGround(ctx: CanvasRenderingContext2D): void {
@@ -970,6 +1079,24 @@ function drawGround(ctx: CanvasRenderingContext2D): void {
   ctx.fillStyle = 'rgba(255,255,255,0.5)'
   for (let x = T; x < WORLD_W; x += T * 2.4) {
     ctx.fillRect(x, (ROAD_TOP + ROAD_BOTTOM) / 2 - 2, T, 3)
+  }
+
+  // trodden earth and straw inside the paddocks
+  for (const pen of PENS) {
+    const { x, y, w, h } = pen.box
+    rect(ctx, x, y, w, h, pen.kind === 'poultry' ? '#c7b27a' : '#a8b06a')
+    ctx.fillStyle = 'rgba(90,70,40,0.16)'
+    for (let i = 0; i < (w * h) / (T * T) * 1.6; i++) {
+      const px = x + ((i * 173.3) % w)
+      const py = y + ((i * 91.7) % h)
+      ctx.fillRect(Math.round(px), Math.round(py), Math.round(T * 0.35), Math.round(T * 0.18))
+    }
+    ctx.fillStyle = 'rgba(255,240,180,0.22)'
+    for (let i = 0; i < (w * h) / (T * T); i++) {
+      const px = x + ((i * 61.1 + 7) % w)
+      const py = y + ((i * 137.9 + 3) % h)
+      ctx.fillRect(Math.round(px), Math.round(py), 4, 2)
+    }
   }
 
   // cobbled squares outside the cafes and in the middle of town
@@ -1134,20 +1261,29 @@ export function renderOverlay(
       const m = shopMetrics(b)
 
       // painted name, centred on the cornice board
-      let size = Math.round(T * 0.46)
-      ctx.font = `700 ${size}px 'Segoe UI', sans-serif`
+      let size = Math.round(T * 0.9)
+      const face = (px: number): string => `700 ${px}px Georgia, 'Times New Roman', serif`
+      ctx.font = face(size)
       // shrink to fit rather than overflow the board
-      while (size > 8 && ctx.measureText(b.label).width > b.box.w - T * 0.6) {
+      while (size > 8 && ctx.measureText(b.label).width > b.box.w - T * 0.5) {
         size -= 1
-        ctx.font = `700 ${size}px 'Segoe UI', sans-serif`
+        ctx.font = face(size)
       }
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'
+      ctx.fillText(b.label, m.nameX + 1.5, m.nameY + 1.5)
       ctx.fillStyle = '#f6efe2'
       ctx.fillText(b.label, m.nameX, m.nameY)
 
-      // hanging sign
-      ctx.font = `600 ${Math.round(T * 0.3)}px 'Segoe UI', sans-serif`
+      // hanging sign with the latte price from the run
+      const signText = b.sublabel || (isSimffee ? 'coffee' : 'brew')
+      let signSize = Math.round(T * 0.42)
+      ctx.font = face(signSize)
+      while (signSize > 7 && ctx.measureText(signText).width > m.signW - 4) {
+        signSize -= 1
+        ctx.font = face(signSize)
+      }
       ctx.fillStyle = trim
-      ctx.fillText(isSimffee ? 'coffee' : 'brew', m.signX, m.signY)
+      ctx.fillText(signText, m.signX, m.signY)
     }
   }
 

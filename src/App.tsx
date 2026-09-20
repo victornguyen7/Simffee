@@ -43,7 +43,7 @@ function App() {
 
       <main className={`shell__body ${fullBleed ? 'shell__body--full' : ''}`}>
         {scene.name === 'town' && <Town onEnterShop={(shop) => setScene({ name: 'interior', shop })} />}
-        {scene.name === 'interior' && <Shop />}
+        {scene.name === 'interior' && <Shop shop={scene.shop} />}
         {scene.name === 'market' && <Market />}
         {scene.name === 'conclusion' && <Conclusion />}
       </main>

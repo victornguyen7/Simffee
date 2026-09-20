@@ -25,6 +25,9 @@ const ZOOM = 1
  */
 const PIXEL = 2
 
+/** How long one simulated day plays on screen before rolling to the next. */
+const DAY_MS = 16000
+
 export default function Town({ onEnterShop }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -71,7 +74,7 @@ export default function Town({ onEnterShop }: Props) {
     if (!runs || !playing) return
     const id = window.setInterval(() => {
       setDayNum((d) => (d >= runs.meta.days ? 1 : d + 1))
-    }, 7000)
+    }, DAY_MS)
     return () => window.clearInterval(id)
   }, [runs, playing])
 

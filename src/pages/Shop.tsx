@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import './shop.css'
-import { paletteFrom, render } from '../sim/render'
+import { render } from '../sim/render'
+import { INTERIORS } from '../sim/interior'
+import type { ShopId } from '../sim/runs'
 import {
   DEFAULT_CONFIG,
   GRID_H,
@@ -17,9 +19,15 @@ import {
 
 type Speed = 0 | 1 | 3
 
-const BASE_TICKS_PER_SECOND = 20
+/** Shop minutes per real second at 1x. Slow enough to watch one customer's visit. */
+const BASE_TICKS_PER_SECOND = 9
 
-export default function Shop() {
+interface Props {
+  shop: ShopId
+}
+
+export default function Shop({ shop }: Props) {
+  const theme = INTERIORS[shop]
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const worldRef = useRef<World>(createWorld())
   const frameRef = useRef<number>(0)
@@ -57,8 +65,7 @@ export default function Shop() {
 
     let last = performance.now()
     let carry = 0
-    let palette = paletteFrom(canvas)
-    let paletteAge = 0
+    let tick = 0
 
     const loop = (now: number) => {
       const dt = Math.min(0.25, (now - last) / 1000)
@@ -76,14 +83,8 @@ export default function Shop() {
         }
       }
 
-      // Theme can change under us, so refresh the palette occasionally.
-      paletteAge += dt
-      if (paletteAge > 1) {
-        palette = paletteFrom(canvas)
-        paletteAge = 0
-      }
-
-      render(ctx, world, palette)
+      tick++
+      render(ctx, world, theme, tick)
 
       setView({
         day: world.day,
@@ -99,7 +100,7 @@ export default function Shop() {
 
     frameRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(frameRef.current)
-  }, [speed])
+  }, [speed, theme])
 
   function runRestOfDay() {
     const world = worldRef.current
@@ -124,7 +125,9 @@ export default function Shop() {
     <div className="shop">
       <header className="shop__head">
         <div>
-          <h1 className="shop__title">Day {view.day}</h1>
+          <h1 className="shop__title">
+            {shop === 'simffee' ? 'Simffee Coffee' : 'Starbucks'} · Day {view.day}
+          </h1>
           <p className="shop__meta">
             {dayDone ? 'closed' : `${Math.round(progress * 100)}% through the day`} · {view.inShop} in the shop ·{' '}
             {view.queueLength} in line

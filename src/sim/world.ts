@@ -174,7 +174,7 @@ function spawn(world: World): void {
   })
 }
 
-const SPEED = 0.34
+const SPEED = 0.26
 
 /** Steps one tile-space toward the target, x first then y. */
 function moveToward(c: Customer): boolean {

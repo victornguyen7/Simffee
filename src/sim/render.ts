@@ -1,5 +1,6 @@
 import { GRID_H, GRID_W, SERVE_SPOT, TILE, TILES, type World } from './world'
 import { drawBarista, drawCustomer, paletteForCustomer } from './sprites'
+import { drawFloor, drawFurnishings, type InteriorTheme } from './interior'
 
 export interface Palette {
   floorA: string
@@ -22,42 +23,15 @@ export interface Palette {
 /** Feet sit slightly below the tile centre so characters look grounded. */
 const FOOT_OFFSET = 0.32
 
-export function render(ctx: CanvasRenderingContext2D, world: World, p: Palette): void {
+export function render(ctx: CanvasRenderingContext2D, world: World, theme: InteriorTheme, tick: number): void {
+  const p = theme.palette
   const px = TILE / 14 // sprite pixel size, tuned so a person is a bit taller than a tile
 
   ctx.clearRect(0, 0, GRID_W * TILE, GRID_H * TILE)
   ctx.imageSmoothingEnabled = false
 
-  // ---- floor and structure ----
-  for (let y = 0; y < GRID_H; y++) {
-    for (let x = 0; x < GRID_W; x++) {
-      const kind = TILES[y][x]
-      const px0 = x * TILE
-      const py0 = y * TILE
-
-      if (kind === 'wall') {
-        ctx.fillStyle = p.wall
-        ctx.fillRect(px0, py0, TILE, TILE)
-        ctx.fillStyle = p.wallTop
-        ctx.fillRect(px0, py0, TILE, Math.max(3, TILE * 0.22))
-        continue
-      }
-
-      if (kind === 'door') {
-        ctx.fillStyle = p.door
-        ctx.fillRect(px0, py0, TILE, TILE)
-        ctx.fillStyle = p.outline
-        ctx.fillRect(px0, py0, TILE, Math.max(2, TILE * 0.12))
-        continue
-      }
-
-      // wooden planks, offset every other row so the seams stagger
-      ctx.fillStyle = (x + (y % 2 === 0 ? 0 : 1)) % 2 === 0 ? p.floorA : p.floorB
-      ctx.fillRect(px0, py0, TILE, TILE)
-      ctx.fillStyle = 'rgba(0,0,0,0.06)'
-      ctx.fillRect(px0, py0 + TILE - 1, TILE, 1)
-    }
-  }
+  // ---- floor, walls, rugs ----
+  drawFloor(ctx, theme)
 
   // counter drawn on top so it reads as furniture, not floor
   for (let y = 0; y < GRID_H; y++) {
@@ -93,6 +67,9 @@ export function render(ctx: CanvasRenderingContext2D, world: World, p: Palette):
     ctx.arc(cx, cy, TILE * 0.34, 0, Math.PI * 2)
     ctx.fill()
   }
+
+  // ---- set dressing, none of it walkable ----
+  drawFurnishings(ctx, theme, tick)
 
   // ---- baristas behind the counter ----
   world.baristaBusy.forEach((busy, i) => {
@@ -163,27 +140,3 @@ export function render(ctx: CanvasRenderingContext2D, world: World, p: Palette):
   }
 }
 
-export function paletteFrom(el: HTMLElement): Palette {
-  const css = getComputedStyle(el)
-  const read = (name: string, fallback: string): string => css.getPropertyValue(name).trim() || fallback
-
-  const accent = read('--accent', '#c07a3e')
-
-  return {
-    floorA: '#e9dcc6',
-    floorB: '#e3d4ba',
-    wall: '#8a6a4a',
-    wallTop: '#a3805c',
-    counter: '#8d5a34',
-    counterTop: '#6f4526',
-    table: '#c99a63',
-    tableTaken: '#b07d45',
-    chair: '#7a5738',
-    door: '#cbb896',
-    outline: '#3a2a20',
-    cup: '#f4efe6',
-    apron: '#d9cbb4',
-    annoyed: '#c2564f',
-    accent
-  }
-}

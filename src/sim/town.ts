@@ -88,9 +88,9 @@ HOME_SLOTS.forEach((slot, i) => {
 })
 
 for (const shop of SHOP_DEFS) {
-  const w = Math.round(T * 6)
-  const h = Math.round(T * 4.6)
-  const box: Rect = { x: unitToX(shop.location) - w / 2, y: ROAD_BOTTOM + T * 2.2, w, h }
+  const w = Math.round(T * 6.4)
+  const h = Math.round(T * 5.2)
+  const box: Rect = { x: unitToX(shop.location) - w / 2, y: ROAD_BOTTOM + T * 2, w, h }
 
   BUILDINGS.push({
     id: shop.id,
@@ -114,6 +114,23 @@ export const PLAZAS: Rect[] = [
     h: T * 3
   })),
   { x: WORLD_W / 2 - T * 5, y: ROAD_BOTTOM + T * 8.5, w: T * 10, h: T * 6 }
+]
+
+export type PenKind = 'sheep' | 'cow' | 'poultry'
+
+export interface Pen {
+  kind: PenKind
+  box: Rect
+}
+
+/**
+ * Fenced paddocks on the farmland south of town. Livestock live inside them;
+ * cats and dogs are pets and go where they like.
+ */
+export const PENS: Pen[] = [
+  { kind: 'sheep', box: { x: T * 3, y: T * 44.5, w: T * 13, h: T * 7 } },
+  { kind: 'poultry', box: { x: T * 19, y: T * 46, w: T * 8, h: T * 5.5 } },
+  { kind: 'cow', box: { x: WORLD_W - T * 17, y: T * 44.5, w: T * 14, h: T * 7 } }
 ]
 
 const DOOR_PAD = 6
@@ -187,6 +204,12 @@ export type DecorKind =
   | 'log'
   | 'cart'
   | 'lantern'
+  | 'post'
+  | 'rail'
+  | 'gate'
+  | 'trough'
+  | 'coop'
+  | 'barn'
 
 export interface Decor {
   kind: DecorKind
@@ -212,6 +235,7 @@ function inRect(x: number, y: number, r: Rect, pad: number): boolean {
 function blocked(x: number, y: number, pad: number): boolean {
   if (y > ROAD_TOP - T && y < ROAD_BOTTOM + T) return true
   for (const p of PLAZAS) if (inRect(x, y, p, T * 0.4)) return true
+  for (const p of PENS) if (inRect(x, y, p.box, T * 1.2)) return true
   for (const b of BUILDINGS) if (inRect(x, y, b.box, pad + T * 0.4)) return true
   // keep the walking routes clear
   for (const w of WAYPOINTS) {
@@ -284,7 +308,29 @@ function buildDecor(): Decor[] {
   out.push({ kind: 'cart', x: WORLD_W * 0.5 - T * 4.4, y: ROAD_TOP - T * 5.6, variant: 0 })
   out.push({ kind: 'signpost', x: WORLD_W * 0.5 + T * 3.6, y: ROAD_BOTTOM + T * 2.2, variant: 0 })
   out.push({ kind: 'signpost', x: WORLD_W * 0.16, y: ROAD_BOTTOM + T * 2.2, variant: 1 })
-  out.push({ kind: 'well', x: WORLD_W * 0.82, y: WORLD_H - T * 10, variant: 1 })
+  out.push({ kind: 'well', x: WORLD_W * 0.68, y: WORLD_H - T * 10, variant: 1 })
+
+  // paddock fences: a rail along each side, posts down the sides, one gate
+  for (const pen of PENS) {
+    const { x, y, w, h } = pen.box
+    const railSpan = T * 2
+    for (let rx = x + railSpan / 2; rx < x + w; rx += railSpan) {
+      out.push({ kind: 'rail', x: Math.min(rx, x + w - railSpan / 2), y, variant: 0 })
+      out.push({ kind: 'rail', x: Math.min(rx, x + w - railSpan / 2), y: y + h, variant: 0 })
+    }
+    for (let ry = y + T * 0.8; ry < y + h; ry += T * 0.8) {
+      out.push({ kind: 'post', x, y: ry, variant: 0 })
+      out.push({ kind: 'post', x: x + w, y: ry, variant: 0 })
+    }
+    out.push({ kind: 'gate', x: x + w / 2, y: y + h, variant: 0 })
+    out.push({ kind: 'trough', x: x + T * 1.6, y: y + h - T * 0.8, variant: pen.kind === 'cow' ? 1 : 0 })
+    if (pen.kind === 'poultry') {
+      out.push({ kind: 'coop', x: x + w - T * 1.8, y: y + T * 2.2, variant: 0 })
+    } else {
+      out.push({ kind: 'barn', x: x + w - T * 2.6, y: y + T * 2.6, variant: pen.kind === 'cow' ? 1 : 0 })
+      out.push({ kind: 'haystack', x: x + w - T * 5.2, y: y + T * 2.4, variant: 0 })
+    }
+  }
 
   // benches around the middle plaza
   const plaza = PLAZAS[PLAZAS.length - 1]

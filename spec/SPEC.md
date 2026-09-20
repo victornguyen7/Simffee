@@ -1,4 +1,4 @@
-# SimuX — Spec: Coffee What-If Machine
+# Simffee — Spec: Coffee What-If Machine
 
 2026-09-19 · @Someone
 
@@ -18,7 +18,7 @@ Three fixed constraints:
 | --- | --- |
 | Twins | 10 |
 | Grid | 5×5, Manhattan distance |
-| Shops | 2 (SimuX Coffee at (1,1), Starbucks at (3,3)) |
+| Shops | 2 (Simffee Coffee at (1,1), Starbucks at (3,3)) |
 | Simulated days | 7 |
 | Scenarios | 1 baseline + 2 counterfactuals |
 | Seeds per scenario | 5 (for computing confidence) |
@@ -116,15 +116,15 @@ Each twin is a file `data/twins/T01.json`. Both the what/why layers are mandator
     "daily_budget_vnd": 60000, "walk_tolerance": 3, "wait_tolerance_min": 6
   },
   "what_log": [
-    {"day": -30, "shop": "simux", "time": "06:45", "spent": 45000, "abandoned": false},
-    {"day": -29, "shop": "simux", "time": "06:50", "spent": 45000, "abandoned": false}
+    {"day": -30, "shop": "simffee", "time": "06:45", "spent": 45000, "abandoned": false},
+    {"day": -29, "shop": "simffee", "time": "06:50", "spent": 45000, "abandoned": false}
   ],
   "why_transcript": [
     {"q": "When did you last pay extra just to avoid waiting?", "a": "Last week — 25k for express delivery..."},
     {"q": "Is there anything you know is bad but keep using because switching is a hassle?", "a": "My mobile carrier. Three years now."}
   ],
   "mechanism": {
-    "habit": {"simux": 0.82, "starbucks": 0.08},
+    "habit": {"simffee": 0.82, "starbucks": 0.08},
     "disruption_threshold": 0.45,
     "latent_interest": {"starbucks": 0.35},
     "social_links": ["T02", "T04"],
@@ -150,8 +150,8 @@ Rules for deriving `mechanism` from the two layers above, so the four variables 
 
 ```json
 {
-  "simux": {
-    "name": "SimuX Coffee", "position": [1, 1],
+  "simffee": {
+    "name": "Simffee Coffee", "position": [1, 1],
     "price": {"latte": 45000, "americano": 35000, "cold_brew": 50000},
     "open": "06:30", "close": "20:00",
     "products": ["latte", "americano", "cold_brew"],
@@ -178,19 +178,19 @@ A scenario = a name + a list of per-day overrides. The baseline has an override 
   "id": "baseline",
   "parent": null,
   "overrides": [
-    {"from_day": 4, "shop": "simux", "set": {"open": "07:00", "price.latte": 48000}}
+    {"from_day": 4, "shop": "simffee", "set": {"open": "07:00", "price.latte": 48000}}
   ]
 }
 ```
 
 ```json
 {"id": "cf_discount", "parent": "baseline",
- "overrides": [{"from_day": 5, "shop": "simux", "set": {"price.latte": 38000}}]}
+ "overrides": [{"from_day": 5, "shop": "simffee", "set": {"price.latte": 38000}}]}
 ```
 
 ```json
 {"id": "cf_restore_hours", "parent": "baseline",
- "overrides": [{"from_day": 5, "shop": "simux", "set": {"open": "06:30"}}]}
+ "overrides": [{"from_day": 5, "shop": "simffee", "set": {"open": "06:30"}}]}
 ```
 
 The engine resolves shop state for day `d` by applying the parent's overrides and then its own, ordered by `from_day`.
@@ -204,12 +204,12 @@ One row per twin per day per scenario per seed, written to `runs/{scenario}/{see
   "scenario": "baseline", "seed": 2, "day": 4, "twin": "T01",
   "mode": "reappraisal",
   "disruption": {"score": 1.0, "source": "hours"},
-  "state_before": {"habit": {"simux": 0.82, "starbucks": 0.08}, "latent_interest": {"starbucks": 0.41}},
+  "state_before": {"habit": {"simffee": 0.82, "starbucks": 0.08}, "latent_interest": {"starbucks": 0.41}},
   "choice": "starbucks", "spent": 65000, "abandoned": false,
   "primary_driver": "hours", "secondary_driver": "curiosity",
   "valence": 0.4,
   "reasoning": "My usual place wasn't open at 6:45. I had to go somewhere else anyway, and Starbucks has that fall cold brew Linh raved about yesterday.",
-  "state_after": {"habit": {"simux": 0.78, "starbucks": 0.22}, "latent_interest": {"starbucks": 0.0}},
+  "state_after": {"habit": {"simffee": 0.78, "starbucks": 0.22}, "latent_interest": {"starbucks": 0.0}},
   "told": ["T02"]
 }
 ```
@@ -263,7 +263,7 @@ Output schema, mandatory:
 
 ```json
 {
-  "choice": "simux | starbucks | none",
+  "choice": "simffee | starbucks | none",
   "primary_driver": "habit | hours | price | distance | wait | product | curiosity | social | quality",
   "secondary_driver": "...",
   "valence": -1.0,
@@ -317,8 +317,8 @@ Every comparison is **twin-paired**, never aggregate. For each twin, for each da
 
 | Twin | Day 5 | Day 6 | Day 7 | Conclusion |
 | --- | --- | --- | --- | --- |
-| T01 | starbucks → starbucks | starbucks → simux | starbucks → simux | Returns in branch B |
-| T03 | simux → simux | simux → simux | simux → simux | Unaffected |
+| T01 | starbucks → starbucks | starbucks → simffee | starbucks → simffee | Returns in branch B |
+| T03 | simffee → simffee | simffee → simffee | simffee → simffee | Unaffected |
 
 Count the twins whose outcome changes between the two branches. That is the number shown next to each what-if button: *"Restore opening hours: 3 of 4 lost customers return. Cut prices 15%: 1 of 4."*
 
@@ -332,7 +332,7 @@ The Analyzer is arithmetic over trajectories. The LLM appears only at the last s
 
 ### 6.1 Finding the break
 
-Daily sales = the sum of `spent` for twins who chose `simux`. The break = the first day sales fall ≥ 25% below the trailing 3-day average, **and** `cf_null` does not fall similarly. In the demo scenario, that is day 4.
+Daily sales = the sum of `spent` for twins who chose `simffee`. The break = the first day sales fall ≥ 25% below the trailing 3-day average, **and** `cf_null` does not fall similarly. In the demo scenario, that is day 4.
 
 ### 6.2 Naive read vs actual driver
 
@@ -389,14 +389,14 @@ One final LLM call: the input is the computed JSON (naive, actual, impact, the 2
 
 ## 7. The reverse-engineered demo scenario
 
-The target: on day 4, SimuX sales drop \~40%, the naive read is price, the real mechanism is opening hours, and the two what-if branches diverge clearly. Tune the twin parameters until this outcome appears reliably in ≥ 4 of 5 seeds, then cache it. This is staging a scenario, not fabricating data — every number lives in a twin file that anyone can read.
+The target: on day 4, Simffee sales drop \~40%, the naive read is price, the real mechanism is opening hours, and the two what-if branches diverge clearly. Tune the twin parameters until this outcome appears reliably in ≥ 4 of 5 seeds, then cache it. This is staging a scenario, not fabricating data — every number lives in a twin file that anyone can read.
 
 ### 7.1 Target sequence of events
 
 | Day | Event | Desired outcome |
 | --- | --- | --- |
-| 1–3 | Stable | 7 of 10 twins go to SimuX on autopilot; 3 twins are Starbucks regulars |
-| 4 | SimuX opens late at 07:00 (instead of 06:30), latte +3k | 6 twins with `usual_time` < 07:00 hit disruption = 1.0 → reappraisal. 4 of them have `latent_interest[starbucks] ≥ 0.3` → they switch. 2 twins with high thresholds skip coffee entirely (`none`) |
+| 1–3 | Stable | 7 of 10 twins go to Simffee on autopilot; 3 twins are Starbucks regulars |
+| 4 | Simffee opens late at 07:00 (instead of 06:30), latte +3k | 6 twins with `usual_time` < 07:00 hit disruption = 1.0 → reappraisal. 4 of them have `latent_interest[starbucks] ≥ 0.3` → they switch. 2 twins with high thresholds skip coffee entirely (`none`) |
 | 5 | No change | The 4 who switched: habit\[starbucks\] ≈ 0.22, still in reappraisal. 3 stay at Starbucks because yesterday's valence was positive and the hours are still late; 1 returns |
 | 6–7 | Word of mouth | 1 more twin switches because a neighbor praised it. Final outcome: 4 customers lost — 3 due to hours, 1 due to gossip |
 
@@ -407,7 +407,7 @@ The target: on day 4, SimuX sales drop \~40%, the naive read is price, the real 
 | Branch | Override from day 5 | Desired outcome | Why |
 | --- | --- | --- | --- |
 | `cf_discount` | latte 38k (−15% from 45k) | 1 of 4 return | 3 of the twins who switched have `primary_driver` of hours/curiosity; price never appears in their reasoning. The 4th is genuinely price-sensitive and returns |
-| `cf_restore_hours` | reopen at 06:30, keep 48k | 3 of 4 return | habit\[simux\] is still ≈ 0.7 after one day away; once the door opens on time, autopilot switches back on. The 4th has already formed a new habit after 3 days |
+| `cf_restore_hours` | reopen at 06:30, keep 48k | 3 of 4 return | habit\[simffee\] is still ≈ 0.7 after one day away; once the door opens on time, autopilot switches back on. The 4th has already formed a new habit after 3 days |
 
 The two numbers **1/4** and **3/4** are the entire point of the demo. If they come out close together after a run, adjust: raise `latent_interest[starbucks]` for the 3 switching twins to 0.4–0.5 and lower `ad_sensitivity` for the 4th.
 
@@ -421,7 +421,7 @@ Each of these twins has a `say_do_gap` field with three parts: the stated claim,
 
 | Twin | Says | 30-day log shows | Consequence in the sim |
 | --- | --- | --- | --- |
-| T03 Linh | "I pick a shop based on bean quality" | 28 of 30 days at the nearest shop; the other 2 days were when it was closed | `walk_tolerance` 1. SimuX's quality marketing cannot pull her. Only distance and hours can |
+| T03 Linh | "I pick a shop based on bean quality" | 28 of 30 days at the nearest shop; the other 2 days were when it was closed | `walk_tolerance` 1. Simffee's quality marketing cannot pull her. Only distance and hours can |
 | T06 Đức | "I'm pretty frugal" | 65k/day, buys the most expensive cold brew on the menu | Low `ad_sensitivity` to discounts. `cf_discount` does not bring him back |
 | T08 Mai | "I love trying new things, I switch shops often" | 30 of 30 days at the same shop, same item, same time | `disruption_threshold` 0.7. The "fall menu" marketing does not move her. On day 4 she **skips coffee** rather than switch shops |
 
@@ -435,9 +435,9 @@ Bottom corner of every screen, small type, not dismissible: *"Synthetic seed pop
 
 Starting parameters that make the scenario in section 7 happen. The "Role" column states what this twin exists to prove; every twin must have a role, otherwise cut it.
 
-Grid: SimuX (1,1), Starbucks (3,3). Manhattan distance; `walk_tolerance` is the maximum number of cells a twin will walk.
+Grid: Simffee (1,1), Starbucks (3,3). Manhattan distance; `walk_tolerance` is the maximum number of cells a twin will walk.
 
-| ID | Name | Home | Time | habit simux / sbux | latent sbux | threshold | talk | Say-do | Role |
+| ID | Name | Home | Time | habit simffee / sbux | latent sbux | threshold | talk | Say-do | Role |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | T01 | Minh | (0,1) | 06:45 | 0.82 / 0.08 | 0.35 | 0.45 | 0.5 | — | Switches on day 4 due to hours; drivers hours+curiosity. Returns under cf\_restore |
 | T02 | Hà | (1,0) | 06:40 | 0.80 / 0.10 | 0.40 | 0.40 | 0.7 | — | Switches on day 4. The main storyteller; pulls T04 on day 6 |
@@ -447,15 +447,15 @@ Grid: SimuX (1,1), Starbucks (3,3). Manhattan distance; `walk_tolerance` is the 
 | T06 | Đức | (1,2) | 06:50 | 0.77 / 0.13 | 0.30 | 0.45 | 0.4 | Says frugal, spends 65k/day | Switches on day 4. cf\_discount doesn't bring him back; cf\_restore does |
 | T07 | Vy | (2,0) | 06:35 | 0.85 / 0.05 | 0.05 | 0.50 | 0.2 | — | Switches on day 4 due to hours but latent is low → negative valence at Starbucks → returns on her own on day 5 |
 | T08 | Mai | (0,0) | 06:40 | 0.90 / 0.00 | 0.15 | 0.70 | 0.3 | Says novelty-seeking, acts identically every day | Day 4 disruption of 1.0 exceeds her threshold → reappraisal, but latent is low so she **skips coffee** via the rule in 4.2: high threshold + low latent → `none` |
-| T09 | Khoa | (3,2) | 07:30 | 0.20 / 0.75 | — | 0.50 | 0.5 | — | Starbucks regular. The control showing SimuX marketing pulls nobody from Starbucks without a disruption on that side |
+| T09 | Khoa | (3,2) | 07:30 | 0.20 / 0.75 | — | 0.50 | 0.5 | — | Starbucks regular. The control showing Simffee marketing pulls nobody from Starbucks without a disruption on that side |
 | T10 | An | (4,3) | 08:15 | 0.10 / 0.85 | — | 0.55 | 0.5 | — | Starbucks regular. Genuinely price-sensitive: the only twin `cf_discount` pulls in (from Starbucks), so cf\_discount = +1 new customer, −3 old customers who never return |
 
 Tuning notes:
 
 - T08 needs a dedicated rule, not just a threshold: add to 4.2 the condition *in reappraisal but `max(latent_interest) < 0.2` and `disruption.source == hours` → choose `none`*. This is the "go without rather than switch" behavior of a high-inertia person, and it is the evidence that disruption ≠ switching.
 - T07 is the key twin for confidence: she switches and then returns on her own, so her day-4 `choice` is stable across seeds while day 5 fluctuates. Stability will be lower on day 5, and that is **correct**.
-- T09 and T10 are controls: without them, SimuX marketing has no one to act on and the gossip table has no reverse direction.
-- Starting SimuX customers = 8 (T01–T08), Starbucks = 2. Baseline day-7 outcome: SimuX 4, Starbucks 5, 1 skipping.
+- T09 and T10 are controls: without them, Simffee marketing has no one to act on and the gossip table has no reverse direction.
+- Starting Simffee customers = 8 (T01–T08), Starbucks = 2. Baseline day-7 outcome: Simffee 4, Starbucks 5, 1 skipping.
 
 ## 9. UI: 5 screens, a 90-second flow
 
@@ -473,8 +473,8 @@ flowchart LR
 | # | Screen | What you see | Seconds |
 | --- | --- | --- | --- |
 | 1 | Setup | The 5×5 grid with 10 homes and 2 shops. Right panel: price, hours, menu, and marketing for both shops. A **Run 7 days** button | 0–20 |
-| 2 | Town run | 7 days play at 2 seconds per day. Each home changes color by the shop visited (blue SimuX, green Starbucks, grey skipped). Faint lines show gossip between adjacent homes. Below the grid: the two sales lines | 20–45 |
-| 3 | Timeline | On day 4 the SimuX line breaks, marked with a red dot. The faint `cf_null` line runs parallel above it. Click the dot → screen 4 | 45–50 |
+| 2 | Town run | 7 days play at 2 seconds per day. Each home changes color by the shop visited (blue Simffee, green Starbucks, grey skipped). Faint lines show gossip between adjacent homes. Below the grid: the two sales lines | 20–45 |
+| 3 | Timeline | On day 4 the Simffee line breaks, marked with a red dot. The faint `cf_null` line runs parallel above it. Click the dot → screen 4 | 45–50 |
 | 4 | Mechanism | Left: **The obvious reading** — "Price +3k". Right, red border: **The real mechanism** — "Opened 30 minutes late → 6 twins lost their habit → 4 turned toward the place they were already curious about". Two verbatim evidence cards. `Confidence 0.78` | 50–70 |
 | 5 | What-if | Two buttons side by side: **Cut prices 15%** and **Reopen at 06:30**. Click → the timeline draws an extra branch, and 1/4 and 3/4 appear under the respective buttons. A "What if we..." text box below | 70–90 |
 
@@ -536,7 +536,7 @@ Decision point at hour 6: if the day-4 break still isn't happening through the r
 ### 10.4 Repo
 
 ```
-simux/
+simffee/
   data/twins/T01..T10.json
   data/shops.json
   data/scenarios/{baseline,cf_null,cf_discount,cf_restore_hours}.json

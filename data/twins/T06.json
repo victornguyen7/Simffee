@@ -18,42 +18,42 @@
   "what_log": [
     {
       "day": -30,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:50",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -29,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:53",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -28,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:55",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -27,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:52",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -26,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:50",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -25,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:54",
       "spent": 50000,
       "abandoned": false
@@ -67,28 +67,28 @@
     },
     {
       "day": -23,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:56",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -22,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:52",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -21,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:50",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -20,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:50",
       "spent": 50000,
       "abandoned": false
@@ -109,35 +109,35 @@
     },
     {
       "day": -17,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:52",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -16,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:50",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -15,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:54",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -14,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:51",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -13,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:56",
       "spent": 50000,
       "abandoned": false
@@ -158,28 +158,28 @@
     },
     {
       "day": -10,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:50",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -9,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:53",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -8,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:55",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -7,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:52",
       "spent": 50000,
       "abandoned": false
@@ -200,28 +200,28 @@
     },
     {
       "day": -4,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:51",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -3,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:56",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -2,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:52",
       "spent": 50000,
       "abandoned": false
     },
     {
       "day": -1,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "06:50",
       "spent": 50000,
       "abandoned": false
@@ -230,7 +230,7 @@
   "why_transcript": [
     {
       "q": "Walk me through your last coffee run. What time, where, and what did you order?",
-      "a": "6:50, SimuX, cold brew. The expensive one, yes."
+      "a": "6:50, Simffee, cold brew. The expensive one, yes."
     },
     {
       "q": "When did you last pay extra just to avoid waiting?",
@@ -251,7 +251,7 @@
   ],
   "mechanism": {
     "habit": {
-      "simux": 0.767,
+      "simffee": 0.767,
       "starbucks": 0.133
     },
     "disruption_threshold": 0.45,

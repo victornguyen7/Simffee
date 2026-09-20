@@ -5,7 +5,7 @@
     2,
     1
   ],
-  "role": "Unaffected on day 4 because she arrives after 07:00. Stays at SimuX throughout.",
+  "role": "Unaffected on day 4 because she arrives after 07:00. Stays at Simffee throughout.",
   "profile": {
     "age": 41,
     "occupation": "pharmacist",
@@ -18,105 +18,105 @@
   "what_log": [
     {
       "day": -30,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -29,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:13",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -28,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:15",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -27,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:12",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -26,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -25,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:14",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -24,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:11",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -23,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:16",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -22,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:12",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -21,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -20,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -19,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:13",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -18,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:15",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -17,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:12",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -16,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
@@ -130,14 +130,14 @@
     },
     {
       "day": -14,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:11",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -13,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:16",
       "spent": 35000,
       "abandoned": false
@@ -151,77 +151,77 @@
     },
     {
       "day": -11,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -10,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -9,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:13",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -8,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:15",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -7,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:12",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -6,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -5,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:14",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -4,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:11",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -3,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:16",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -2,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:12",
       "spent": 35000,
       "abandoned": false
     },
     {
       "day": -1,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:10",
       "spent": 35000,
       "abandoned": false
@@ -230,7 +230,7 @@
   "why_transcript": [
     {
       "q": "Walk me through your last coffee run. What time, where, and what did you order?",
-      "a": "7:10, SimuX, americano. It's a minute from my door, which is the entire reason."
+      "a": "7:10, Simffee, americano. It's a minute from my door, which is the entire reason."
     },
     {
       "q": "When did you last pay extra just to avoid waiting?",
@@ -242,7 +242,7 @@
     },
     {
       "q": "What's the last coffee place you noticed but haven't tried?",
-      "a": "I don't really notice coffee shops. I pick on bean quality, and SimuX roasts on site, so that's settled."
+      "a": "I don't really notice coffee shops. I pick on bean quality, and Simffee roasts on site, so that's settled."
     },
     {
       "q": "When did you last tell someone about a coffee shop, and what did you say?",
@@ -251,7 +251,7 @@
   ],
   "mechanism": {
     "habit": {
-      "simux": 0.933,
+      "simffee": 0.933,
       "starbucks": 0.033
     },
     "disruption_threshold": 0.6,
@@ -268,6 +268,6 @@
   "say_do_gap": {
     "says": "I choose a coffee shop based on the quality of the beans.",
     "log_shows": "28 of the last 30 days at the nearest shop. The two exceptions were days it was shut.",
-    "mechanism_consequence": "walk_tolerance is 1, so no shop beyond one cell can win her. SimuX's quality marketing cannot move her; only distance and opening hours can."
+    "mechanism_consequence": "walk_tolerance is 1, so no shop beyond one cell can win her. Simffee's quality marketing cannot move her; only distance and opening hours can."
   }
 }

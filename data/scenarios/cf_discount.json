@@ -5,7 +5,7 @@
   "overrides": [
     {
       "from_day": 5,
-      "shop": "simux",
+      "shop": "simffee",
       "set": {
         "price.latte": 38000
       }

@@ -5,7 +5,7 @@
     3,
     2
   ],
-  "role": "Starbucks regular. The control showing SimuX marketing pulls nobody from Starbucks without a disruption on that side.",
+  "role": "Starbucks regular. The control showing Simffee marketing pulls nobody from Starbucks without a disruption on that side.",
   "profile": {
     "age": 28,
     "occupation": "sales rep",
@@ -46,7 +46,7 @@
     },
     {
       "day": -26,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:30",
       "spent": 35000,
       "abandoned": false
@@ -81,7 +81,7 @@
     },
     {
       "day": -21,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:30",
       "spent": 35000,
       "abandoned": false
@@ -109,7 +109,7 @@
     },
     {
       "day": -17,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:32",
       "spent": 35000,
       "abandoned": false
@@ -137,7 +137,7 @@
     },
     {
       "day": -13,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:36",
       "spent": 35000,
       "abandoned": false
@@ -165,7 +165,7 @@
     },
     {
       "day": -9,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:33",
       "spent": 35000,
       "abandoned": false
@@ -200,7 +200,7 @@
     },
     {
       "day": -4,
-      "shop": "simux",
+      "shop": "simffee",
       "time": "07:31",
       "spent": 35000,
       "abandoned": false
@@ -242,7 +242,7 @@
     },
     {
       "q": "What's the last coffee place you noticed but haven't tried?",
-      "a": "SimuX. I've seen the sign. Three blocks the wrong way, so it'd have to be remarkable."
+      "a": "Simffee. I've seen the sign. Three blocks the wrong way, so it'd have to be remarkable."
     },
     {
       "q": "When did you last tell someone about a coffee shop, and what did you say?",
@@ -251,12 +251,12 @@
   ],
   "mechanism": {
     "habit": {
-      "simux": 0.2,
+      "simffee": 0.2,
       "starbucks": 0.733
     },
     "disruption_threshold": 0.5,
     "latent_interest": {
-      "simux": 0.1
+      "simffee": 0.1
     },
     "social_links": [
       "T05",

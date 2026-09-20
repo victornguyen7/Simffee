@@ -13,8 +13,22 @@ import {
   type Town,
 } from '../town/model'
 
-const HOME_ZOOM = 1.3
 const PIXEL = 3
+const BUILDING_HEIGHT = 90
+
+function fitZoom(width: number, height: number) {
+  return Math.min(
+    2.2,
+    Math.max(0.45, Math.min(width / (GRID * TILE_W + 40), (height - 120) / (GRID * TILE_H + BUILDING_HEIGHT))),
+  )
+}
+
+function originY(height: number, zoom: number, cameraY: number) {
+  const islandTop = -BUILDING_HEIGHT
+  const islandBottom = GRID * TILE_H
+  const islandCenter = (islandTop + islandBottom) / 2
+  return height / 2 - 40 - islandCenter * zoom + cameraY
+}
 
 interface Pet {
   kind: 'cat' | 'dog'
@@ -112,7 +126,7 @@ export default function IsoTown({
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef({ runs, town, rows, phase, selectedTwin })
-  const cameraRef = useRef({ x: 0, y: 0, zoom: HOME_ZOOM })
+  const cameraRef = useRef({ x: 0, y: 0, zoom: 1 })
   const dragRef = useRef<{ x: number; y: number; moved: boolean } | null>(null)
   const petsRef = useRef<Pet[]>([])
   const livestockRef = useRef<Livestock[]>([])
@@ -140,6 +154,7 @@ export default function IsoTown({
       const rect = canvas.getBoundingClientRect()
       canvas.width = Math.max(1, Math.floor(rect.width * dpr / PIXEL))
       canvas.height = Math.max(1, Math.floor(rect.height * dpr / PIXEL))
+      cameraRef.current.zoom = fitZoom(rect.width, rect.height)
       const ctx = canvas.getContext('2d')
       if (ctx) ctx.setTransform(dpr / PIXEL, 0, 0, dpr / PIXEL, 0, 0)
     }
@@ -198,9 +213,9 @@ export default function IsoTown({
 
       const cam = cameraRef.current
       const originX = rect.width / 2 + cam.x
-      const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
+      const originYValue = originY(rect.height, cam.zoom, cam.y)
       ctx.save()
-      ctx.translate(originX, originY)
+      ctx.translate(originX, originYValue)
       ctx.scale(cam.zoom, cam.zoom)
 
       for (let y = 0; y < GRID; y++) {
@@ -305,9 +320,9 @@ export default function IsoTown({
     const rect = canvas.getBoundingClientRect()
     const cam = cameraRef.current
     const originX = rect.width / 2 + cam.x
-    const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
+    const originYValue = originY(rect.height, cam.zoom, cam.y)
     const px = (clientX - rect.left - originX) / cam.zoom
-    const py = (clientY - rect.top - originY) / cam.zoom
+    const py = (clientY - rect.top - originYValue) / cam.zoom
     const agents = agentsAt(runs, town, rows, phase, selectedTwin)
     for (const a of agents) {
       const [sx, sy] = tileToScreen(a.pos[0], a.pos[1])
@@ -323,9 +338,9 @@ export default function IsoTown({
     const rect = canvas.getBoundingClientRect()
     const cam = cameraRef.current
     const originX = rect.width / 2 + cam.x
-    const originY = rect.height / 2 - (GRID * TILE_H / 2) * cam.zoom + cam.y
+    const originYValue = originY(rect.height, cam.zoom, cam.y)
     const px = (clientX - rect.left - originX) / cam.zoom
-    const py = (clientY - rect.top - originY) / cam.zoom
+    const py = (clientY - rect.top - originYValue) / cam.zoom
     let hit: { id: 'simffee' | 'starbucks'; depth: number } | null = null
     for (let ty = 0; ty < GRID; ty++) {
       for (let tx = 0; tx < GRID; tx++) {
@@ -381,7 +396,12 @@ export default function IsoTown({
         cam.zoom = Math.min(2.2, Math.max(0.45, cam.zoom * (e.deltaY > 0 ? 0.92 : 1.08)))
       }}
       onDoubleClick={() => {
-        cameraRef.current = { x: 0, y: 0, zoom: HOME_ZOOM }
+        const rect = canvasRef.current?.getBoundingClientRect()
+        cameraRef.current = {
+          x: 0,
+          y: 0,
+          zoom: rect ? fitZoom(rect.width, rect.height) : 1,
+        }
       }}
       aria-label={`Isometric town, ${GRID} by ${GRID} tiles, tile size ${TILE_W} by ${TILE_H}`}
     />

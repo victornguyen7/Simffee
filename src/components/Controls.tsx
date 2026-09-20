@@ -1,3 +1,4 @@
+import { shopColor, shopIds, shopName } from '../shops'
 import type { Runs } from '../types'
 
 interface Props {
@@ -5,8 +6,10 @@ interface Props {
   scenario: string
   seed: number
   day: number
+  days: number
+  seeds: number[]
   playing: boolean
-  sales: { simffee: number; starbucks: number }
+  sales: Record<string, number>
   onScenario: (s: string) => void
   onSeed: (s: number) => void
   onDay: (d: number) => void
@@ -20,6 +23,8 @@ export default function Controls({
   scenario,
   seed,
   day,
+  days,
+  seeds,
   playing,
   sales,
   onScenario,
@@ -28,14 +33,29 @@ export default function Controls({
   onPlaying,
 }: Props) {
   const breakDay = runs.analysis.break_day
+  const library = Object.entries(runs.scenarios).filter(([, s]) => s.source?.kind !== 'user')
+  const live = Object.entries(runs.scenarios).filter(([, s]) => s.source?.kind === 'user')
   return (
     <div className="controls">
       <div className="control-group">
-        {Object.entries(runs.scenarios).map(([id, s]) => (
+        {library.map(([id, s]) => (
           <button
             key={id}
             type="button"
             className={id === scenario ? 'chip active' : 'chip'}
+            title={s.role ? `${s.role}${s.parent ? ` · forks ${s.parent} on day ${s.from_day}` : ''}` : undefined}
+            onClick={() => onScenario(id)}
+          >
+            {s.label}
+          </button>
+        ))}
+        {live.length > 0 && <span className="muted sep">live</span>}
+        {live.map(([id, s]) => (
+          <button
+            key={id}
+            type="button"
+            className={id === scenario ? 'chip live active' : 'chip live'}
+            title={s.source?.text}
             onClick={() => onScenario(id)}
           >
             {s.label}
@@ -47,7 +67,7 @@ export default function Controls({
           {playing ? '❚❚ pause' : '▶ play week'}
         </button>
         <div className="days">
-          {Array.from({ length: runs.meta.days }, (_, i) => i + 1).map((d) => (
+          {Array.from({ length: days }, (_, i) => i + 1).map((d) => (
             <button
               key={d}
               type="button"
@@ -62,7 +82,7 @@ export default function Controls({
         <label className="seed">
           seed
           <select value={seed} onChange={(e) => onSeed(Number(e.target.value))}>
-            {runs.meta.seeds.map((s) => (
+            {seeds.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -71,8 +91,11 @@ export default function Controls({
         </label>
       </div>
       <div className="control-group sales">
-        <span className="sale simffee">Simffee {vnd(sales.simffee)}</span>
-        <span className="sale starbucks">Starbucks {vnd(sales.starbucks)}</span>
+        {shopIds(runs).map((id) => (
+          <span key={id} className="sale" style={{ background: shopColor(runs, id) }}>
+            {shopName(runs, id)} {vnd(sales[id] ?? 0)}
+          </span>
+        ))}
       </div>
     </div>
   )

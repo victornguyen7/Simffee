@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1016,
+    "output_tokens": 69
+  },
+  "_version": 2,
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Twelve minutes is too long for my shift. I'll walk to Starbucks for a quicker service, even at a higher price, to avoid being late.",
+  "secondary_driver": "price",
+  "valence": 0.4
+}

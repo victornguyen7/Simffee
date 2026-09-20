@@ -1,4 +1,4 @@
-import type { Twin } from '../types'
+import type { Shop, Twin } from '../types'
 
 export const GRID = 13
 export const TILE_W = 64
@@ -39,7 +39,7 @@ function rand(seed: number) {
   }
 }
 
-export function defaultTown(twins: Twin[], shops: Record<string, { position: [number, number] }>): Town {
+export function defaultTown(twins: Twin[], shops: Record<string, Shop>, focus: string): Town {
   const ground: Ground[] = new Array(GRID * GRID).fill('grass')
   const props: Prop[] = new Array(GRID * GRID).fill('none')
   const r = rand(7)
@@ -69,7 +69,7 @@ export function defaultTown(twins: Twin[], shops: Record<string, { position: [nu
   for (const [id, shop] of Object.entries(shops)) {
     const [tx, ty] = cellToTile(shop.position[0], shop.position[1])
     ground[idx(tx, ty)] = 'plaza'
-    props[idx(tx, ty)] = id === 'simffee' ? 'simffee' : 'starbucks'
+    props[idx(tx, ty)] = id === focus ? 'simffee' : 'starbucks'
     for (const [dx, dy] of [
       [1, 0],
       [-1, 0],

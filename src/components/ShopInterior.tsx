@@ -1,13 +1,14 @@
 import { useEffect, useRef } from 'react'
 import type { Row, Runs, ShopId } from '../types'
 import { drawPerson, shade } from '../town/draw'
+import { shopColor } from '../shops'
 
 interface Props {
   runs: Runs
   shopId: ShopId
   rows: Row[]
   day: number
-  sales: { simffee: number; starbucks: number }
+  sales: Record<string, number>
   onClose: () => void
 }
 
@@ -18,7 +19,7 @@ export default function ShopInterior({ runs, shopId, rows, day, sales, onClose }
   const shop = runs.shops[shopId]
   const visitors = rows.filter((r) => r.choice === shopId)
   const lost = rows.filter((r) => r.choice !== shopId)
-  const accent = shopId === 'simffee' ? '#2f7d6d' : '#1d6b4a'
+  const accent = shopColor(runs, shopId)
   const visitorsRef = useRef(visitors)
 
   useEffect(() => {

@@ -205,15 +205,33 @@ def _whatif(scenario, scenario_file, baseline, lost_twins, twins, by_seed, shop,
     if len(seeds) < MIN_SEEDS_MEASURED and not conf.get("unmeasured"):
         conf = {**conf, "value": None, "unmeasured": True,
                 "reason": f"{len(seeds)} seed(s) — run {MIN_SEEDS_MEASURED} for confidence"}
+    start = from_day(scenario_file)
+    revenue = _revenue(baseline, by_seed[default_ix], shop, start, days)
     return {
         "scenario": scenario,
         "label": scenario_file.get("label", scenario),
         "returns": ret["returns"],
         "of": ret["of"],
         "returned": ret["returned"],
+        "revenue": revenue,
         "confidence": conf["value"],
         "confidence_detail": {k: conf.get(k) for k in ("stability", "support", "unmeasured", "reason", "partial", "detail")},
     }
+
+
+def _revenue(baseline_rows, branch_rows, shop, start, days):
+    """Focus-shop takings from the fork day to the end, branch vs baseline.
+
+    Two branches can win back the same people and still differ here: a discount that
+    brings back exactly who reopening brings back is pure margin given away. Money is
+    what tells those two buttons apart (ROADMAP §6 money; SPEC 7.2).
+    """
+    def total(rows):
+        return sum(r["spent"] for r in rows if r["choice"] == shop and start <= r["day"] <= days)
+    b, x = total(baseline_rows), total(branch_rows)
+    per_day = max(1, days - start + 1)
+    return {"from_day": start, "days": per_day, "baseline": b, "branch": x, "delta": x - b,
+            "delta_per_day": round((x - b) / per_day)}
 
 
 def _narrate(analysis):

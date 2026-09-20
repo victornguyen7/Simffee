@@ -1,0 +1,15 @@
+{
+  "actions": [
+    {
+      "action": "set_price",
+      "from_day": 5,
+      "item": "latte",
+      "shop": "starbucks",
+      "value": 70000
+    }
+  ],
+  "focus_shop": "simffee",
+  "label": "Starbucks raises their latte to 70k",
+  "situation": "competitor_change",
+  "unsupported": []
+}

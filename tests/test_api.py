@@ -145,7 +145,7 @@ def main():
         check("child ran off the live parent", out.get("run_id"), "u_child")
         check("child inherited days 1-5 from u_reopen",
               out["result"]["0"]["rows"][45]["day"], 5)
-        check("nearest library scenario by overlap", svc.nearest_library(REOPEN)["scenario"], "cf_restore_hours")
+        check("nearest library scenario by overlap (both keys)", svc.nearest_library(REOPEN)["scenario"], "cf_discount")
 
         print("\nerrors and refusals")
         check("unknown parent", "error" in svc.run({**REOPEN, "id": "x", "parent": "nope"}), True)
@@ -161,7 +161,7 @@ def main():
         svc.timeout_s = 0.0
         out = svc.whatif("reopen at 6:30 and put the price back again", seeds=[0])
         check("fallback used, nearest library served",
-              (out.get("fallback_used"), out.get("served", {}).get("scenario")), (True, "cf_restore_hours"))
+              (out.get("fallback_used"), out.get("served", {}).get("scenario")), (True, "cf_discount"))
         svc._pool.shutdown(wait=True)
 
         print("\ncost_report")

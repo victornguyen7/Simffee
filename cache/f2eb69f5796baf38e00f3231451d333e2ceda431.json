@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.3,
+  "_usage": {
+    "input_tokens": 1109,
+    "output_tokens": 63
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "Simffee is closed. Starbucks is too far, expensive, and slow. I won't break my routine for a bad alternative.",
+  "secondary_driver": "distance",
+  "valence": 0.2
+}

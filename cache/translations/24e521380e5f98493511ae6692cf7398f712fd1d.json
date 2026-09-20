@@ -1,0 +1,15 @@
+{
+  "actions": [
+    {
+      "action": "set_marketing_reach",
+      "from_day": 5,
+      "item": null,
+      "shop": "simffee",
+      "value": 0.3
+    }
+  ],
+  "focus_shop": "simffee",
+  "label": "Double our marketing reach",
+  "situation": "incumbent_change",
+  "unsupported": []
+}

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1189,
+    "output_tokens": 73
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "My place isn't open, and the long walk to Starbucks plus the wait will make me late for standup. I've skipped before and it was fine; routine matters more here.",
+  "secondary_driver": "distance",
+  "valence": 0.2
+}

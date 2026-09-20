@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1169,
+    "output_tokens": 79
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "I am at Simffee at 06:40, but it is closed. Starbucks is six blocks away, over budget, and the wait is too long. Skipping coffee keeps my morning routine intact.",
+  "secondary_driver": "price",
+  "valence": 0.1
+}

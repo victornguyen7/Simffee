@@ -1,4 +1,5 @@
-export type ShopId = 'simffee' | 'starbucks'
+/** Shop ids are data, not a type union: the bundle can carry any shops (SPEC_FUNCTIONAL 6). */
+export type ShopId = string
 export type Choice = ShopId | 'none'
 
 export interface Shop {
@@ -11,6 +12,8 @@ export interface Shop {
   quality: number
   avg_wait_min: number
   marketing: { reach: number; message: string }
+  permanently_closed?: boolean
+  prompt?: { shop_label?: string }
 }
 
 export interface TwinProfile {
@@ -28,8 +31,8 @@ export interface Twin {
   name: string
   home: [number, number]
   profile: TwinProfile
-  why_excerpt: string[]
-  say_do_gap: string | null
+  why_excerpt: { q: string; a: string }[]
+  say_do_gap: unknown | null
 }
 
 export interface Row {
@@ -50,59 +53,196 @@ export interface Row {
   state_after: { habit: Record<string, number>; latent_interest: Record<string, number> }
   told: string[]
   llm_failed: boolean
+  decision_source?: 'autopilot' | 'rule' | 'llm' | 'fallback'
+  llm_model?: string | null
+}
+
+export interface Coverage {
+  complete: boolean
+  fallbacks: number
+  reappraisals: number
+  rows: number
 }
 
 export interface SeedRun {
   rows: Row[]
   daily_sales: Record<string, number[]>
+  coverage?: Coverage
+}
+
+/** One override block, SPEC_FUNCTIONAL 2. */
+export interface Override {
+  from_day: number
+  shop: ShopId
+  set?: Record<string, unknown>
+  unset?: string[]
+}
+
+export interface ScenarioSource {
+  kind: 'authored' | 'user'
+  text?: string
+  translator_model?: string
 }
 
 export interface Scenario {
   label: string
+  role?: 'baseline' | 'control' | 'whatif' | null
   parent: string | null
   from_day: number
+  days?: number
+  overrides?: Override[]
+  source?: ScenarioSource
   seeds: Record<string, SeedRun>
+}
+
+export interface Confidence {
+  value: number | null
+  stability?: number | null
+  support?: number | null
+  unmeasured: boolean
+  reason?: string | null
+  partial?: boolean
+}
+
+export interface Revenue {
+  from_day: number
+  days: number
+  baseline: number
+  branch: number
+  delta: number
+  delta_per_day: number
 }
 
 export interface WhatIf {
   scenario: string
   label: string
-  returns: number
-  of: number
+  returns: number | null
+  of: number | null
   returned: string[]
-  confidence: number
-  confidence_detail: { stability: number; support: number; unmeasured: boolean; reason: string | null }
+  /** Focus-shop takings from the fork day on, branch vs baseline. Present since bundle v3. */
+  revenue?: Revenue
+  confidence: number | null
+  confidence_detail: Confidence
 }
 
+/** `complete: false` means fallbacks or no measured break; every causal field is then null. */
 export interface Analysis {
-  break_day: number
-  drop: number
-  naive: { driver: string; magnitude: number; label: string }
-  actual: { driver: string; histogram: Record<string, number>; switchers: string[] }
-  surprise: boolean
+  complete: boolean
+  reason?: string | null
+  focus_shop?: string
+  control?: string | null
+  break_day: number | null
+  drop: number | null
+  direction?: 'drop' | 'rise' | null
+  magnitude?: number | null
+  naive: { driver: string | null; magnitude: number; label: string } | null
+  actual: { driver: string | null; histogram: Record<string, number>; switchers: string[] } | null
+  surprise: boolean | null
   impact: {
-    lost_total: number
-    lost_by_decision: number
-    lost_anyway: number
+    lost_total: number | null
+    lost_by_decision: number | null
+    lost_anyway: number | null
     per_twin: { twin: string; baseline: Choice; cf_null: Choice; attributed: boolean }[]
-  }
+  } | null
   evidence: (Row & { kind: string })[]
-  confidence: { value: number; stability: number; support: number; unmeasured: boolean; reason: string | null }
+  confidence: Confidence
   narration: string | null
   whatif: WhatIf[]
 }
 
 export interface Runs {
   meta: {
+    version?: number
     twins: number
     days: number
     seeds: number[]
     default_seed: number
+    focus_shop?: string
+    roles?: { baseline: string; control: string | null; whatifs: string[] }
     generated_at: string
     synthetic_label: string
+    publishable?: boolean
+    synthetic_run?: boolean
   }
   shops: Record<ShopId, Shop>
   twins: Twin[]
   scenarios: Record<string, Scenario>
   analysis: Analysis
+}
+
+/** The focus shop: what the bundle says, else the first shop listed. */
+export function focusShopOf(runs: Runs): ShopId {
+  return runs.meta.focus_shop ?? runs.analysis.focus_shop ?? Object.keys(runs.shops)[0]
+}
+
+/** The other shops, in bundle order. */
+export function otherShopsOf(runs: Runs): ShopId[] {
+  const focus = focusShopOf(runs)
+  return Object.keys(runs.shops).filter((s) => s !== focus)
+}
+
+// --- local what-if API (api/server.py) -------------------------------------------------------
+
+export interface Unsupported {
+  text: string
+  reason: string
+  nearest: string | null
+}
+
+export interface CostRow {
+  reasoned: number
+  on_habit: number
+  responses: number
+  cache_hits: number
+  fallbacks: number
+  tokens_in: number
+  tokens_out: number
+  took_ms: number | null
+  cost: { usd: number | null; verified: boolean; note?: string | null }
+}
+
+export interface UserScenario {
+  id: string
+  parent: string | null
+  label: string
+  role?: string
+  days: number
+  focus_shop: string
+  situation?: string
+  source?: ScenarioSource
+  overrides: Override[]
+  unsupported?: Unsupported[]
+}
+
+export interface WhatIfAnswer {
+  error?: string
+  scenario: UserScenario | null
+  unsupported?: Unsupported[]
+  problems?: string[]
+  translation?: { cached: boolean; attempts: number }
+  took_ms?: number
+  // present when a run happened
+  run_id?: string
+  days?: number
+  seeds?: number[]
+  chip?: string
+  result?: Record<string, SeedRun>
+  analysis?: Analysis
+  cost?: CostRow
+  warning?: string | null
+  fallback_reasons?: Record<string, number> | null
+  fallback_used?: boolean
+  reason?: string
+  served?: { scenario: string; label: string; overlap: number; whatif: WhatIf | null } | null
+  pending_run_id?: string
+}
+
+export interface Health {
+  ok: boolean
+  offline: boolean
+  llm: boolean
+  model: string
+  library_seeds: number[]
+  cache_files: number
+  live_runs: number
 }

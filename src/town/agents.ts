@@ -104,11 +104,9 @@ export function rowsFor(runs: Runs, scenario: string, seed: number, day: number)
   return seedRun.rows.filter((r) => r.day === day)
 }
 
-export function salesFor(runs: Runs, scenario: string, seed: number, day: number) {
+export function salesFor(runs: Runs, scenario: string, seed: number, day: number): Record<string, number> {
   const seedRun = runs.scenarios[scenario]?.seeds[String(seed)]
-  if (!seedRun) return { simffee: 0, starbucks: 0 }
-  return {
-    simffee: seedRun.daily_sales.simffee?.[day - 1] ?? 0,
-    starbucks: seedRun.daily_sales.starbucks?.[day - 1] ?? 0,
-  }
+  const out: Record<string, number> = {}
+  for (const id of Object.keys(runs.shops)) out[id] = seedRun?.daily_sales[id]?.[day - 1] ?? 0
+  return out
 }

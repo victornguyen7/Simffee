@@ -31,7 +31,7 @@ interface Props {
   selectedTwin: string | null
   onPaint: (tile: number, brush: Brush) => void
   onSelectTwin: (id: string | null) => void
-  onEnterShop: (shop: 'simffee' | 'starbucks') => void
+  onEnterShop: (sprite: 'simffee' | 'starbucks') => void
 }
 
 export default function IsoTown({

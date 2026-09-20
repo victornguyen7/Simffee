@@ -197,11 +197,15 @@ class WhatIfService:
                                              "minItems": 1, "maxItems": 3},
                                  "net": {"type": "string"}}}
         try:
-            out, _usage = llm.complete_json(system, user, schema, temperature=0.4)
+            with llm.isolated_stats():
+                out, _usage = llm.complete_json(system, user, schema, temperature=0.4)
         except Exception as exc:
             return {**untouched, "detail": str(exc)[:200]}
+        movements, drivers = out.get("movements"), out.get("drivers")
         if not all(isinstance(out.get(k), str) and out[k] for k in ("headline", "net")) \
-                or not all(isinstance(out.get(k), list) and out[k] for k in ("movements", "drivers")):
+                or not isinstance(movements, list) or not 1 <= len(movements) <= 4 \
+                or not isinstance(drivers, list) or not 1 <= len(drivers) <= 3 \
+                or not all(isinstance(item, str) and item for item in movements + drivers):
             return untouched
         return {"sketch": {k: out[k] for k in ("headline", "movements", "drivers", "net")},
                 "tailored": True, "request_text": text}

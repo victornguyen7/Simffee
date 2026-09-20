@@ -29,6 +29,66 @@ export interface Row {
   llm_failed: boolean
 }
 
+export type Driver =
+  | 'habit'
+  | 'hours'
+  | 'price'
+  | 'distance'
+  | 'wait'
+  | 'product'
+  | 'curiosity'
+  | 'social'
+  | 'quality'
+
+export interface Confidence {
+  value: number | null
+  stability?: number
+  support?: number
+  unmeasured: boolean
+  reason: string | null
+}
+
+export interface WhatIf {
+  scenario: string
+  label: string
+  returns: number
+  of: number
+  returned: string[]
+  confidence: number | null
+  confidence_detail: Confidence
+}
+
+interface State {
+  habit: Record<string, number>
+  latent_interest: Record<string, number>
+}
+
+export interface EvidenceRow extends Row {
+  state_before: State
+  state_after: State
+  kind: string
+}
+
+export interface Analysis {
+  complete: boolean
+  break_day: number | null
+  drop?: number | null
+  reason?: string
+  naive?: { driver: Driver; magnitude: number; label: string } | null
+  actual?: { driver: Driver; histogram: Record<Driver, number>; switchers: string[] } | null
+  surprise?: boolean | null
+  impact?: {
+    lost_total: number
+    lost_by_decision: number
+    lost_anyway: number
+    per_twin: { twin: string; baseline: string; cf_null: string; attributed: boolean }[]
+  } | null
+  evidence?: EvidenceRow[]
+  confidence?: Confidence
+  narration?: string | null
+  whatif?: WhatIf[]
+}
+
 export interface Scenario {
   label: string
   parent: string | null
@@ -67,7 +127,7 @@ export interface Runs {
   shops: Record<string, ShopInfo>
   twins: Twin[]
   scenarios: Record<string, Scenario>
-  analysis: Record<string, unknown>
+  analysis: Analysis
 }
 
 /** runs.json sits in public/, so Vite serves it straight from the site root. */
@@ -97,4 +157,8 @@ export function shopOfChoice(choice: string, abandoned: boolean): ShopId | null 
   if (abandoned) return null
   if (choice === 'simffee' || choice === 'starbucks') return choice
   return null
+}
+
+export function twinName(runs: Runs, id: string): string {
+  return runs.twins.find((twin) => twin.id === id)?.name ?? id
 }

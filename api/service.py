@@ -101,7 +101,7 @@ class WhatIfService:
             llm_ok = (not self.offline) and llm.available()
         except Exception:      # a forbidden/broken transport is "no", not a crash
             llm_ok = False
-        return {"ok": True, "offline": self.offline, "llm": llm_ok, "fresh_runs": True,
+        return {"ok": True, "offline": self.offline, "llm": llm_ok, "fresh_runs": True, "mock_assessment": True,
                 "model": llm.decision_model(), "translator_model": llm.MODEL,
                 "reasoning_effort": llm.inference_options(model=llm.decision_model()).get("reasoning", {}).get("effort"),
                 "library": str(self.library), "library_seeds": self.library_seeds,
@@ -152,6 +152,9 @@ class WhatIfService:
         result["unsupported"] = tr["unsupported"]
         result["took_ms"] = int((time.monotonic() - t0) * 1000)
         return result
+
+    def assess_mock(self, body: dict[str, Any]) -> dict[str, Any]:
+        return reviewer.assess_mock(body, self.cache_dir, offline=self.offline)
 
     def review(self, run_id: str, refresh: bool = False) -> dict[str, Any]:
         if not self._lock.acquire(blocking=False):

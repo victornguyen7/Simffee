@@ -86,7 +86,7 @@ class Handler(BaseHTTPRequestHandler):
             if not entry:
                 return self._send(404, {"error": f"no live run {rid!r}"})
             return self._send(200, {"run_id": rid, **entry})
-        self._send(404, {"error": "unknown path", "paths": ["/health", "/library", "/runs/<id>", "POST /whatif", "POST /run"]})
+        self._send(404, {"error": "unknown path", "paths": ["/health", "/library", "/runs/<id>", "POST /whatif", "POST /run", "POST /review", "POST /assess-mock"]})
 
     def do_POST(self) -> None:  # noqa: N802
         assert SERVICE is not None
@@ -111,6 +111,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(run_id, str) or not run_id:
                     return self._send(400, {"error": "run_id is required"})
                 out = SERVICE.review(run_id, refresh=body.get("refresh") is True)
+            elif self.path == "/assess-mock":
+                try:
+                    out = SERVICE.assess_mock(body)
+                except ValueError as exc:
+                    return self._send(400, {"error": str(exc)})
             else:
                 return self._send(404, {"error": "unknown path"})
         except Exception as exc:  # never leak a traceback to the demo screen; log it

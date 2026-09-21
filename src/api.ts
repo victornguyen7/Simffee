@@ -1,4 +1,5 @@
-import type { AIReview, Health, UserScenario, WhatIfAnswer } from './types'
+import type { AIReview, Health, MockAssessment, UserScenario, WhatIfAnswer } from './types'
+import type { MockMovement } from './town/mockMovements'
 
 /** Where api/server.py listens. Override with VITE_API_URL for another port. */
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://127.0.0.1:8765'
@@ -43,6 +44,30 @@ export async function whatIf(text: string, seeds: number[], parent = 'baseline')
 /** Re-run an already translated scenario (e.g. with more seeds). No model call for translation. */
 export function runScenario(scenario: UserScenario, seeds: number[]): Promise<WhatIfAnswer> {
   return post<WhatIfAnswer>('/run', { scenario, seeds }, 300_000)
+}
+
+export async function assessMockMovements(payload: {
+  text: string
+  days: 2 | 3
+  focus_shop: string
+  competitor_shop: string
+  movements: (MockMovement & { person: string })[]
+  refresh?: boolean
+}): Promise<MockAssessment> {
+  const result = await post<MockAssessment & { error?: string }>('/assess-mock', payload, 240_000)
+  if (result.error || result.data_source !== 'mock' || !['ready', 'unavailable'].includes(result.status)
+    || typeof result.assessment !== 'string' || typeof result.limitations !== 'string'
+    || !Array.isArray(result.recommendations)) {
+    throw new Error('AI assessment is unavailable. Restart the backend to load /assess-mock.')
+  }
+  const ids = new Set(payload.movements.map((movement) => movement.id))
+  if (result.recommendations.some((item) => !item || typeof item.action !== 'string'
+    || typeof item.why !== 'string' || typeof item.tradeoff !== 'string'
+    || !Array.isArray(item.evidence_ids) || item.evidence_ids.length === 0
+    || item.evidence_ids.some((id) => !ids.has(id)))) {
+    throw new Error('The AI advice referenced examples that are not in this sample.')
+  }
+  return result
 }
 
 export async function reviewRun(runId: string, refresh = false): Promise<AIReview> {

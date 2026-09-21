@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { health, reviewRun, runScenario, whatIf } from '../api'
-import type { AIReview, Flows, Health, Runs, WhatIfAnswer } from '../types'
+import { assessMockMovements, health, runScenario, whatIf } from '../api'
+import { movementReasons } from '../town/agents'
+import { sampleMockMovements, type MockDestination, type MockMovement } from '../town/mockMovements'
+import { focusShopOf, otherShopsOf, type Health, type MockAssessment, type Runs, type WhatIfAnswer } from '../types'
 
 interface Props {
   runs: Runs
@@ -19,41 +21,79 @@ const EXAMPLES = [
   'add a loyalty card',
 ]
 
-const pct = (n: number | null | undefined) => (n == null ? '—' : `${Math.round(n * 100)}%`)
-
-const names = (twins: string[]) => (twins.length ? ` (${twins.join(', ')})` : '')
-const topDriver = (drivers: Record<string, number>) =>
-  Object.entries(drivers).sort((x, y) => y[1] - x[1])[0]?.[0]
-
 /** ROADMAP B3 — who left for whom, who came back, who never moved. */
-function FlowsPanel({ flows, shops, entrant, seed }: { flows: Flows; shops: Runs['shops']; entrant: string | null; seed: number }) {
-  const name = (id: string) => (id === 'none' ? 'skipping coffee' : shops[id]?.name ?? id)
-  const lostTo = Object.entries(flows.totals.lost_to)
-  const drivers: Record<string, Record<string, number>> = {}
-  for (const d of flows.by_day)
-    for (const [o, g] of Object.entries(d.lost_to))
-      for (const [k, n] of Object.entries(g.drivers)) (drivers[o] ??= {})[k] = (drivers[o][k] ?? 0) + n
+function MovementReasonList({ answer, runs, windowDays, onWindowDays }: {
+  answer: WhatIfAnswer
+  runs: Runs
+  windowDays: 2 | 3
+  onWindowDays: (value: 2 | 3) => void
+}) {
+  const comparison = movementReasons(answer, runs.twins, windowDays)
+  const destination = (id: string) => id === 'none' ? 'no coffee stop' : runs.shops[id]?.name ?? id
   return (
-    <div className="flows">
-      <b>Who moved in this what-if</b>
-      <em>Days 1–{flows.days} · seed {seed}</em>
-      {lostTo.length === 0 && <span>nobody left the shop.</span>}
-      {lostTo.map(([o, twins]) => (
-        <span key={o} className={o === entrant ? 'flow-entrant' : undefined}>
-          {twins.length} {o === 'none' ? 'skipped coffee' : `left for ${name(o)}`} at least once
-          {names(twins)}
-          {topDriver(drivers[o] ?? {}) ? ` — mostly ${topDriver(drivers[o])}` : ''}
-        </span>
-      ))}
-      {Object.entries(flows.end.gained).map(([origin, twins]) => (
-        <span key={origin}>{twins.length} new customers from {name(origin)}{names(twins)}</span>
-      ))}
-      <span>
-        {flows.totals.returned.length} came back{names(flows.totals.returned)} · {flows.end.kept.length} never left
-        {names(flows.end.kept)}
-      </span>
-      <span>Net customers on the final day: {flows.end.net > 0 ? '+' : ''}{flows.end.net} vs day 1</span>
-    </div>
+    <section className="flows">
+      <b>Movement reasons</b>
+      <label className="seed">
+        Compare
+        <select value={windowDays} onChange={(event) => onWindowDays(event.target.value === '2' ? 2 : 3)}>
+          <option value={2}>2 days</option>
+          <option value={3}>3 days</option>
+        </select>
+      </label>
+      {comparison.available && <em>Days {comparison.startDay}–{comparison.endDay} around your change · seed {comparison.seed}</em>}
+      <ul className="movement-reasons">
+        {comparison.changes.map((change) => (
+          <li key={`${change.twin}-${change.day}`}>
+            <b>{runs.twins.find((twin) => twin.id === change.twin)?.name ?? change.twin}</b>
+            {' '}— {destination(change.from)} → {destination(change.to)}
+            <span className="muted"> (day {change.fromDay} → {change.day})</span>
+            <div>{change.driver}: “{change.reason}”</div>
+          </li>
+        ))}
+        {comparison.changes.length === 0 && (
+          <li>{!comparison.available || comparison.incomplete
+            ? 'No verified movement changes are available for this window.'
+            : 'No one changed their coffee destination during these days.'}</li>
+        )}
+      </ul>
+      {comparison.incomplete && <em>Missing or fallback decisions were excluded; this list may be incomplete.</em>}
+    </section>
+  )
+}
+
+function MockMovementList({ movements, runs, windowDays, onWindowDays, disabled }: {
+  movements: MockMovement[]
+  runs: Runs
+  windowDays: 2 | 3
+  onWindowDays: (value: 2 | 3) => void
+  disabled: boolean
+}) {
+  const focus = runs.shops[focusShopOf(runs)]?.name ?? 'Your café'
+  const competitor = runs.shops[otherShopsOf(runs)[0]]?.name ?? 'Another café'
+  const destination = (value: MockDestination) => value === 'none' ? 'no coffee stop' : value === 'focus' ? focus : competitor
+  return (
+    <section className="flows">
+      <b>Demo movement reasons — mock data</b>
+      <label className="seed">
+        Illustrate
+        <select disabled={disabled} value={windowDays} onChange={(event) => onWindowDays(event.target.value === '2' ? 2 : 3)}>
+          <option value={2}>2 days</option>
+          <option value={3}>3 days</option>
+        </select>
+      </label>
+      <em>Random examples from a pool of 10, not predictions for this request. The town has not been resimulated.</em>
+      <ul className="movement-reasons">
+        {movements.map((movement) => (
+          <li key={movement.id} id={`mock-evidence-${movement.id}`}>
+            <span className="muted">[{movement.id}] </span>
+            <b>{runs.twins[movement.twinIndex]?.name ?? `Person ${movement.twinIndex + 1}`}</b>
+            {' '}— {destination(movement.from)} → {destination(movement.to)}
+            <span className="muted"> (illustrative day 1 → day {windowDays})</span>
+            <div>“{movement.reason}”</div>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -63,11 +103,16 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const [answer, setAnswer] = useState<WhatIfAnswer | null>(null)
   const [api, setApi] = useState<Health | null | undefined>(undefined)
   const [submittedText, setSubmittedText] = useState('')
+  const [windowDays, setWindowDays] = useState<2 | 3>(3)
+  const [demoMode, setDemoMode] = useState(true)
+  const [mockOutput, setMockOutput] = useState<MockMovement[] | null>(null)
+  const [mockAdvice, setMockAdvice] = useState<MockAssessment | null>(null)
+  const [mockAdviceError, setMockAdviceError] = useState<string | null>(null)
   const requestVersion = useRef(0)
-  const reviewVersion = useRef(0)
   const inFlight = useRef(false)
 
   useEffect(() => {
+    if (demoMode) return
     let alive = true
     inFlight.current = false
     const poll = async () => {
@@ -82,28 +127,66 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     return () => {
       alive = false
       requestVersion.current += 1
-      reviewVersion.current += 1
       clearInterval(id)
     }
-  }, [])
+  }, [demoMode])
 
-  const checkAnswer = async (target: WhatIfAnswer, refresh = false, version = requestVersion.current) => {
-    if (!target.run_id || !target.result || target.fallback_used || target.error) return
-    const reviewId = ++reviewVersion.current
-    const update = (review: AIReview) => setAnswer((prev) =>
-      version === requestVersion.current && reviewId === reviewVersion.current
-        && prev && prev.run_id === target.run_id && prev.result === target.result ? { ...prev, review } : prev)
-    update({ status: 'reviewing', summary: 'Checking the request, plan, and recorded customer movements…', issues: [] })
+  const assessSample = async (query: string, sample: MockMovement[], days: 2 | 3, refresh = false) => {
+    if (inFlight.current) return
+    inFlight.current = true
+    const version = ++requestVersion.current
+    setMockAdvice(null)
+    setMockAdviceError(null)
+    setBusy('AI is assessing the displayed mock movements…')
     try {
-      update(await reviewRun(target.run_id, refresh))
-    } catch {
-      update({ status: 'unavailable', summary: 'AI review unavailable. Restart the backend if it has not loaded the latest code.', issues: [] })
+      const assessment = await assessMockMovements({
+        text: query,
+        days,
+        focus_shop: runs.shops[focusShopOf(runs)]?.name ?? 'Your café',
+        competitor_shop: runs.shops[otherShopsOf(runs)[0]]?.name ?? 'Another café',
+        movements: sample.map((movement) => ({ ...movement,
+          person: runs.twins[movement.twinIndex]?.name ?? `Person ${movement.twinIndex + 1}` })),
+        refresh,
+      })
+      if (version === requestVersion.current) setMockAdvice(assessment)
+    } catch (error) {
+      if (version === requestVersion.current) {
+        setMockAdviceError(error instanceof Error && error.name !== 'TypeError'
+          ? error.message : 'Cannot reach the AI backend. Start it on port 8765 and retry; the mock examples remain available.')
+      }
+    } finally {
+      if (version === requestVersion.current) {
+        inFlight.current = false
+        setBusy(null)
+      }
     }
+  }
+
+  const shuffleAndAssess = () => {
+    if (inFlight.current) return
+    const sample = sampleMockMovements()
+    setMockOutput(sample)
+    void assessSample(submittedText, sample, windowDays)
+  }
+
+  const changeMockWindow = (days: 2 | 3) => {
+    requestVersion.current += 1
+    setWindowDays(days)
+    setMockAdvice(null)
+    setMockAdviceError(null)
   }
 
   const ask = async (q: string, seeds: number[] = [0]) => {
     const query = q.trim()
     if (!query || inFlight.current) return
+    if (demoMode) {
+      const sample = sampleMockMovements()
+      setSubmittedText(query)
+      setAnswer(null)
+      setMockOutput(sample)
+      void assessSample(query, sample, windowDays)
+      return
+    }
     if (api && api.fresh_runs !== true) {
       requestVersion.current += 1
       setSubmittedText(query)
@@ -121,7 +204,6 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
       if (version !== requestVersion.current) return
       setAnswer(a)
       if (a.result && !a.fallback_used && !a.error) onAnswer(a)
-      void checkAnswer(a, true, version)
     } catch (e) {
       if (version === requestVersion.current) {
         setAnswer({ scenario: null, request_text: query, error: e instanceof Error ? e.message : String(e) })
@@ -149,7 +231,6 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         translation: previous.translation, unsupported: a.unsupported ?? previous.unsupported }
       setAnswer(next)
       if (a.result && !a.fallback_used && !a.error) onAnswer(next)
-      void checkAnswer(next, true, version)
     } catch (e) {
       if (version === requestVersion.current) {
         setAnswer({ scenario: null, request_text: previous.request_text, error: e instanceof Error ? e.message : String(e) })
@@ -163,13 +244,8 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   }
 
   const offline = api === null
+  const formDisabled = (!demoMode && !api) || !!busy
   const a = answer
-  const w = a?.analysis?.whatif?.find((item) => item.scenario === (a.run_id ?? a.scenario?.id))
-  const flowSeed = a?.flows_seed ?? (a?.seeds?.includes(0) ? 0 : a?.seeds?.[0] ?? 0)
-  const flowRun = a?.result?.[String(flowSeed)]
-  const flowComplete = flowRun?.coverage?.complete && flowRun.rows.every((row) => !row.llm_failed)
-  const answerFlows = a?.flows !== undefined ? a.flows
-    : w?.flows ?? (a?.scenario?.parent === null ? a.analysis?.flows : undefined)
   const onlyOfflineCacheMisses = Object.keys(a?.fallback_reasons ?? {}).length === 1
     && (a?.fallback_reasons?.['offline, not cached'] ?? 0) > 0
   const isShown = !!current && !!a?.run_id && current.run_id === a.run_id
@@ -179,10 +255,12 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
       <div className="whatif-head">
         <h3>what if we…</h3>
         <span
-          className={`dot ${api === undefined ? 'unknown' : offline ? 'off' : api.llm ? 'on' : 'cached'}`}
-          title={api?.translator_model ? `Decisions: ${api.model}; translation: ${api.translator_model}; reasoning: ${api.reasoning_effort ?? 'model default'}` : undefined}
+          className={`dot ${demoMode ? 'cached' : api === undefined ? 'unknown' : offline ? 'off' : api.llm ? 'on' : 'cached'}`}
+          title={demoMode ? 'Mock movements appear instantly; AI advice is requested from the backend for the displayed sample.' : api?.translator_model ? `Decisions: ${api.model}; translation: ${api.translator_model}; reasoning: ${api.reasoning_effort ?? 'model default'}` : undefined}
         >
-          {api === undefined
+          {demoMode
+            ? 'mock data + AI advice'
+            : api === undefined
             ? 'checking the local API'
             : offline
               ? 'local API not running — cached scenarios only'
@@ -191,6 +269,26 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
                 : 'API up, model offline — cached decisions only'}
         </span>
       </div>
+
+      <label className="seed">
+        Output mode
+        <select
+          value={demoMode ? 'mock' : 'live'}
+          disabled={!!busy}
+          onChange={(event) => {
+            requestVersion.current += 1
+            setDemoMode(event.target.value === 'mock')
+            setAnswer(null)
+            setMockOutput(null)
+            setMockAdvice(null)
+            setMockAdviceError(null)
+            setApi(undefined)
+          }}
+        >
+          <option value="mock">Mock movements + AI advice</option>
+          <option value="live">Real simulation</option>
+        </select>
+      </label>
 
       <form
         onSubmit={(e) => {
@@ -202,11 +300,12 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
           type="text"
           value={text}
           placeholder="describe your plan in a sentence"
-          disabled={offline || !!busy}
+          maxLength={4000}
+          disabled={formDisabled}
           onChange={(e) => setText(e.target.value)}
         />
-        <button type="submit" className="chip play" disabled={offline || !!busy || !text.trim()}>
-          {busy ? '…' : 'simulate fresh'}
+        <button type="submit" className="chip play" disabled={formDisabled || !text.trim()}>
+          {busy ? '…' : demoMode ? 'show movements + AI advice' : 'simulate fresh'}
         </button>
       </form>
       <div className="examples">
@@ -215,7 +314,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
             key={ex}
             type="button"
             className="chip small"
-            disabled={offline || !!busy}
+            disabled={formDisabled}
             onClick={() => {
               setText(ex)
               void ask(ex)
@@ -226,10 +325,54 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         ))}
       </div>
 
-      <p className="muted">New submissions run fresh and may use additional model calls. Identical plans can still produce the same behavior.</p>
-      {busy && <p className="muted">{busy} — previous output has been cleared.</p>}
+      <p className="muted">{demoMode
+        ? 'Demo: 5 random mock movements appear immediately, followed by one AI assessment with suggested actions. Advice needs the backend; no simulation is run.'
+        : 'New submissions run fresh and may use additional model calls. Identical plans can still produce the same behavior.'}</p>
+      {busy && <p className="muted" role="status">{busy}{demoMode ? ' The examples remain visible below.' : ' Previous output has been cleared.'}</p>}
 
-      {a && !busy && (
+      {demoMode && mockOutput && (
+        <div className="answer">
+          <p className="muted">Request: “{submittedText}” · random mock examples, not a computed outcome</p>
+          <MockMovementList movements={mockOutput} runs={runs} windowDays={windowDays} onWindowDays={changeMockWindow} disabled={!!busy} />
+          {mockAdviceError && <p className="warn" role="alert">{mockAdviceError}</p>}
+          {mockAdvice && (
+            <section className="flows" aria-live="polite">
+              <b>AI advice based on mock data{mockAdvice.cached ? ' · cached for this exact sample' : ''}</b>
+              <p>{mockAdvice.assessment}</p>
+              {mockAdvice.recommendations.length > 0 && (
+                <ol className="movement-reasons">
+                  {mockAdvice.recommendations.map((recommendation, index) => (
+                    <li key={`${mockAdvice.sample_id}-${index}`}>
+                      <b>{recommendation.action}</b>
+                      <div>{recommendation.why}</div>
+                      <div className="muted">Tradeoff / validation: {recommendation.tradeoff}</div>
+                      <div>
+                        Supporting mock examples:{' '}
+                        {recommendation.evidence_ids.map((id) => (
+                          <a key={id} href={`#mock-evidence-${id}`}>[{id}] </a>
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <em>{mockAdvice.limitations}</em>
+              <em>Illustrative suggestions, not a validated prediction. {mockAdvice.model}</em>
+            </section>
+          )}
+          <div className="answer-actions">
+            <button type="button" className="chip small" disabled={!!busy} onClick={shuffleAndAssess}>
+              shuffle + get AI advice
+            </button>
+            <button type="button" className="chip small" disabled={!!busy}
+              onClick={() => void assessSample(submittedText, mockOutput, windowDays, true)}>
+              {mockAdvice ? 'reassess this sample (fresh AI call)' : 'get AI advice for this sample'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!demoMode && a && !busy && (
         <div className="answer">
           <p className="muted">Result for: “{a.request_text ?? submittedText}”{a.fresh ? ' · fresh run' : ''}</p>
           {a.error && <p className="warn">{a.error}</p>}
@@ -268,57 +411,8 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
             </p>
           )}
 
-          {a.analysis && a.analysis.complete && w && (
-            <div className="whatif">
-              <b>{w.label}</b>
-              <span>
-                wins back {w.returns} of {w.of}
-                {w.returned.length ? ` (${w.returned.join(', ')})` : ''}
-              </span>
-              {w.revenue && (
-                <span className="money">
-                  {w.revenue.delta >= 0 ? '+' : '−'}
-                  {(Math.abs(w.revenue.delta_per_day) / 1000).toFixed(0)}k/day vs doing nothing
-                </span>
-              )}
-              <em>
-                {w.confidence_detail?.unmeasured
-                  ? `confidence unmeasured — ${w.confidence_detail.reason ?? '1 seed'}`
-                  : `confidence ${pct(w.confidence)}`}
-              </em>
-            </div>
-          )}
-          {a.analysis && !a.analysis.complete && !a.fallback_used && (
-            <p className="muted">Analysis withheld: {a.analysis.reason}</p>
-          )}
-          {a.result && !a.fallback_used && (
-            flowComplete && answerFlows && answerFlows.totals.fallback_moves === 0 ? (
-              <FlowsPanel
-                flows={answerFlows}
-                shops={runs.shops}
-                entrant={a.analysis?.question?.entrant?.shop ?? null}
-                seed={flowSeed}
-              />
-            ) : (
-              <p className="muted">{a.flows_reason ?? 'Movement summary unavailable: a complete what-if trajectory is required; fallback choices are not customer behavior.'}</p>
-            )
-          )}
-
-          {a.review && (
-            <section className="flows">
-              <b>Independent AI review{a.review.cached ? ' · cached' : ''}</b>
-              <span className={a.review.status === 'needs_attention' ? 'warn' : undefined}>{a.review.summary}</span>
-              {a.review.issues.length > 0 && <ul>{a.review.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul>}
-              <em>{a.review.model ? `${a.review.model} · ` : ''}Sanity check only; recorded decisions and computed counts are unchanged.</em>
-              <button
-                type="button"
-                className="chip small"
-                disabled={!!busy || a.review.status === 'reviewing'}
-                onClick={() => void checkAnswer(a, true)}
-              >
-                {a.review.status === 'reviewing' ? 'reviewing…' : 'recheck with AI (fresh call)'}
-              </button>
-            </section>
+          {a.result && !a.fallback_used && !a.error && (
+            <MovementReasonList answer={a} runs={runs} windowDays={windowDays} onWindowDays={setWindowDays} />
           )}
 
           {a.cost && (

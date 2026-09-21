@@ -53,7 +53,24 @@ Model and effective effort are part of decision cache identity. Other legacy mod
 their existing selection, preserving Qwen replay. `/health` exposes both model roles.
 Restart the backend after changing code or environment settings.
 
-The frontend submits `POST /whatif` with `fresh: true`: translation bypasses its cache,
+The what-if panel defaults to **Mock movements + AI advice**. It samples five distinct
+examples from the ten templates in `src/town/mockMovements.ts` and displays them immediately.
+It then sends the owner's question, selected window, shop labels and exactly those examples
+to `POST /assess-mock`. This endpoint needs the API key but no complete library trajectories
+and never invokes the simulation engine. One LLM assessment step uses `SIMFFEE_MODEL` at low
+reasoning effort to produce an assessment and up to three ranked actions, each with supporting
+mock IDs, rationale and a tradeoff or validation step. Input sizes and evidence references
+are validated locally. Unknown references or malformed model replies do not become advice.
+
+Recommendations are explicitly labelled **AI advice based on mock data**, not forecasts.
+They do not modify the displayed movements or the town. The cache includes the exact request,
+examples, window, model and prompt; cached advice is labelled. Submitting or shuffling starts
+an assessment. Changing the window clears outdated advice and lets the user request another
+assessment; the fresh-call button bypasses the matching assessment cache. Model/API failures
+leave the examples visible with an unavailable/retry state. Health polling remains disabled
+in this mode. Use the output-mode selector to return to **Real simulation**.
+
+In Real simulation mode, the frontend submits `POST /whatif` with `fresh: true`: translation bypasses its cache,
 and a unique scenario ID prevents reuse of earlier what-if decisions while preserving
 previous runs. The parent baseline prefix is still inherited for a fair comparison.
 Fresh requests consume additional API calls and may legitimately produce identical choices.
@@ -63,12 +80,35 @@ submissions clear the previous answer; failed seed reruns do not merge old resul
 
 The what-if response's top-level `flows` belongs to that what-if, not the baseline used
 for causal comparison. Incomplete trajectories return `flows: null` with a reason.
-`POST /review` accepts `{run_id, refresh?: boolean}`. The frontend calls it after displaying
-the simulation, so review does not delay the primary answer. Reviews are keyed by the
-request, plan, actual rows, reviewer model and inference settings. The fresh-review button
-bypasses only the review cache and may incur an additional model call. The reviewer can
-flag a mismatch and explain the supplied facts; it never edits decisions or computed
-counts. Fallback-filled trajectories are not reviewed as genuine customer evidence.
+The what-if panel displays one movement-reason list from the returned agent rows. Its
+2/3-day selector starts the window one day before the first effective change (using the
+opening day for `exists_from_day`). Each destination change includes the person's name,
+the two days, and their recorded reason. Adjacent transitions preserve leave-and-return
+movements within a three-day window. Missing or fallback endpoints are excluded and the
+list is labelled incomplete. Changing the window is local; it neither reruns the model nor
+shortens the underlying simulation.
+
+`POST /review` remains available for explicit API use with `{run_id, refresh?: boolean}`;
+the simplified frontend no longer calls it automatically or displays a separate review.
+Reviews are keyed by the request, plan, actual rows, model and inference settings. A refresh
+bypasses only the review cache and may incur an additional model call. The reviewer never
+edits decisions or counts; fallback-filled trajectories are not genuine customer evidence.
+
+## Customer-layer graph
+
+The frontend's **Customer layers & LLM usage** button opens an explanatory graph and
+pauses the town for inspection. Select a customer or a day to inspect the same scenario
+and seed shown in the town. The What/Why cards use the authored synthetic JSON records
+under `data/twins/`; habit/interest curves and route counts use the selected run's rows.
+The graph is independent of the randomly sampled mock what-if output.
+
+The chart shows pre-decision state on a 0–1 scale, with missing values left as gaps and
+fallback-influenced state marked diagnostic. Autopilot and deterministic-rule days are
+shown separately from model-informed days and failures. A model-informed row may have
+come from cache: these counts are not billed API requests or measured token savings.
+The current habit updates are arithmetic, not fitted linear regression. Logistic-regression
+routing is shown only as a planned, unimplemented extension. Opening the graph neither
+calls the backend nor trains or runs another model.
 
 ## Modules and spec mapping
 

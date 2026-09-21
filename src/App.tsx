@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import AnalysisPanel from './components/AnalysisPanel'
 import Controls from './components/Controls'
+import CustomerLayersGraph from './components/CustomerLayersGraph'
 import IsoTown, { type Brush } from './components/IsoTown'
 import Palette from './components/Palette'
 import ShopInterior from './components/ShopInterior'
@@ -49,6 +50,8 @@ export default function App() {
   }, [])
   const [brush, setBrush] = useState<Brush>(null)
   const [selectedTwin, setSelectedTwin] = useState<string | null>(null)
+  const [showCustomerGraph, setShowCustomerGraph] = useState(false)
+  const closeCustomerGraph = useCallback(() => setShowCustomerGraph(false), [])
   const [interior, setInterior] = useState<ShopId | null>(null)
   const [live, setLive] = useState<Record<string, WhatIfAnswer>>({})
   const phaseRef = useRef(0)
@@ -161,6 +164,12 @@ export default function App() {
           {scenarioLabel} · day {day} of {days} · seed {seed}
           {runs.meta.publishable === false ? ' · unverified bundle' : ''}
         </span>
+        <button type="button" className="chip customer-graph-open" onClick={() => {
+          pause(false)
+          setShowCustomerGraph(true)
+        }}>
+          Customer layers & LLM usage
+        </button>
       </header>
 
       <div className="stage">
@@ -210,6 +219,19 @@ export default function App() {
           onSelectTwin={setSelectedTwin}
         />
       </div>
+
+      {showCustomerGraph && (
+        <CustomerLayersGraph
+          runs={runs}
+          scenarioId={scenario}
+          seed={seed}
+          day={day}
+          selectedTwin={selectedTwin}
+          onSelectTwin={setSelectedTwin}
+          onSelectDay={setDay}
+          onClose={closeCustomerGraph}
+        />
+      )}
 
       {interior && (
         <ShopInterior

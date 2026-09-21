@@ -1,0 +1,15 @@
+{
+  "_model": "grok-4.3",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1335,
+    "output_tokens": 63
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "My 06:40 slot is fixed; Starbucks is five blocks and a seven-minute wait, so I just go without.",
+  "secondary_driver": "distance",
+  "valence": -1.0
+}

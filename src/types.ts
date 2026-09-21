@@ -309,6 +309,24 @@ export interface AIReview {
   usage?: { input_tokens: number; output_tokens: number }
 }
 
+export interface MockAssessment {
+  status: 'ready' | 'unavailable'
+  data_source: 'mock'
+  sample_id: string
+  assessment: string
+  recommendations: {
+    action: string
+    why: string
+    tradeoff: string
+    evidence_ids: string[]
+  }[]
+  limitations: string
+  model: string
+  cached: boolean
+  usage?: { input_tokens: number; output_tokens: number }
+  calls?: number
+}
+
 export interface Health {
   ok: boolean
   offline: boolean

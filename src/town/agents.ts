@@ -1,4 +1,4 @@
-import type { Row, Runs, Twin } from '../types'
+import type { Row, Runs, Twin, WhatIfAnswer } from '../types'
 import { cellToTile } from './model'
 
 export interface AgentState {
@@ -109,4 +109,45 @@ export function salesFor(runs: Runs, scenario: string, seed: number, day: number
   const out: Record<string, number> = {}
   for (const id of Object.keys(runs.shops)) out[id] = seedRun?.daily_sales[id]?.[day - 1] ?? 0
   return out
+}
+
+export function movementReasons(answer: WhatIfAnswer, twins: Twin[], windowDays: 2 | 3) {
+  const seeds = Object.keys(answer.result ?? {}).map(Number).sort((a, b) => a - b)
+  const seed = seeds.includes(0) ? 0 : seeds[0] ?? 0
+  const runId = answer.run_id ?? answer.scenario?.id
+  const rows = (answer.result?.[String(seed)]?.rows ?? []).filter((row) =>
+    row.seed === seed && row.scenario === runId)
+  const lastDay = answer.days ?? answer.scenario?.days ?? Math.max(0, ...rows.map((row) => row.day))
+  const actionDays = (answer.scenario?.overrides ?? []).flatMap((override) => {
+    const entering = override.set?.exists_from_day
+    const otherChanges = Object.keys(override.set ?? {}).some((key) => key !== 'exists_from_day' && !key.startsWith('prompt.'))
+      || (override.unset?.length ?? 0) > 0
+    return [
+      ...(typeof entering === 'number' ? [entering] : []),
+      ...(otherChanges ? [override.from_day] : []),
+    ]
+  }).filter((day) => Number.isInteger(day) && day >= 1)
+  const firstChange = actionDays.length ? Math.min(...actionDays) : 2
+  const startDay = Math.max(1, Math.min(firstChange - 1, lastDay - 1))
+  const endDay = Math.min(lastDay, startDay + windowDays - 1)
+  const byDay = new Map(rows.map((row) => [`${row.twin}:${row.day}`, row]))
+  const twinIds = [...new Set([...twins.map((twin) => twin.id), ...rows.map((row) => row.twin)])].sort()
+  const missing = new Set<string>()
+  const changes: { twin: string; fromDay: number; day: number; from: string; to: string; reason: string; driver: string }[] = []
+  for (let day = startDay + 1; day <= endDay; day++) {
+    for (const twin of twinIds) {
+      const before = byDay.get(`${twin}:${day - 1}`)
+      const after = byDay.get(`${twin}:${day}`)
+      if (!before || !after || before.llm_failed || after.llm_failed
+        || before.decision_source === 'fallback' || after.decision_source === 'fallback') {
+        missing.add(twin)
+        continue
+      }
+      if (before.choice !== after.choice) {
+        changes.push({ twin, fromDay: day - 1, day, from: before.choice, to: after.choice,
+          reason: after.reasoning, driver: after.primary_driver })
+      }
+    }
+  }
+  return { seed, startDay, endDay, changes, incomplete: missing.size > 0, available: rows.length > 0 && endDay > startDay }
 }

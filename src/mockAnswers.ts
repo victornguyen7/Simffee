@@ -61,8 +61,45 @@ const remember = (used: number[]) => {
 
 const singular = (w: string) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w)
 
-/** Words and short phrases the plan and the set-up put on the table. */
-function features(text: string, setup: SketchSetup | null): Set<string> {
+/** "open at 6", "close at 9pm", "opening 10:30" -> minutes since midnight, or null. Bare hours 1-6
+ *  after "close" are read as afternoon. */
+function requestedTime(lower: string, verb: 'open' | 'clos'): number | null {
+  const m = new RegExp(`\\b(?:re)?${verb}\\w*\\s+(?:at\\s+|until\\s+|till\\s+)?(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?\\b`).exec(lower)
+  if (!m) return null
+  let h = Number(m[1])
+  const minutes = Number(m[2] ?? 0)
+  if (minutes > 59) return null
+  if (m[3]) {
+    if (h < 1 || h > 12) return null
+    if (h === 12) h = 0
+    if (m[3] === 'pm') h += 12
+  } else {
+    if (h > 23) return null
+    if (verb === 'clos' && h <= 6) h += 12
+  }
+  return h * 60 + minutes
+}
+
+/** Whole-word match of a shop name inside the plan ("Bean" must not match "beans"). */
+const namedIn = (lower: string, name: string) => {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[^a-z0-9])${escaped}(?![a-z0-9])`).test(lower)
+}
+
+const clock = (hhmm: string | undefined): number | null => {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm ?? '')
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null
+}
+
+interface Features {
+  f: Set<string>
+  /** Id of the non-focus shop the plan names, if any. */
+  rival: string | null
+}
+
+/** Words and short phrases the plan and the set-up put on the table. Opening/closing direction is
+ *  judged against the focus shop's current hours when a set-up is loaded, else against typical hours. */
+function features(text: string, setup: SketchSetup | null): Features {
   const lower = text.toLowerCase()
   const words = lower.split(/[^a-z0-9-]+/).filter(Boolean)
   const f = new Set<string>()
@@ -71,24 +108,40 @@ function features(text: string, setup: SketchSetup | null): Set<string> {
     f.add(singular(w))
   }
   if (/\b\d+\s*k\b|\bprice|\bcost|\bcharge|\bvnd\b|\$/.test(lower)) f.add('price')
-  if (/\b\d{1,2}\s*(am|pm)\b|\bat\s+\d{1,2}\b|\bopen|\bclos|\bhour/.test(lower)) f.add('hours')
-  if (/\bopen/.test(lower)) f.add('opening')
-  if (/\bclos/.test(lower)) f.add('closing')
-  if (/\bopen\w*\s+(at\s+)?[56]\b|\b[56]\s*am\b/.test(lower)) f.add('earlier')
-  if (/\bopen\w*\s+(at\s+)?(9|10)\b|\bclos\w*\s+(at\s+)?([89]|10)\b|\b(8|9|10)\s*pm\b/.test(lower)) f.add('later')
-  if (/\bclos\w*\s+(at\s+)?[3456]\b|\b[345]\s*pm\b/.test(lower)) f.add('earlier')
-  if (!setup) return f
-  const focus = setup.shops[setup.focus]
+  if (/\b\d{1,2}\s*(am|pm)\b|\bat\s+\d{1,2}\b|\b(re)?open|\b(re)?clos|\bhour/.test(lower)) f.add('hours')
+  if (/\b(re)?open/.test(lower)) f.add('opening')
+  if (/\b(re)?clos/.test(lower)) f.add('closing')
+  const focus = setup?.shops[setup.focus]
+  const wantOpen = requestedTime(lower, 'open')
+  const wantClose = requestedTime(lower, 'clos')
+  const nowOpen = clock(focus?.open) ?? 7 * 60
+  const nowClose = clock(focus?.close) ?? 18 * 60
+  if (wantOpen != null && wantOpen !== nowOpen) f.add(wantOpen < nowOpen ? 'earlier' : 'later')
+  if (wantClose != null && wantClose !== nowClose) f.add(wantClose < nowClose ? 'earlier' : 'later')
+  if (!setup) return { f, rival: null }
+  // Named rival: the longest full-name match wins; a distinctive word of a name only counts
+  // when it does not point at more than one shop.
+  let rival: string | null = null
+  let rivalLen = 0
+  const partial: string[] = []
   for (const [id, shop] of Object.entries(setup.shops)) {
     const name = shop.name.toLowerCase()
-    if (id !== setup.focus && (lower.includes(name) || name.split(/\s+/).some((part) => part.length > 3 && f.has(part)))) {
-      f.add('competitor')
-      f.add('rival')
+    if (id !== setup.focus) {
+      if (namedIn(lower, name)) {
+        if (name.length > rivalLen) [rival, rivalLen] = [id, name.length]
+      } else if (name.split(/\s+/).some((part) => part.length > 3 && f.has(part))) {
+        partial.push(id)
+      }
     }
     for (const p of shop.products) if (lower.includes(p.toLowerCase())) f.add('product')
   }
+  if (!rival && partial.length === 1) rival = partial[0]
+  if (rival || partial.length) {
+    f.add('competitor')
+    f.add('rival')
+  }
   if (focus && Object.keys(focus.price).some((p) => lower.includes(p.toLowerCase()))) f.add('price')
-  return f
+  return { f, rival }
 }
 
 const hit = (tag: string, f: Set<string>, lower: string) =>
@@ -123,11 +176,11 @@ function score(s: RawSketch, f: Set<string>, lower: string, setup: SketchSetup |
   return { r: Math.round(r * 100) / 100, hits }
 }
 
-function fill(s: RawSketch, setup: SketchSetup | null): MockAnswer {
+function fill(s: RawSketch, setup: SketchSetup | null, rivalId: string | null): MockAnswer {
   const shop = setup?.shops[setup.focus]?.name ?? 'your shop'
-  const rival = setup
-    ? Object.entries(setup.shops).find(([id]) => id !== setup.focus)?.[1].name ?? 'the shop across the street'
-    : 'the shop across the street'
+  const rival = (rivalId && setup?.shops[rivalId]?.name)
+    || (setup ? Object.entries(setup.shops).find(([id]) => id !== setup.focus)?.[1].name : undefined)
+    || 'the shop across the street'
   const sub = (t: string) => t.replaceAll('{shop}', shop).replaceAll('{rival}', rival)
   return { headline: sub(s.headline), movements: s.movements.map(sub), drivers: s.drivers, net: sub(s.net) }
 }
@@ -137,7 +190,7 @@ function fill(s: RawSketch, setup: SketchSetup | null): MockAnswer {
  *  matches nothing the shortlist is random. */
 export const pickMock = (text: string, setup: SketchSetup | null): Picked => {
   const lower = text.toLowerCase()
-  const f = features(text, setup)
+  const { f, rival } = features(text, setup)
   const scored = SKETCHES.map((s, i) => ({ i, ...score(s, f, lower, setup), tie: Math.random() }))
   scored.sort((a, b) => b.r - a.r || b.hits - a.hits || a.tie - b.tie)
   const top = scored.slice(0, SHORTLIST)
@@ -153,5 +206,5 @@ export const pickMock = (text: string, setup: SketchSetup | null): Picked => {
   }
   const best = fresh[0]
   remember([...used, best.i])
-  return { mock: fill(SKETCHES[best.i], setup), relevance: best.r, shortlisted: cleared.length, poolSize: POOL_SIZE }
+  return { mock: fill(SKETCHES[best.i], setup, rival), relevance: best.r, shortlisted: cleared.length, poolSize: POOL_SIZE }
 }

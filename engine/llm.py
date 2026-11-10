@@ -1,9 +1,8 @@
 """The only place the engine talks to an LLM.
 
-xAI's Responses API (https://api.x.ai/v1/responses) through the `openai` SDK, with the
-model selected by SIMFFEE_MODEL. XAI_API_KEY is required for live requests; offline/cache
-replay never constructs a client. Requests are sent with `store=False`: nothing about a
-twin is kept on the provider's side.
+Groq's OpenAI-compatible Chat Completions API (https://api.groq.com/openai/v1) through
+the `openai` SDK, with the model selected by SIMFFEE_MODEL. GROQ_API_KEY is required for
+live requests; offline/cache replay never constructs a client.
 
 Two capabilities are probed once per model rather than assumed, because they
 vary by model and by SDK version:
@@ -31,7 +30,7 @@ def load_environment(path: Path | None = None) -> None:
     path = path if path is not None else Path(__file__).resolve().parent.parent / ".env"
     if not path.exists():
         return
-    allowed = {"XAI_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL",
+    allowed = {"GROQ_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL",
                "SIMFFEE_TIMEOUT_S", "SIMFFEE_REASONING_EFFORT", "SIMFFEE_DECISION_MODEL"}
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         key, separator, raw = line.strip().removeprefix("export ").partition("=")
@@ -50,13 +49,15 @@ def load_environment(path: Path | None = None) -> None:
 load_environment()
 # Defaults MUST match what cache/ was filled with: both are part of the cache key, so a
 # fresh clone with no .env replays the committed demo only if these agree (RUN_PLAN D2/D3).
-MODEL = os.environ.get("SIMFFEE_MODEL", "qwen/qwen3.8-27b")
+DEFAULT_MODEL = "qwen/qwen3.8-27b"
+DEFAULT_MAX_TOKENS = 400
+MODEL = os.environ.get("SIMFFEE_MODEL", DEFAULT_MODEL)
 DECISION_MODEL = os.environ.get("SIMFFEE_DECISION_MODEL", "").strip() or None
 # SPEC 4.3 says 300. Reasoning models spend their budget thinking before they
 # emit the object, so a 300-500 cap truncates the JSON and the reply is thrown
 # away as invalid -- which shows up as retries and fallbacks, not as an error.
-MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", "400"))
-BASE_URL = "https://api.x.ai/v1"
+MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", str(DEFAULT_MAX_TOKENS)))
+BASE_URL = "https://api.groq.com/openai/v1"
 TIMEOUT_S = float(os.environ.get("SIMFFEE_TIMEOUT_S", "180"))          # reasoning models think before they answer
 
 # Providers cap requests and tokens per minute. A bulk run is ~350 calls, so without
@@ -138,8 +139,8 @@ def _note_budget(headers) -> None:
 def _estimate_tokens(request: dict[str, Any]) -> int:
     """Conservative size of a request as the provider counts it against the window:
     prompt (JSON-heavy, so ~3 chars per token, plus the model's own preamble) + max_tokens."""
-    chars = sum(len(str(m.get("content", ""))) for m in request.get("input", []))
-    return chars // 3 + 500 + int(request.get("max_output_tokens", MAX_TOKENS))
+    chars = sum(len(str(m.get("content", ""))) for m in request.get("messages", []))
+    return chars // 3 + 500 + int(request.get("max_tokens", MAX_TOKENS))
 
 
 def _retry_after(message: str) -> float | None:
@@ -167,9 +168,9 @@ def client():
     global _client, _client_error
     if _client is not None:
         return _client
-    api_key = os.environ.get("XAI_API_KEY")
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        raise LLMUnavailable("XAI_API_KEY must be set for live requests")
+        raise LLMUnavailable("GROQ_API_KEY must be set for live requests")
     try:
         from openai import OpenAI
     except ImportError as exc:                      # pragma: no cover
@@ -178,7 +179,7 @@ def client():
     try:
         _client = OpenAI(api_key=api_key, base_url=BASE_URL, timeout=TIMEOUT_S, max_retries=0)
     except Exception as exc:                        # missing key, bad profile
-        _client_error = "could not build an xAI client"
+        _client_error = "could not build a Groq client"
         raise LLMUnavailable(_client_error) from None
     return _client
 
@@ -204,7 +205,7 @@ def _create_with_backoff(request: dict[str, Any]):
     for attempt in range(RATE_LIMIT_RETRIES):
         _pace(need)
         try:
-            transport = client().responses
+            transport = client().chat.completions
             stats["attempts"] += 1
             raw = getattr(transport, "with_raw_response", None)
             if raw is None:                 # a stubbed transport in tests
@@ -229,40 +230,50 @@ def _create_with_backoff(request: dict[str, Any]):
 
 
 def _output_text(response) -> str | None:
-    """The assistant text of a Responses API reply: `output[].content[].text` for the
-    message items (reasoning items are skipped). The SDK's `output_text` shortcut does the
-    same and is used when present."""
-    shortcut = getattr(response, "output_text", None)
-    if isinstance(shortcut, str) and shortcut:
-        return shortcut
-    parts: list[str] = []
-    for item in getattr(response, "output", None) or []:
-        if getattr(item, "type", None) != "message":
-            continue
-        for block in getattr(item, "content", None) or []:
-            text = getattr(block, "text", None)
-            if isinstance(text, str):
-                parts.append(text)
-    return "".join(parts) if parts else None
+    """The assistant text of a Chat Completions reply (`choices[0].message.content`).
+    Some reasoning models prepend a <think>...</think> block; it is not part of the answer."""
+    choices = getattr(response, "choices", None) or []
+    if not choices:
+        return None
+    text = getattr(getattr(choices[0], "message", None), "content", None)
+    if not isinstance(text, str):
+        return None
+    return re.sub(r"^\s*<think>.*?</think>", "", text, flags=re.DOTALL)
 
 
 def decision_model() -> str:
-    return DECISION_MODEL or ("grok-4.3" if MODEL in {"grok-4.5", "grok-4.6"} else MODEL)
+    return DECISION_MODEL or MODEL
+
+
+# Groq's `reasoning_effort` values per model family. Nothing is sent unless an effort is
+# asked for (argument or SIMFFEE_REASONING_EFFORT) and the model supports it, so the
+# default request -- and therefore the committed cache key -- carries no reasoning option.
+_REASONING_EFFORTS = {
+    "openai/gpt-oss-": {"low", "medium", "high"},
+    "qwen/": {"none", "default"},
+}
+
+
+def _supported_efforts(model: str) -> set[str]:
+    return next((v for prefix, v in _REASONING_EFFORTS.items() if model.startswith(prefix)), set())
 
 
 def inference_options(reasoning_effort: str | None = None, *, model: str | None = None) -> dict[str, Any]:
+    """An explicit effort (translation and review ask for "high") wins over
+    SIMFFEE_REASONING_EFFORT, which tunes decisions; an explicit effort the model cannot take
+    is dropped silently, a configured one is an error."""
     model = model or MODEL
-    if model not in {"grok-4.3", "grok-4.5", "grok-4.6"}:
+    supported = _supported_efforts(model)
+    requested = (reasoning_effort or "").strip().lower()
+    if requested:
+        return {"reasoning_effort": requested} if requested in supported else {}
+    configured = os.environ.get("SIMFFEE_REASONING_EFFORT", "").strip().lower()
+    if not configured:
         return {}
-    default_effort = "none" if model == "grok-4.3" else "low"
-    effort = (reasoning_effort if reasoning_effort is not None else
-              os.environ.get("SIMFFEE_REASONING_EFFORT", default_effort)).strip().lower()
-    allowed = {"low", "medium", "high"} | ({"xhigh"} if model != "grok-4.5" else set())
-    if model == "grok-4.3":
-        allowed.add("none")
-    if effort not in allowed:
-        raise ValueError("SIMFFEE_REASONING_EFFORT must be one of " + ", ".join(sorted(allowed)))
-    return {"reasoning": {"effort": effort}}
+    if configured not in supported:
+        raise ValueError(f"SIMFFEE_REASONING_EFFORT for {model} must be one of "
+                         + (", ".join(sorted(supported)) or "(nothing: this model has no reasoning control)"))
+    return {"reasoning_effort": configured}
 
 
 def complete_json(
@@ -295,16 +306,16 @@ def complete_json(
         request: dict[str, Any] = {
             "model": model,
             **inference_options(reasoning_effort, model=model),
-            "max_output_tokens": MAX_TOKENS,
-            "input": messages,
-            "store": False,             # nothing about a twin is kept server-side
+            "max_tokens": MAX_TOKENS,
+            "messages": messages,
         }
         if _temperature_ok is not False:
             request["temperature"] = temperature
         if _structured_ok is not False:
-            request["text"] = {"format": {
-                "type": "json_schema", "name": "response", "strict": True, "schema": schema,
-            }}
+            request["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {"name": "response", "strict": True, "schema": schema},
+            }
 
         # Add JSON schema instructions to system prompt
         messages[0]["content"] = system + f"\n\nYou must respond with a JSON object that matches this schema:\n{json.dumps(schema, indent=2)}"
@@ -312,7 +323,7 @@ def complete_json(
         try:
             response = _create_with_backoff(request)
             _temperature_ok = "temperature" in request
-            _structured_ok = "text" in request
+            _structured_ok = "response_format" in request
             break
         except LLMUnavailable:
             raise
@@ -322,7 +333,7 @@ def complete_json(
             if unsupported and "temperature" in message and "temperature" in request:
                 _temperature_ok = False
                 continue
-            if unsupported and any(word in message for word in ("text.format", "format", "json_schema", "structured", "schema")) and "text" in request:
+            if unsupported and any(word in message for word in ("response_format", "json_schema", "structured", "schema")) and "response_format" in request:
                 _structured_ok = False
                 continue
             # Sanitised (no provider text reaches a trajectory), but classified, so a run
@@ -342,9 +353,10 @@ def complete_json(
     else:
         raise ValueError("could not find a request shape this model accepts")
 
+    raw_usage = getattr(response, "usage", None)
     usage = {
-        "input_tokens": int(getattr(response.usage, "input_tokens", 0) or 0),
-        "output_tokens": int(getattr(response.usage, "output_tokens", 0) or 0),
+        "input_tokens": int(getattr(raw_usage, "prompt_tokens", 0) or 0),
+        "output_tokens": int(getattr(raw_usage, "completion_tokens", 0) or 0),
     }
     stats["responses"] += 1
     for key, value in usage.items():

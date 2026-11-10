@@ -9,8 +9,15 @@
     GET  /runs/<run_id>                                                      # a previous live answer
     GET  /health
 
-Runs on the demo laptop; the key lives in .env; no GPU anywhere. CORS is open for the
-Vite dev server. Nothing here writes to public/ or the library directory.
+Runs on the demo laptop; the key lives in .env; no GPU anywhere. Nothing here writes to
+public/ or the library directory.
+
+Browser access is limited to the local frontend: CORS is granted only to the allowed
+origins (the Vite dev/preview servers by default, more with --allow-origin), a request
+carrying any other Origin is refused, POST bodies must be `application/json` (so a
+cross-site form or `text/plain` post cannot skip the CORS preflight), and the Host header
+must name this server (so a DNS-rebinding page cannot reach it under another name).
+Clients without an Origin header (curl, scripts) are unaffected.
 """
 
 from __future__ import annotations
@@ -28,6 +35,10 @@ from api.service import WhatIfService  # noqa: E402
 from engine.cache import CACHE  # noqa: E402
 
 SERVICE: WhatIfService | None = None
+DEFAULT_ORIGINS = tuple(f"http://{host}:{port}" for port in (5173, 4173)
+                        for host in ("localhost", "127.0.0.1"))
+ALLOWED_ORIGINS: set[str] = set(DEFAULT_ORIGINS)
+ALLOWED_HOSTS: set[str] = set()       # filled from the bound port in main(); empty = any
 
 
 def parse_seeds(value) -> list[int]:
@@ -49,18 +60,37 @@ def parse_seeds(value) -> list[int]:
 class Handler(BaseHTTPRequestHandler):
     server_version = "simffee/0.3"
 
-    def _send(self, code: int, body: dict) -> None:
-        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
+    def _send(self, code: int, body: dict | None) -> None:
+        data = b"" if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        if body is not None:
+            self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        origin = self.headers.get("Origin")
+        if origin in ALLOWED_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(data)
 
+    def _refused(self) -> bool:
+        """Send 403 and return True for a request this local server must not serve."""
+        host = (self.headers.get("Host") or "").lower()
+        if ALLOWED_HOSTS and host not in ALLOWED_HOSTS:
+            self._send(403, {"error": "unexpected Host header"})
+            return True
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in ALLOWED_ORIGINS:
+            self._send(403, {"error": "origin not allowed; start the server with --allow-origin to add one"})
+            return True
+        return False
+
     def _body(self) -> dict:
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if ctype != "application/json":
+            raise ValueError("Content-Type must be application/json")
         n = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(n) if n else b"{}"
         try:
@@ -72,10 +102,14 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        self._send(204, {})
+        if self._refused():
+            return
+        self._send(204, None)
 
     def do_GET(self) -> None:  # noqa: N802
         assert SERVICE is not None
+        if self._refused():
+            return
         if self.path == "/health":
             return self._send(200, SERVICE.health())
         if self.path == "/library":
@@ -90,6 +124,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         assert SERVICE is not None
+        if self._refused():
+            return
         try:
             body = self._body()
         except ValueError as exc:
@@ -137,7 +173,12 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--timeout", type=float, default=240.0, help="seconds before a live run falls back")
     ap.add_argument("--offline", action="store_true", help="never call the model (cached decisions only)")
+    ap.add_argument("--allow-origin", action="append", default=[], metavar="ORIGIN",
+                    help="also grant browser access to this origin, e.g. http://localhost:5174 (repeatable)")
     args = ap.parse_args()
+
+    ALLOWED_ORIGINS.update(o.rstrip("/") for o in args.allow_origin)
+    ALLOWED_HOSTS.update({f"127.0.0.1:{args.port}", f"localhost:{args.port}"})
 
     SERVICE = WhatIfService(args.library, cache_dir=args.cache, live_dir=args.live_dir,
                             offline=args.offline, timeout_s=args.timeout)

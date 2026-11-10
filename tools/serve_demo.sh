@@ -5,9 +5,11 @@
 #   ./tools/serve_demo.sh --no-web   # API only (for curl)
 #
 # 1. Replays every library scenario x seeds 0-2 from the committed cache/ into runs/library
-#    (gitignored). Strict: exits if a single decision is missing from the cache.
-# 2. Starts api/server.py on that library. Live what-ifs need XAI_API_KEY in .env; without
-#    it the API still serves cached scenarios and answers plans that need no new decisions.
+#    (gitignored), with the model settings the cache was filled with (--cache-defaults), so a
+#    custom SIMFFEE_MODEL in .env cannot break the replay. Strict: exits if a single decision
+#    is missing from the cache.
+# 2. Starts api/server.py on that library. Live what-ifs need GROQ_API_KEY in .env; without
+#    it the API serves the library and the Ask page shows illustrative sketches only.
 # 3. Starts the Vite dev server unless --no-web.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -21,7 +23,7 @@ WEB=1
 
 echo "== 1/3 library from cache/ (seeds $SEEDS) =="
 rm -rf "$LIB"
-"$PY" -m engine.cli --all --seeds "$SEEDS" --offline --quiet --require-complete --out "$LIB" --cache cache
+"$PY" -m engine.cli --all --seeds "$SEEDS" --offline --cache-defaults --quiet --require-complete --out "$LIB" --cache cache
 "$PY" tools/validate.py "$LIB"
 
 echo "== 2/3 API on http://127.0.0.1:8765 =="

@@ -35,7 +35,7 @@ from analyzer import review as reviewer
 from analyzer.flows import flows  # noqa: E402
 from engine import loop, translate  # noqa: E402
 from engine.cache import CACHE  # noqa: E402
-from engine.loader import DATA, Scenario, load_chain, load_shops, scenario_from_dict  # noqa: E402
+from engine.loader import DATA, Scenario, check_scenario_id, load_chain, load_shops, scenario_from_dict  # noqa: E402
 from engine.schema import coverage  # noqa: E402
 from tools import cost_report  # noqa: E402
 from tools.validate import check_file  # noqa: E402
@@ -104,7 +104,7 @@ class WhatIfService:
             llm_ok = False
         return {"ok": True, "offline": self.offline, "llm": llm_ok, "fresh_runs": True,
                 "model": llm.decision_model(), "translator_model": llm.MODEL,
-                "reasoning_effort": llm.inference_options(model=llm.decision_model()).get("reasoning", {}).get("effort"),
+                "reasoning_effort": llm.inference_options(model=llm.decision_model()).get("reasoning_effort"),
                 "library": str(self.library), "library_seeds": self.library_seeds,
                 "cache_dir": str(self.cache_dir), "cache_files": len(list(self.cache_dir.glob("*.json"))),
                 "live_runs": len(self.registry)}
@@ -244,10 +244,19 @@ class WhatIfService:
 
     # --- internals ---------------------------------------------------------------------
 
+    def _live_path(self, run_id: str) -> pathlib.Path:
+        """live/<run_id>, refusing anything that resolves outside live/ (defence in depth
+        behind check_scenario_id: this directory's runs/ is deleted and rewritten)."""
+        base = self.live_dir.resolve()
+        path = (base / run_id).resolve()
+        if path.parent != base:
+            raise ValueError(f"run id {run_id!r} does not name a directory inside {base}")
+        return path
+
     def _run_and_analyse(self, scenario: dict[str, Any], sc_obj: Scenario, seeds: list[int]) -> dict[str, Any]:
         with self._lock:                       # one engine run at a time: STATS are process-global
-            run_id = scenario["id"]
-            run_root = self.live_dir / run_id
+            run_id = check_scenario_id(scenario["id"])
+            run_root = self._live_path(run_id)
             out = run_root / "runs"
             if out.exists():
                 shutil.rmtree(out)

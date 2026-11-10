@@ -149,32 +149,34 @@ class Repairs(unittest.TestCase):
             self.assertEqual(transport.call_count, 8)
 
     def test_fast_decisions_use_distinct_model_provenance_and_cache(self):
-        fast = 'grok-4.3'
-        with patch.object(llm, 'MODEL', 'grok-4.6'), patch.object(llm, 'DECISION_MODEL', None, create=True), \
+        main, fast = 'openai/gpt-oss-120b', 'openai/gpt-oss-20b'
+        with patch.object(llm, 'MODEL', main), patch.object(llm, 'DECISION_MODEL', fast, create=True), \
                 patch.object(llm, 'complete_json', return_value=(GOOD, USAGE)) as transport:
             result = self.decision()
             self.assertEqual(result['llm_model'], fast)
             self.assertEqual(transport.call_args.kwargs['model'], fast)
             self.assertFalse(self.decision(offline=True)['llm_failed'])
             self.assertEqual(transport.call_count, 1)
-            with patch.object(llm, 'DECISION_MODEL', 'grok-4.6'):
+            with patch.object(llm, 'DECISION_MODEL', main):
                 self.assertTrue(self.decision(offline=True)['llm_failed'])
-                self.assertEqual(self.decision()['llm_model'], 'grok-4.6')
+                self.assertEqual(self.decision()['llm_model'], main)
             self.assertEqual(transport.call_count, 2)
 
     def test_health_identifies_both_models(self):
         from api.service import WhatIfService
-        with patch.object(llm, 'MODEL', 'grok-4.6'), patch.object(llm, 'DECISION_MODEL', None, create=True):
+        with patch.object(llm, 'MODEL', 'openai/gpt-oss-120b'), \
+                patch.object(llm, 'DECISION_MODEL', 'openai/gpt-oss-20b', create=True):
             service = WhatIfService(self.out / 'library', live_dir=self.out / 'live', offline=True)
             try:
                 health = service.health()
             finally:
                 service._pool.shutdown(wait=True)
-        self.assertEqual(health['model'], 'grok-4.3')
-        self.assertEqual(health['translator_model'], 'grok-4.6')
+        self.assertEqual(health['model'], 'openai/gpt-oss-20b')
+        self.assertEqual(health['translator_model'], 'openai/gpt-oss-120b')
 
     def test_decision_effort_changes_its_cache_but_not_high_effort_translation_cache(self):
-        with patch.object(llm, 'MODEL', 'grok-4.6'), patch.object(llm, 'DECISION_MODEL', 'grok-4.6'), \
+        model = 'openai/gpt-oss-120b'
+        with patch.object(llm, 'MODEL', model), patch.object(llm, 'DECISION_MODEL', model), \
                 patch.object(llm, 'complete_json', return_value=(GOOD, USAGE)) as transport:
             with patch.dict(os.environ, {'SIMFFEE_REASONING_EFFORT': 'low'}):
                 self.decision()
@@ -329,8 +331,8 @@ class Repairs(unittest.TestCase):
 
     def test_invalid_json_usage_is_still_counted(self):
         llm.reset_stats()
-        response = SimpleNamespace(output_text='not JSON',
-                                   usage=SimpleNamespace(input_tokens=17, output_tokens=9))
+        response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='not JSON'))],
+                                   usage=SimpleNamespace(prompt_tokens=17, completion_tokens=9))
         with patch.object(llm, '_create_with_backoff', return_value=response):
             with self.assertRaises(ValueError):
                 llm.complete_json('system', 'user', {}, 0.7)
@@ -356,11 +358,10 @@ class Repairs(unittest.TestCase):
 
 class TransportRepairs(unittest.TestCase):
     def response(self, content=None):
-        # The Responses API shape: output[] of typed items; reasoning items carry no text.
+        # The Chat Completions shape Groq returns.
         return SimpleNamespace(
-            output=[SimpleNamespace(type='reasoning', content=[]),
-                    SimpleNamespace(type='message', content=[SimpleNamespace(text=content or json.dumps(GOOD))])],
-            usage=SimpleNamespace(input_tokens=10, output_tokens=5))
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content or json.dumps(GOOD)))],
+            usage=SimpleNamespace(prompt_tokens=10, completion_tokens=5))
 
     def test_unsupported_capabilities_are_removed_persistently(self):
         requests = []
@@ -368,66 +369,63 @@ class TransportRepairs(unittest.TestCase):
             requests.append(request)
             if 'temperature' in request:
                 raise ValueError('temperature is not supported')
-            if 'text' in request:
-                raise ValueError('text.format json_schema is not supported')
+            if 'response_format' in request:
+                raise ValueError('response_format json_schema is not supported by this model')
             return self.response()
-        client = SimpleNamespace(responses=SimpleNamespace(create=create))
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
         with patch.object(llm, 'client', return_value=client), patch.object(llm, '_pace'), \
                 patch.object(llm, '_temperature_ok', None), patch.object(llm, '_structured_ok', None):
             llm.complete_json('system', 'user', {}, 0.7)
             llm.complete_json('system', 'user', {}, 0.3)
-        self.assertIn('text', requests[0])
+        self.assertIn('response_format', requests[0])
         self.assertEqual(len(requests), 4)
         self.assertNotIn('temperature', requests[-1])
-        self.assertNotIn('text', requests[-1])
-        self.assertEqual(requests[-1]['store'], False)
-        self.assertIn('max_output_tokens', requests[-1])
+        self.assertNotIn('response_format', requests[-1])
+        self.assertIn('max_tokens', requests[-1])
+        self.assertIn('messages', requests[-1])
 
-    def test_explicit_fast_model_disables_reasoning(self):
-        fast = 'grok-4.3'
-        with patch.object(llm, 'MODEL', 'grok-4.6'), \
+    def test_think_block_is_stripped_before_parsing(self):
+        reply = '<think>weighing the options</think>\n' + json.dumps(GOOD)
+        with patch.object(llm, '_create_with_backoff', return_value=self.response(reply)):
+            parsed, usage = llm.complete_json('system', 'user', {}, 0.7)
+        self.assertEqual(parsed['choice'], GOOD['choice'])
+        self.assertEqual(usage, {'input_tokens': 10, 'output_tokens': 5})
+
+    def test_default_request_carries_no_reasoning_option(self):
+        # The committed cache key includes inference_options(); the default must stay empty.
+        with patch.dict(os.environ, {}, clear=True), patch.object(llm, 'MODEL', 'qwen/qwen3.8-27b'), \
                 patch.object(llm, '_create_with_backoff', return_value=self.response()) as transport:
-            llm.complete_json('system', 'user', {}, 0.7, model=fast)
-        request = transport.call_args.args[0]
-        self.assertEqual(request['model'], fast)
-        self.assertEqual(request['reasoning'], {'effort': 'none'})
+            llm.complete_json('system', 'user', {}, 0.7)
+            self.assertEqual(llm.inference_options(model='qwen/qwen3.8-27b'), {})
+            self.assertEqual(llm.inference_options('high', model='qwen/qwen3.8-27b'), {})
+        self.assertNotIn('reasoning_effort', transport.call_args.args[0])
 
-    def test_default_decision_model_preserves_legacy_models(self):
-        with patch.object(llm, 'DECISION_MODEL', None, create=True):
-            with patch.object(llm, 'MODEL', 'grok-4.6'):
-                self.assertEqual(llm.decision_model(), 'grok-4.3')
-            with patch.object(llm, 'MODEL', 'qwen/qwen3.8-27b'):
-                self.assertEqual(llm.decision_model(), 'qwen/qwen3.8-27b')
+    def test_default_decision_model_follows_model(self):
+        with patch.object(llm, 'DECISION_MODEL', None, create=True), patch.object(llm, 'MODEL', 'qwen/qwen3.8-27b'):
+            self.assertEqual(llm.decision_model(), 'qwen/qwen3.8-27b')
         with patch.object(llm, 'DECISION_MODEL', 'test-fast', create=True):
             self.assertEqual(llm.decision_model(), 'test-fast')
 
-    def test_supported_grok_requests_default_to_low_effort(self):
-        with patch.dict(os.environ, {}, clear=True), patch.object(llm, 'MODEL', 'grok-4.6'), \
-                patch.object(llm, '_create_with_backoff', return_value=self.response()) as transport:
-            llm.complete_json('system', 'user', {}, 0.7)
-        self.assertEqual(transport.call_args.args[0]['reasoning'], {'effort': 'low'})
-
-    def test_translation_keeps_high_effort_when_decisions_use_low(self):
+    def test_translation_requests_high_effort_on_models_that_support_it(self):
         reply = {'situation': 'incumbent_change', 'focus_shop': 'simffee', 'label': 'Open at six',
                  'actions': [{'action': 'set_open', 'shop': 'simffee', 'from_day': 5,
                               'item': None, 'value': '06:00'}], 'unsupported': []}
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'SIMFFEE_REASONING_EFFORT': 'low'}), \
-                patch.object(llm, 'MODEL', 'grok-4.6'), \
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True), \
+                patch.object(llm, 'MODEL', 'openai/gpt-oss-120b'), \
                 patch.object(llm, '_create_with_backoff', return_value=self.response(json.dumps(reply))) as transport:
             result = translate.translate('open at 6', cache_dir=Path(directory))
         self.assertIsNotNone(result['scenario'])
-        self.assertEqual(transport.call_args.args[0]['reasoning'], {'effort': 'high'})
+        self.assertEqual(transport.call_args.args[0]['reasoning_effort'], 'high')
 
-    def test_reasoning_effort_can_be_overridden_without_affecting_other_models(self):
-        with patch.dict(os.environ, {'SIMFFEE_REASONING_EFFORT': 'high'}):
-            with patch.object(llm, 'MODEL', 'grok-4.6'):
-                self.assertEqual(llm.inference_options(), {'reasoning': {'effort': 'high'}})
-            with patch.object(llm, 'MODEL', 'qwen/qwen3.8-27b'):
-                self.assertEqual(llm.inference_options(), {})
+    def test_reasoning_effort_env_override_is_per_model(self):
+        with patch.dict(os.environ, {'SIMFFEE_REASONING_EFFORT': 'none'}):
+            self.assertEqual(llm.inference_options(model='qwen/qwen3.8-27b'), {'reasoning_effort': 'none'})
+        with patch.dict(os.environ, {'SIMFFEE_REASONING_EFFORT': 'low'}):
+            self.assertEqual(llm.inference_options(model='openai/gpt-oss-20b'), {'reasoning_effort': 'low'})
 
     def test_invalid_reasoning_effort_is_rejected_before_transport(self):
         with patch.dict(os.environ, {'SIMFFEE_REASONING_EFFORT': 'invalid'}), \
-                patch.object(llm, 'MODEL', 'grok-4.6'), patch.object(llm, '_create_with_backoff') as transport:
+                patch.object(llm, 'MODEL', 'qwen/qwen3.8-27b'), patch.object(llm, '_create_with_backoff') as transport:
             with self.assertRaises(ValueError):
                 llm.complete_json('system', 'user', {}, 0.7)
         transport.assert_not_called()
@@ -453,17 +451,17 @@ class TransportRepairs(unittest.TestCase):
 
     def test_client_uses_configured_timeout_without_sdk_retries(self):
         factory = Mock()
-        with patch.dict(os.environ, {'XAI_API_KEY': 'test-placeholder'}, clear=True), \
+        with patch.dict(os.environ, {'GROQ_API_KEY': 'test-placeholder'}, clear=True), \
                 patch.dict(sys.modules, {'openai': SimpleNamespace(OpenAI=factory)}), \
                 patch.object(llm, '_client', None), patch.object(llm, 'TIMEOUT_S', 180):
             llm.client()
         self.assertEqual(factory.call_args.kwargs['timeout'], 180)
         self.assertEqual(factory.call_args.kwargs['max_retries'], 0)
-        self.assertEqual(factory.call_args.kwargs['base_url'], 'https://api.x.ai/v1')
+        self.assertEqual(factory.call_args.kwargs['base_url'], 'https://api.groq.com/openai/v1')
 
     def test_rate_limit_backoff_is_bounded(self):
         create = Mock(side_effect=RuntimeError('429 rate_limit Please try again in 0.1s'))
-        client = SimpleNamespace(responses=SimpleNamespace(create=create))
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
         with patch.object(llm, 'client', return_value=client), patch.object(llm, '_pace'), patch.object(llm.time, 'sleep'):
             with self.assertRaises(RuntimeError):
                 llm._create_with_backoff({})

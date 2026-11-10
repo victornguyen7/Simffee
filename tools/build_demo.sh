@@ -2,13 +2,15 @@
 # BACKEND_PLAN 6.1: `git clone` + one command reproduces public/runs.json with no API key,
 # from the committed cache/. This is that command.
 #
-#   ./tools/build_demo.sh            # cached engine run -> validate -> runs.json
-#   ./tools/build_demo.sh --offline  # same, but never call the API even if a key is set
+#   ./tools/build_demo.sh            # offline (the default): replay cache/ -> validate -> runs.json
+#   ./tools/build_demo.sh --live     # fill cache misses with live calls (needs GROQ_API_KEY)
+#
+# Offline replays pin the model settings the committed cache was filled with
+# (engine.cli --cache-defaults) unless --model is given, so .env overrides cannot break it.
 #
 # Steps, each of which fails loudly:
-#   1. engine: every scenario x seeds 0-4 into runs/ (gitignored). With a warm cache/ this
-#      makes zero API calls; without one and without a key, pass --offline and the
-#      reappraisals fall back and are flagged llm_failed.
+#   1. engine: every scenario x $SEEDS (default 0-2, what cache/ covers) into a temp dir.
+#      With a warm cache/ this makes zero API calls; offline, a cache miss fails the run.
 #   2. validate: every row against the frozen contract.
 #   3. build_runs: analyzer over runs/ -> public/runs.json. Narration is attempted only
 #      when credentials are present.
@@ -36,7 +38,7 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ "$OFFLINE" -eq 0 ]]; then
   if ! python3 -c 'import sys; from engine.llm import available; sys.exit(0 if available() else 2)'; then
-    echo "A valid local xAI configuration is required; set XAI_API_KEY in .env or the environment" >&2
+    echo "A valid local Groq configuration is required; set GROQ_API_KEY in .env or the environment" >&2
     exit 2
   fi
 fi
@@ -50,7 +52,10 @@ mkdir -p "$OUT"
 SEEDS="${SEEDS:-0-2}"   # the committed cache covers seeds 0-2; SEEDS=0-4 needs a live fill
 ENGINE_ARGS=(--all --seeds "$SEEDS" --quiet --require-complete --out "$OUT/runs" --cache "$CACHE")
 if [[ -n "$MODEL" ]]; then ENGINE_ARGS+=(--model "$MODEL"); fi
-if [[ "$OFFLINE" -eq 1 ]]; then ENGINE_ARGS+=(--offline); fi
+if [[ "$OFFLINE" -eq 1 ]]; then
+  ENGINE_ARGS+=(--offline)
+  if [[ -z "$MODEL" ]]; then ENGINE_ARGS+=(--cache-defaults); fi
+fi
 
 echo "== 1/3 engine: $OUT =="
 python3 -m engine.cli "${ENGINE_ARGS[@]}"

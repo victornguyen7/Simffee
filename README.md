@@ -59,13 +59,16 @@ To just rebuild the static demo bundle without running a server:
 
 ### Live model calls (optional)
 
-Interactive what-ifs that aren't already cached need a provider key. Copy your key into
-a local `.env` (git-ignored, keep it `600`):
+Interactive what-ifs need a [Groq](https://console.groq.com/keys) API key. Put it in a
+local `.env` (git-ignored, keep it `600`):
 
 ```
-XAI_API_KEY=...
-SIMFFEE_MODEL=qwen/qwen3.8-27b   # optional override
+GROQ_API_KEY=...
+# SIMFFEE_MODEL=qwen/qwen3.8-27b   # the default, and the model cache/ was filled with
 ```
+
+Changing `SIMFFEE_MODEL` or `SIMFFEE_MAX_TOKENS` is fine for live runs; the demo scripts
+still replay the committed cache with its own settings (`engine.cli --cache-defaults`).
 
 See [engine/README.md](engine/README.md) for the full list of `SIMFFEE_*` environment
 variables and their defaults.
@@ -99,7 +102,7 @@ Frontend: `npm run lint` and `npm run build` (runs `tsc -b` then `vite build`).
 
 ## Tech stack
 
-Python (stdlib `http.server`, `dataclasses`, OpenAI SDK pointed at xAI's Responses API)
+Python (stdlib `http.server`, `dataclasses`, OpenAI SDK pointed at Groq's OpenAI-compatible API)
 on the backend; React 19 + TypeScript + Vite on the frontend. No database — everything
 is JSON/JSONL on the local filesystem. Full rationale in
 [ARCHITECTURE.md](ARCHITECTURE.md).

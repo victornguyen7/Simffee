@@ -79,7 +79,7 @@ Versions below are declared dependency ranges or source defaults, not a claim ab
 | HTTP server | Standard-library `http.server.ThreadingHTTPServer` | Small JSON API bound to `127.0.0.1`, port `8765` by default. Not FastAPI, Flask, Django, or ASGI. |
 | Domain modeling | `dataclasses`, type hints, dictionaries, local validators | `Twin`, `Scenario`, `Row`, and `Disruption`; no ORM or Pydantic dependency. |
 | Execution | Sequential simulation loop; `ThreadPoolExecutor` and `threading.Lock` in the API | Background execution with serialized engine runs. |
-| LLM transport | OpenAI Python SDK pointed at xAI's Responses API | `client.responses.create`, structured JSON when supported, local validation in all cases. Using this SDK does not mean requests go to OpenAI. |
+| LLM transport | OpenAI Python SDK pointed at Groq (`https://api.groq.com/openai/v1`) | `client.chat.completions.create`, `json_schema` structured output when supported, local validation in all cases. Using this SDK does not mean requests go to OpenAI. |
 | Model selection | `SIMFFEE_MODEL`; source fallback `qwen/qwen3.8-27b` | Environment-configurable. Provider/model compatibility must be checked before live use; the source fallback is not a verified provider capability. |
 | Persistence | JSON and JSONL on the local filesystem | Input records, cached decisions, trajectories, daily snapshots, live-run registry, and cost ledgers. |
 | Frontend | React / React DOM `^19.2.8`, TypeScript `~6.0.2` | Dashboard, playback, what-if controls, and town visualization. |
@@ -225,7 +225,7 @@ The decision cache hashes scenario/seed/day, twin data, mutable state, shop fact
 
 On a live miss, reappraisal requests structured JSON at temperature `0.7`, with one validation retry at `0.3`. The transport can drop unsupported temperature or structured-output parameters, while keeping local validation. SDK retries are disabled; the transport implements pacing and bounded rate-limit backoff itself.
 
-Offline cache misses and exhausted failures produce explicitly flagged fallback rows. They are diagnostic output, not evidence of customer preferences. Provider errors are classified/sanitized before entering decision rows. Requests set `store=False`; this is a request setting, not a blanket guarantee about provider retention policies.
+Offline cache misses and exhausted failures produce explicitly flagged fallback rows. They are diagnostic output, not evidence of customer preferences. Provider errors are classified/sanitized before entering decision rows. Retention of request content is governed by the provider's (Groq's) data policy; the engine sends no twin data beyond the prompt.
 
 ### Natural-language translation
 
@@ -239,8 +239,8 @@ The transport loads an allowlisted set of variables from the private repository 
 
 | Variable | Source default / purpose |
 | --- | --- |
-| `XAI_API_KEY` | Required for live transport; no embedded credential. |
-| `SIMFFEE_MODEL` | `qwen/qwen3.8-27b`; choose a model supported by the configured xAI endpoint. |
+| `GROQ_API_KEY` | Required for live transport; no embedded credential. |
+| `SIMFFEE_MODEL` | `qwen/qwen3.8-27b` (served by Groq; the model `cache/` was filled with). |
 | `SIMFFEE_MAX_TOKENS` | `400` output tokens per request. |
 | `SIMFFEE_MIN_INTERVAL` | `2.2` seconds minimum request spacing. |
 | `SIMFFEE_TIMEOUT_S` | `180` seconds per provider request. |

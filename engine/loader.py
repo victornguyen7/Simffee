@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 DATA = Path(__file__).resolve().parent.parent / "data"
+
+# Scenario ids become directory names (runs/<id>/, live/<id>/), so they must never carry a
+# path separator, "..", or an absolute path. Library ids and generated `user_<hex>` ids fit.
+SCENARIO_ID = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_-]{0,63}")
+
+
+def check_scenario_id(value: Any, what: str = "scenario id") -> str:
+    if not isinstance(value, str) or not SCENARIO_ID.fullmatch(value):
+        raise ValueError(f"{what} must be 1-64 letters, digits, '_' or '-' (not starting with -)")
+    return value
 
 
 @dataclass(frozen=True)
@@ -70,7 +81,10 @@ class Scenario:
 
 
 def scenario_from_dict(raw: dict[str, Any]) -> Scenario:
-    """Build a Scenario from its JSON shape; validates the override blocks."""
+    """Build a Scenario from its JSON shape; validates the id, parent and override blocks."""
+    check_scenario_id(raw.get("id"))
+    if raw.get("parent") is not None:
+        check_scenario_id(raw["parent"], "scenario parent")
     overrides = raw.get("overrides", [])
     for i, ov in enumerate(overrides):
         for key in ("from_day", "shop"):

@@ -6,9 +6,9 @@ Spec: [../spec/SPEC.md](../spec/SPEC.md) · Plan: [../spec/BACKEND_PLAN.md](../s
 
 ## Run safely
 
-Python 3.11+, stdlib plus `openai` (used against xAI's Responses API) for live requests (`pip install -r requirements.txt`).
+Python 3.11+, stdlib plus `openai` (pointed at Groq's OpenAI-compatible Chat Completions API) for live requests (`pip install -r requirements.txt`).
 Offline replay, validation, analysis, narration, and stubbed tests need no credentials.
-The engine automatically reads the repository's private `.env` for `XAI_API_KEY`,
+The engine automatically reads the repository's private `.env` for `GROQ_API_KEY`,
 `SIMFFEE_MODEL`, `SIMFFEE_DECISION_MODEL`, `SIMFFEE_MAX_TOKENS`, `SIMFFEE_MIN_INTERVAL`,
 `SIMFFEE_TIMEOUT_S`, and `SIMFFEE_REASONING_EFFORT`. Existing shell variables take precedence,
 and CLI `--model` overrides the decision model. Values may
@@ -34,23 +34,26 @@ Add `--require-complete` to the engine or bundle command for a release gate:
 exit 1 means invalid data; exit 2 means incomplete/unverified trajectories.
 A partial diagnostic run is not a complete seven-day run.
 
-Live generation requires `XAI_API_KEY` and explicit approval of model and spend.
+Live generation requires `GROQ_API_KEY` and explicit approval of model and spend.
 `SIMFFEE_TIMEOUT_S` defaults to 180 seconds per provider request (SDK retries remain
 disabled). This is separate from the API's `--timeout` (240 seconds for the whole
 what-if) and the frontend's 300-second fetch deadline; cold runs can still exceed them.
 The default model is `qwen/qwen3.8-27b` with `SIMFFEE_MAX_TOKENS` 400 — the pair the
 committed `cache/` was filled with; both are in the cache key, so change them only with a
-refill. Override with `SIMFFEE_MODEL` / `--model` and `SIMFFEE_MAX_TOKENS`. No embedded credential fallback
+refill. Override with `SIMFFEE_MODEL` / `--model` and `SIMFFEE_MAX_TOKENS`. `--cache-defaults` replays
+with exactly that pair whatever `.env` says (the demo scripts pass it), and an offline run that
+misses the cache under custom settings prints a hint saying so. No embedded credential fallback
 exists. The CLI reports request attempts and response token usage, including
 invalid JSON responses; it does not invent a dollar estimate for unknown pricing.
 
-With `SIMFFEE_MODEL=grok-4.6` (or `grok-4.5`), customer decisions default to `grok-4.3`
-with reasoning disabled. Translation and the independent AI review use `SIMFFEE_MODEL`
-with high effort. Override customer selection with `SIMFFEE_DECISION_MODEL`; for example,
-set it to `grok-4.6` to restore that model for decisions. `SIMFFEE_REASONING_EFFORT` controls
-customer reasoning; absent an override it is `none` for Grok 4.3 and `low` for 4.5/4.6.
-Model and effective effort are part of decision cache identity. Other legacy models retain
-their existing selection, preserving Qwen replay. `/health` exposes both model roles.
+Customer decisions use `SIMFFEE_MODEL` unless `SIMFFEE_DECISION_MODEL` names a different
+Groq model (e.g. `openai/gpt-oss-20b` for decisions with `openai/gpt-oss-120b` for
+translation and review). `SIMFFEE_REASONING_EFFORT` sets Groq's `reasoning_effort` for
+decisions where the model supports it (`low`/`medium`/`high` for `openai/gpt-oss-*`,
+`none`/`default` for `qwen/*`); translation and review ask for `high`, which is dropped on
+models that cannot take it. Nothing is sent by default, so the default request matches the
+committed cache. Model and effective effort are part of decision cache identity. `/health`
+exposes both model roles.
 Restart the backend after changing code or environment settings.
 
 The frontend submits `POST /whatif` with `fresh: true`: translation bypasses its cache,
@@ -84,7 +87,7 @@ counts. Fallback-filled trajectories are not reviewed as genuine customer eviden
 | `decide.reappraise`, `experienced_shops` | 2.3, 4.3, 8 | Untried-alternative gate, cache, deliberation, validation |
 | `decide._fallback` | 4.3 | Sanitized, explicitly failed diagnostic decision |
 | `prompt.build` | 4.3 | Grounded identity, availability, options, three-day memory |
-| `llm.complete_json` | 4.3 | Bounded xAI Responses-API transport and capability fallback |
+| `llm.complete_json` | 4.3 | Bounded Groq Chat Completions transport and capability fallback |
 | `cache.key`, `get`, `put` | 10.1 | Versioned decision-input cache |
 | `loop.run_day`, `run` | 4.1, 5.1 | Visits, state updates, snapshots, parent forks |
 | `cli.main` | 4.3 | Execution, per-seed coverage, strict completion gate |

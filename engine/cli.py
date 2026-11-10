@@ -11,6 +11,8 @@ Runs with no API key while decide.reappraise is a stub, or with --offline.
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -87,10 +89,21 @@ def main() -> int:
     ap.add_argument("--offline", action="store_true",
                     help="never call the API; uncached reappraisals fall back and flag the row")
     ap.add_argument("--model", default=None, help=f"override the decision model (default {llm.decision_model()})")
+    ap.add_argument("--cache-defaults", action="store_true",
+                    help=f"replay with the settings the committed cache was filled with ({llm.DEFAULT_MODEL}, "
+                         f"max_tokens {llm.DEFAULT_MAX_TOKENS}, no reasoning override), whatever .env says")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--require-complete", action="store_true", help="exit 2 on fallbacks or missing/mixed model provenance")
     args = ap.parse_args()
 
+    if args.cache_defaults and args.model:
+        ap.error("--cache-defaults and --model are mutually exclusive")
+    if args.cache_defaults:
+        # Model, max_tokens and reasoning options are all part of the decision cache key.
+        llm.MODEL = llm.DEFAULT_MODEL
+        llm.DECISION_MODEL = None
+        llm.MAX_TOKENS = llm.DEFAULT_MAX_TOKENS
+        os.environ.pop("SIMFFEE_REASONING_EFFORT", None)
     if args.model:
         llm.MODEL = args.model
         llm.DECISION_MODEL = args.model
@@ -147,6 +160,12 @@ def main() -> int:
     )
     if not report["complete"]:
         print("  INCOMPLETE: diagnostic trajectories only; fallback decisions are not customer evidence.")
+        customised = (llm.decision_model(), llm.MAX_TOKENS) != (llm.DEFAULT_MODEL, llm.DEFAULT_MAX_TOKENS)
+        if args.offline and stats["failures"] and customised:
+            print(f"  HINT: offline replay with model {llm.decision_model()} / max_tokens {llm.MAX_TOKENS}, but the "
+                  f"committed cache was filled with {llm.DEFAULT_MODEL} / {llm.DEFAULT_MAX_TOKENS}; both are part of "
+                  "the cache key. Pass --cache-defaults (or unset SIMFFEE_MODEL / SIMFFEE_DECISION_MODEL / "
+                  "SIMFFEE_MAX_TOKENS) to replay the committed demo.", file=sys.stderr)
     if transport.get("quota_failures"):
         print(f"  QUOTA: {transport['quota_failures']} call(s) refused by the provider's rate/daily-token limit. "
               "Not an engine fault; wait for the window or raise the tier, then re-run with the same cache.")

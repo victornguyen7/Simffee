@@ -46,7 +46,10 @@ export default function WhatIf() {
     <div className="whatif-page">
       <header className="whatif-page__head">
         <h2>Ask the simulation</h2>
-        <p className="dim">Needs the local API: run <code>bash tools/serve_demo.sh</code> in another terminal.</p>
+        <p className="dim">
+          Needs the local API (run <code>bash tools/serve_demo.sh</code> in another terminal) and a
+          {' '}<code>GROQ_API_KEY</code> in <code>.env</code> to simulate; without them you get illustrative sketches.
+        </p>
       </header>
       <WhatIfBox runs={runs} current={current} onAnswer={setCurrent} />
     </div>

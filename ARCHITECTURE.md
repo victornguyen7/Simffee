@@ -242,6 +242,10 @@ The transport loads an allowlisted set of variables from the private repository 
 | `GROQ_API_KEY` | Required for live transport; no embedded credential. |
 | `SIMFFEE_MODEL` | `qwen/qwen3.8-27b` (served by Groq; the model `cache/` was filled with). |
 | `SIMFFEE_MAX_TOKENS` | `400` output tokens per request. |
+| `SIMFFEE_FALLBACK_MODEL` | `qwen3.8`: local Ollama model used when Groq is out of tokens; empty disables the fallback. |
+| `SIMFFEE_FALLBACK_URL` | `http://localhost:11434/v1`: any OpenAI-compatible server. |
+| `SIMFFEE_FALLBACK_MAX_TOKENS` | `800` output tokens for fallback requests. |
+| `SIMFFEE_FALLBACK_REASONING_EFFORT` | `none`: turns local models' thinking off (left on, it used the whole budget and never answered); empty sends no setting. |
 | `SIMFFEE_MIN_INTERVAL` | `2.2` seconds minimum request spacing. |
 | `SIMFFEE_TIMEOUT_S` | `180` seconds per provider request. |
 | `VITE_API_URL` | Frontend API address; defaults to `http://127.0.0.1:8765`. Not loaded by the backend's `.env` parser. |

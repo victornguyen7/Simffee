@@ -176,8 +176,10 @@ def _fallback(twin: Twin, regular: str, shops_today, reason: str) -> Decision:
     decision["llm_failed"] = True
     allowed = {"offline, not cached", "invalid reply twice", "LLM unavailable", "transport failed",
                "transport failed: quota: daily token limit", "transport failed: rate limit",
-               "transport failed: authentication", "transport failed: model not found", "transport failed: timeout"}
-    safe_reason = reason if reason in allowed else "LLM unavailable"
+               "transport failed: authentication", "transport failed: model not found", "transport failed: timeout",
+               "transport failed: connection"}
+    safe_reason = reason if reason in allowed else (
+        "transport failed" if reason.startswith("transport failed") else "LLM unavailable")
     decision["reasoning"] = f"[llm unavailable: {safe_reason}] {decision['reasoning']}"
     decision["decision_source"] = "fallback"
     return decision
@@ -224,26 +226,37 @@ def reappraise(
     decoded_choices = {value: key for key, value in choice_ids.items()}
     schema = prompt.response_schema([choice_ids.get(s, s) for s in shops_today])
     model = llm.decision_model()
-    context = {
+    base = {
         "twin": asdict(twin), "regular": regular, "disruption": disr.to_dict(),
         "system": prompt.SYSTEM, "user": user, "schema": schema,
-        "model": model, "max_tokens": llm.MAX_TOKENS,
-        **llm.inference_options(model=model),
         "temperatures": [0.7, 0.3], "transport_version": 2,
     }
-    cache_key = cache.key(twin.id, day, scenario_id, seed, state, shops_today, context)
-    provenance = {"decision_source": "llm", "llm_model": model, "llm_cache_key": cache_key}
-    hit = cache.get(cache_key, cache_dir)
-    if hit is not None and hit.get("_model") == model and hit.get("_version") == 2:
+    # One cache identity per model that may answer: Groq's, and the local fallback's. A
+    # fallback answer is cached and labelled as the fallback's, never as Groq's.
+    identities = {model: {**base, "model": model, "max_tokens": llm.MAX_TOKENS,
+                          **llm.inference_options(model=model)}}
+    fallback = llm.fallback_label()
+    if fallback:
+        identities[fallback] = {**base, "model": fallback, "max_tokens": llm.FALLBACK_MAX_TOKENS,
+                                **llm.fallback_options()}
+    keys = {m: cache.key(twin.id, day, scenario_id, seed, state, shops_today, ctx)
+            for m, ctx in identities.items()}
+
+    def provenance(answered: str) -> dict[str, str]:
+        return {"decision_source": "llm", "llm_model": answered, "llm_cache_key": keys[answered]}
+
+    for answered, cache_key in keys.items():
+        hit = cache.get(cache_key, cache_dir)
+        if hit is None or hit.get("_model") != answered or hit.get("_version") != 2:
+            continue
         try:
             decision = _validate(hit, twin, shops_today)
             if hit.get("llm_failed") is not False or len(hit["reasoning"].split()) > MAX_REASONING_WORDS:
                 raise ValueError("invalid cached decision")
         except (ValueError, TypeError, KeyError):
-            pass
-        else:
-            STATS["cache_hits"] += 1
-            return Decision(**decision, **provenance)
+            continue
+        STATS["cache_hits"] += 1
+        return Decision(**decision, **provenance(answered))
 
     if offline:
         return _fallback(twin, regular, shops_today, "offline, not cached")
@@ -258,10 +271,12 @@ def reappraise(
             STATS["llm_calls"] += 1
             STATS["input_tokens"] += usage["input_tokens"]
             STATS["output_tokens"] += usage["output_tokens"]
+            answered = llm.take_answered_by() or model
+            answered = answered if answered in keys else model
             decision = _validate(raw, twin, shops_today)
-            cache.put(cache_key, {**decision, "_model": model, "_version": 2,
-                                  "_temperature": temperature, "_usage": usage}, cache_dir)
-            return Decision(**decision, **provenance)
+            cache.put(keys[answered], {**decision, "_model": answered, "_version": 2,
+                                       "_temperature": temperature, "_usage": usage}, cache_dir)
+            return Decision(**decision, **provenance(answered))
         except llm.LLMUnavailable as exc:
             return _fallback(twin, regular, shops_today, "LLM unavailable")
         except ValueError as exc:                          # bad JSON or bad enum

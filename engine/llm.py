@@ -4,6 +4,12 @@ Groq's OpenAI-compatible Chat Completions API (https://api.groq.com/openai/v1) t
 the `openai` SDK, with the model selected by SIMFFEE_MODEL. GROQ_API_KEY is required for
 live requests; offline/cache replay never constructs a client.
 
+Fallback: when Groq refuses for tokens (a daily quota, or a rate limit that outlasts the
+retries), the same request goes to a local Ollama server's OpenAI-compatible endpoint
+(SIMFFEE_FALLBACK_URL, default http://localhost:11434/v1) with SIMFFEE_FALLBACK_MODEL
+(default qwen3.8; empty disables). Groq is then skipped for a cool-down, and every answer
+records which model actually gave it (answered_by()), so provenance stays honest.
+
 Two capabilities are probed once per model rather than assumed, because they
 vary by model and by SDK version:
 
@@ -18,6 +24,7 @@ import json
 import os
 import re
 import shlex
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -31,7 +38,9 @@ def load_environment(path: Path | None = None) -> None:
     if not path.exists():
         return
     allowed = {"GROQ_API_KEY", "SIMFFEE_MODEL", "SIMFFEE_MAX_TOKENS", "SIMFFEE_MIN_INTERVAL",
-               "SIMFFEE_TIMEOUT_S", "SIMFFEE_REASONING_EFFORT", "SIMFFEE_DECISION_MODEL"}
+               "SIMFFEE_TIMEOUT_S", "SIMFFEE_REASONING_EFFORT", "SIMFFEE_DECISION_MODEL",
+               "SIMFFEE_FALLBACK_MODEL", "SIMFFEE_FALLBACK_URL", "SIMFFEE_FALLBACK_MAX_TOKENS",
+               "SIMFFEE_FALLBACK_REASONING_EFFORT"}
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         key, separator, raw = line.strip().removeprefix("export ").partition("=")
         key = key.strip()
@@ -58,6 +67,17 @@ DECISION_MODEL = os.environ.get("SIMFFEE_DECISION_MODEL", "").strip() or None
 # away as invalid -- which shows up as retries and fallbacks, not as an error.
 MAX_TOKENS = int(os.environ.get("SIMFFEE_MAX_TOKENS", str(DEFAULT_MAX_TOKENS)))
 BASE_URL = "https://api.groq.com/openai/v1"
+
+# Local Ollama, used only when Groq is out of tokens. Local Qwen3 models "think" before they
+# answer and, left on, spent a 2000-token budget thinking without ever answering (qwen3:4b,
+# 75 s, empty reply); with reasoning_effort "none" the same request answers in ~4 s and ~60
+# tokens. Thinking is therefore off by default ("" sends no setting, for models without it).
+FALLBACK_MODEL = os.environ.get("SIMFFEE_FALLBACK_MODEL", "qwen3.8").strip()
+FALLBACK_URL = os.environ.get("SIMFFEE_FALLBACK_URL", "http://localhost:11434/v1").strip()
+FALLBACK_MAX_TOKENS = int(os.environ.get("SIMFFEE_FALLBACK_MAX_TOKENS", "800"))
+FALLBACK_REASONING_EFFORT = os.environ.get("SIMFFEE_FALLBACK_REASONING_EFFORT", "none").strip().lower()
+# How long Groq is skipped after it refuses: a daily quota will not clear in a minute.
+PRIMARY_COOLDOWN_S = {"quota": 900.0, "rate limit": 60.0}
 TIMEOUT_S = float(os.environ.get("SIMFFEE_TIMEOUT_S", "180"))          # reasoning models think before they answer
 
 # Providers cap requests and tokens per minute. A bulk run is ~350 calls, so without
@@ -157,6 +177,12 @@ _client_error: str | None = None
 _temperature_ok: bool | None = None     # None = not probed yet
 _structured_ok: bool | None = None
 _capability_model = MODEL
+_fallback_client = None
+_fallback_caps: dict[str, bool | None] = {"temperature": None, "structured": None}
+_primary_blocked_until = 0.0
+_primary_block_reason = "LLM transport failed (rate limit)"   # Groq's refusal that started the cool-down
+_fallback_warned: set[str] = set()
+_answered_by: ContextVar[str | None] = ContextVar("llm_answered_by", default=None)
 
 
 class LLMUnavailable(RuntimeError):
@@ -190,6 +216,42 @@ def available() -> bool:
         return True
     except LLMUnavailable:
         return False
+
+
+def fallback_label() -> str | None:
+    """How a fallback answer is labelled in provenance, or None when no fallback is set."""
+    return f"ollama/{FALLBACK_MODEL}" if FALLBACK_MODEL and FALLBACK_URL else None
+
+
+def fallback_active() -> bool:
+    """True while Groq is being skipped after refusing for tokens."""
+    return bool(fallback_label()) and time.monotonic() < _primary_blocked_until
+
+
+def fallback_options() -> dict[str, Any]:
+    """Extra request fields for the fallback; part of its cache identity, as they change answers."""
+    return {"reasoning_effort": FALLBACK_REASONING_EFFORT} if FALLBACK_REASONING_EFFORT else {}
+
+
+def take_answered_by() -> str | None:
+    """The model that answered the last complete_json call in this context, then cleared:
+    the primary model name, or fallback_label(). None when nothing has answered (or a test
+    stubbed complete_json), in which case the caller's requested model is the answer."""
+    value = _answered_by.get()
+    _answered_by.set(None)
+    return value
+
+
+def _create_fallback(request: dict[str, Any]):
+    """One call to the local Ollama server. No pacing: there is no provider quota locally."""
+    global _fallback_client
+    stats = _local_stats.get() or STATS
+    if _fallback_client is None:
+        from openai import OpenAI
+        # Ollama ignores the key, but the SDK requires one.
+        _fallback_client = OpenAI(api_key="ollama", base_url=FALLBACK_URL, timeout=TIMEOUT_S, max_retries=0)
+    stats["attempts"] += 1
+    return _fallback_client.chat.completions.create(**request)
 
 
 def _create_with_backoff(request: dict[str, Any]):
@@ -285,19 +347,71 @@ def complete_json(
     reasoning_effort: str | None = None,
     model: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, int]]:
-    """One call. Returns (parsed object, token usage).
+    """One call. Returns (parsed object, token usage); answered_by() says who answered.
 
     Raises ValueError when the reply is not usable JSON -- the caller owns the
     retry policy, because what to do with a bad reply is a simulation decision,
     not a transport one.
     """
-    global _temperature_ok, _structured_ok, _capability_model
+    global _temperature_ok, _structured_ok, _capability_model, _primary_blocked_until, _primary_block_reason
     stats = _local_stats.get() or STATS
     model = model or MODEL
+    _answered_by.set(None)
     if _capability_model != model:
         _temperature_ok = _structured_ok = None
         _capability_model = model
 
+    if fallback_active():
+        primary_error = RuntimeError(_primary_block_reason)
+    else:
+        caps = {"temperature": _temperature_ok, "structured": _structured_ok}
+        try:
+            out = _request_json(_create_with_backoff, system, user, schema, temperature, model=model,
+                                options=inference_options(reasoning_effort, model=model),
+                                max_tokens=MAX_TOKENS, caps=caps, stats=stats)
+            _answered_by.set(model)
+            return out
+        except RuntimeError as exc:
+            kind = _out_of_tokens(exc)
+            if kind is None or not fallback_label():
+                raise
+            _primary_blocked_until = time.monotonic() + PRIMARY_COOLDOWN_S[kind]
+            _primary_block_reason = str(exc)
+            primary_error = exc
+        finally:
+            _temperature_ok, _structured_ok = caps["temperature"], caps["structured"]
+
+    try:
+        out = _request_json(_create_fallback, system, user, schema, temperature, model=FALLBACK_MODEL,
+                            options=fallback_options(), max_tokens=FALLBACK_MAX_TOKENS,
+                            caps=_fallback_caps, stats=stats)
+    except RuntimeError as exc:
+        # The fallback is down too. Report Groq's reason (it is the root cause) and say once,
+        # server-side, why the fallback could not help.
+        reason = str(exc)
+        if reason not in _fallback_warned:
+            _fallback_warned.add(reason)
+            print(f"[llm] fallback {fallback_label()} at {FALLBACK_URL} failed: {reason}", file=sys.stderr)
+        raise primary_error from None
+    _answered_by.set(fallback_label())
+    return out
+
+
+def _out_of_tokens(exc: RuntimeError) -> str | None:
+    """'quota' or 'rate limit' when the primary refused for tokens, else None."""
+    text = str(exc)
+    if text.startswith("LLM transport failed (quota"):
+        return "quota"
+    if text == "LLM transport failed (rate limit)":
+        return "rate limit"
+    return None
+
+
+def _request_json(create, system: str, user: str, schema: dict[str, Any], temperature: float, *,
+                  model: str, options: dict[str, Any], max_tokens: int, caps: dict[str, bool | None],
+                  stats: dict[str, int]) -> tuple[dict[str, Any], dict[str, int]]:
+    """Send one request through `create`, dropping unsupported features (recorded in `caps`),
+    classify transport failures without provider text, and parse the JSON reply."""
     for _ in range(3):          # at most one drop of each unsupported feature
         messages = [
             {"role": "system", "content": system},
@@ -305,13 +419,13 @@ def complete_json(
         ]
         request: dict[str, Any] = {
             "model": model,
-            **inference_options(reasoning_effort, model=model),
-            "max_tokens": MAX_TOKENS,
+            **options,
+            "max_tokens": max_tokens,
             "messages": messages,
         }
-        if _temperature_ok is not False:
+        if caps["temperature"] is not False:
             request["temperature"] = temperature
-        if _structured_ok is not False:
+        if caps["structured"] is not False:
             request["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {"name": "response", "strict": True, "schema": schema},
@@ -321,9 +435,9 @@ def complete_json(
         messages[0]["content"] = system + f"\n\nYou must respond with a JSON object that matches this schema:\n{json.dumps(schema, indent=2)}"
 
         try:
-            response = _create_with_backoff(request)
-            _temperature_ok = "temperature" in request
-            _structured_ok = "response_format" in request
+            response = create(request)
+            caps["temperature"] = "temperature" in request
+            caps["structured"] = "response_format" in request
             break
         except LLMUnavailable:
             raise
@@ -331,10 +445,10 @@ def complete_json(
             message = str(exc).lower()
             unsupported = any(word in message for word in ("not support", "unsupported", "not allowed", "unknown parameter", "not permitted", "invalid"))
             if unsupported and "temperature" in message and "temperature" in request:
-                _temperature_ok = False
+                caps["temperature"] = False
                 continue
             if unsupported and any(word in message for word in ("response_format", "json_schema", "structured", "schema")) and "response_format" in request:
-                _structured_ok = False
+                caps["structured"] = False
                 continue
             # Sanitised (no provider text reaches a trajectory), but classified, so a run
             # summary can say *why* a fallback happened. A daily quota is the one that
@@ -349,7 +463,10 @@ def complete_json(
                 raise RuntimeError("LLM transport failed (model not found)") from None
             if isinstance(exc, TimeoutError) or type(exc).__name__ == "APITimeoutError":
                 raise RuntimeError("LLM transport failed (timeout)") from None
-            raise RuntimeError("LLM transport failed") from None
+            if isinstance(exc, ConnectionError) or type(exc).__name__ == "APIConnectionError":
+                raise RuntimeError("LLM transport failed (connection)") from None
+            # The class name is safe to surface (no provider text) and makes the failure diagnosable.
+            raise RuntimeError(f"LLM transport failed ({type(exc).__name__})") from None
     else:
         raise ValueError("could not find a request shape this model accepts")
 

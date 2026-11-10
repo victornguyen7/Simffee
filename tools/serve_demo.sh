@@ -27,6 +27,9 @@ rm -rf "$LIB"
 "$PY" tools/validate.py "$LIB"
 
 echo "== 2/3 API on http://127.0.0.1:8765 =="
+# --timeout 60: a live what-if often takes ~3 minutes (paced model calls). After 60 s the
+# request answers "still running" with a pending_run_id, the run carries on, and the Ask
+# page polls GET /runs/<id> until the result lands -- quicker feedback than a 4-minute wait.
 "$PY" -m api.server --library "$LIB" --cache cache --live-dir runs/live --port 8765 --timeout 60 &
 API_PID=$!
 trap 'kill $API_PID 2>/dev/null || true' EXIT

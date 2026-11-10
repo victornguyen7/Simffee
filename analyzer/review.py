@@ -40,6 +40,19 @@ def unavailable(reason: str) -> dict[str, Any]:
     return {"status": "unavailable", "summary": reason, "issues": [], "cached": False}
 
 
+def _why(exc: Exception) -> str:
+    """A short, provider-text-free reason for a failed review."""
+    text = str(exc)
+    if isinstance(exc, llm.LLMUnavailable):
+        return "no model key"
+    if text.startswith("LLM transport failed"):
+        kind = text[len("LLM transport failed"):].strip(" ()")
+        return f"transport failed: {kind}" if kind else "transport failed"
+    if isinstance(exc, ValueError):
+        return "the model's reply was not a usable review"
+    return "could not save the review"
+
+
 def evaluate(scenario: dict[str, Any], rows: list[dict[str, Any]], focus: str,
              days: int, cache_dir: Path, *, refresh: bool = False, offline: bool = False) -> dict[str, Any]:
     report = coverage(rows, days)
@@ -75,6 +88,7 @@ def evaluate(scenario: dict[str, Any], rows: list[dict[str, Any]], focus: str,
             with llm.isolated_stats():
                 reply, usage = llm.complete_json(SYSTEM, json.dumps(payload, ensure_ascii=False), SCHEMA,
                                                   0.0, reasoning_effort="high", model=llm.MODEL)
+            answered = llm.take_answered_by() or llm.MODEL
             if reply.get("verdict") not in ("consistent", "needs_attention"):
                 raise ValueError("invalid verdict")
             summary, issues = reply.get("summary"), reply.get("issues")
@@ -86,9 +100,10 @@ def evaluate(scenario: dict[str, Any], rows: list[dict[str, Any]], focus: str,
                 return unavailable("The AI review introduced unsupported figures and was rejected. Computed results were not changed.")
             result = {"status": "needs_attention" if issues else reply["verdict"],
                       "summary": summary[:1600], "issues": [issue[:400] for issue in issues[:6]],
-                      "model": llm.MODEL, "cached": False, "usage": usage}
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+                      "model": answered, "cached": False, "usage": usage}
+            if answered == llm.MODEL:          # the cache key names the primary model
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
             return result
-        except (llm.LLMUnavailable, RuntimeError, ValueError, OSError):
-            return unavailable("AI review is unavailable. The simulation results have not been changed.")
+        except (llm.LLMUnavailable, RuntimeError, ValueError, OSError) as exc:
+            return unavailable(f"AI review is unavailable ({_why(exc)}). The simulation results have not been changed.")

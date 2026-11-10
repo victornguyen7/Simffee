@@ -478,9 +478,13 @@ def translate(text: str, parent_id: str | None = "baseline", data: Path = DATA,
         except Exception as exc:  # transport or JSON failure: no scenario, say why
             return {"scenario": None, "unsupported": [], "problems": [f"transport failed: {exc}"],
                     "reply": {}, "cached": False, "attempts": attempts}
+        answered = llm.take_answered_by()
         scenario, problems = compile_actions(reply, chain, shops, actions, sid, text)
+        if scenario and answered and answered != llm.MODEL:
+            scenario["source"]["translator_model"] = answered       # the fallback translated it
         if scenario and not problems:
-            if not refresh:
+            # The cache key names the primary model, so only its translations are cached.
+            if not refresh and answered in (None, llm.MODEL):
                 cache_dir.mkdir(parents=True, exist_ok=True)
                 cpath.write_text(json.dumps(reply, ensure_ascii=False, indent=2), encoding="utf-8")
             return {"scenario": scenario, "unsupported": reply.get("unsupported", []),

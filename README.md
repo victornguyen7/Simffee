@@ -70,6 +70,23 @@ GROQ_API_KEY=...
 Changing `SIMFFEE_MODEL` or `SIMFFEE_MAX_TOKENS` is fine for live runs; the demo scripts
 still replay the committed cache with its own settings (`engine.cli --cache-defaults`).
 
+**Fallback when Groq runs out of tokens.** If Groq refuses for a daily quota (or a rate limit
+that outlasts the retries), requests go to a local [Ollama](https://ollama.com) server instead,
+and Groq is skipped for a cool-down (15 minutes after a quota, 1 minute after a rate limit).
+Every answer is labelled with the model that gave it (e.g. `ollama/qwen3.8`), and the Ask page
+says when the fallback is active. Set it up with `ollama pull <model>` and, if needed:
+
+```
+SIMFFEE_FALLBACK_MODEL=qwen3.8                     # the default; empty disables the fallback
+SIMFFEE_FALLBACK_URL=http://localhost:11434/v1     # the default; any OpenAI-compatible server
+```
+
+`qwen3.8` is a 17.7 GB model and needs a machine with more than 16 GB of memory; on a smaller
+machine, pick a smaller model or point the URL at another machine. On an 8 GB Mac, `qwen3:4b`
+(2.5 GB, `ollama pull qwen3:4b`, `SIMFFEE_FALLBACK_MODEL=qwen3:4b`) answers a decision in about
+2-4 seconds. The fallback's "thinking" is off by default (`SIMFFEE_FALLBACK_REASONING_EFFORT=none`):
+left on, local Qwen3 models spend their whole token budget thinking and never answer.
+
 See [engine/README.md](engine/README.md) for the full list of `SIMFFEE_*` environment
 variables and their defaults.
 

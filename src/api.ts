@@ -58,6 +58,25 @@ export async function tailorSketch(text: string, sketch: MockAnswer): Promise<Mo
   }
 }
 
+/** Where a timed-out run stands. `done`/`failed` carry the answer /run would have returned;
+ *  `recorded` means it finished under an earlier server process and its answer is gone.
+ *  `unknown` means the server no longer knows the run (it restarted); `unreachable` means the
+ *  request itself failed, which the caller should retry a few times before giving up. */
+export type RunStatus =
+  | (WhatIfAnswer & { status: 'done' | 'failed' })
+  | { status: 'running' | 'recorded' | 'unknown' | 'unreachable'; run_id: string }
+
+export async function runStatus(runId: string): Promise<RunStatus> {
+  try {
+    const r = await fetch(`${API_URL}/runs/${encodeURIComponent(runId)}`, { signal: AbortSignal.timeout(10_000) })
+    if (r.status === 404) return { status: 'unknown', run_id: runId }
+    if (!r.ok && r.status !== 202) return { status: 'unreachable', run_id: runId }
+    return (await r.json()) as RunStatus
+  } catch {
+    return { status: 'unreachable', run_id: runId }
+  }
+}
+
 export async function reviewRun(runId: string, refresh = false): Promise<AIReview> {
   const result = await post<AIReview & { error?: string }>('/review', { run_id: runId, refresh }, 240_000)
   if (result.error || !result.status || typeof result.summary !== 'string' || !Array.isArray(result.issues)) {

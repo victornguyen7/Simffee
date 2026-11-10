@@ -46,6 +46,22 @@ misses the cache under custom settings prints a hint saying so. No embedded cred
 exists. The CLI reports request attempts and response token usage, including
 invalid JSON responses; it does not invent a dollar estimate for unknown pricing.
 
+When Groq refuses for tokens (a daily quota, or a rate limit that outlasts the retries),
+`llm.complete_json` sends the same request to a local Ollama server
+(`SIMFFEE_FALLBACK_URL`, default `http://localhost:11434/v1`; `SIMFFEE_FALLBACK_MODEL`,
+default `qwen3.8`, empty disables it; `SIMFFEE_FALLBACK_MAX_TOKENS`, default 800;
+`SIMFFEE_FALLBACK_REASONING_EFFORT`, default `none`, because with thinking on `qwen3:4b` spent
+a 2000-token budget thinking and returned an empty answer after 75 s, while with it off the
+same request answers in about 4 s and 60 tokens). Groq is then skipped for 15 minutes after a
+quota or 1 minute after a rate limit. Other failures (authentication, timeouts) never switch.
+A fallback answer is labelled `ollama/<model>` in `llm_model` and cached under its own key,
+so it never masquerades as a Groq decision. Groq's cache keys are unchanged, so the
+committed cache replays as before. Translations and reviews answered by the fallback are
+labelled but not cached. If the fallback is down too, the call fails with Groq's reason, and
+the reason the fallback failed is printed once on the server's stderr. A run that mixes
+models is analysed, but its `provenance_complete` is false, so it can't become the
+published demo bundle.
+
 Customer decisions use `SIMFFEE_MODEL` unless `SIMFFEE_DECISION_MODEL` names a different
 Groq model (e.g. `openai/gpt-oss-20b` for decisions with `openai/gpt-oss-120b` for
 translation and review). `SIMFFEE_REASONING_EFFORT` sets Groq's `reasoning_effort` for

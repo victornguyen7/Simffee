@@ -45,6 +45,8 @@ from tools.validate import check_file  # noqa: E402
 
 # A user scenario longer than this is refused: every extra day is more model calls.
 MAX_DAYS = 28
+# Finished background jobs kept so a timed-out request can collect its answer later.
+KEEP_JOBS = 20
 
 
 class WhatIfService:
@@ -68,6 +70,9 @@ class WhatIfService:
         self.library_seeds = self._library_seeds()
         self._lock = threading.Lock()
         self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        # run_id -> the engine job. A request that times out returns `pending_run_id`; the
+        # job keeps running, and run_status() hands over its answer when it lands (#5).
+        self._jobs: dict[str, concurrent.futures.Future] = {}
         self.live_dir.mkdir(parents=True, exist_ok=True)
         self.registry_path = self.live_dir / "registry.json"
         # Replaced, never mutated (see _register): readers take `self.registry` once and may
@@ -113,6 +118,7 @@ class WhatIfService:
         except Exception:      # a forbidden/broken transport is "no", not a crash
             llm_ok = False
         return {"ok": True, "offline": self.offline, "llm": llm_ok, "fresh_runs": True,
+                "fallback_model": llm.fallback_label(), "fallback_active": llm.fallback_active(),
                 "model": llm.decision_model(), "translator_model": llm.MODEL,
                 "reasoning_effort": llm.inference_options(model=llm.decision_model()).get("reasoning_effort"),
                 "library": str(self.library), "library_seeds": self.library_seeds,
@@ -259,6 +265,7 @@ class WhatIfService:
                     "scenario": scenario}
 
         future = self._pool.submit(self._run_and_analyse, scenario, sc_obj, seeds)
+        self._track(sid, future)
         wait = None if deadline is None else max(0.0, deadline - time.monotonic())
         try:
             return future.result(timeout=wait)
@@ -266,6 +273,32 @@ class WhatIfService:
             # The run continues in the background and lands in the registry when done.
             return {"scenario": scenario, "fallback_used": True, "reason": "timeout",
                     "served": self.nearest_library(scenario), "pending_run_id": sid}
+
+    def run_status(self, run_id: str) -> dict[str, Any] | None:
+        """Where a run stands: `running`, `done` (with the full answer /run would have
+        returned), `failed`, or `recorded` (finished under an earlier server process, so only
+        its registry entry is left). None when the id is unknown."""
+        job = self._jobs.get(run_id)
+        if job is not None:
+            if not job.done():
+                return {"status": "running", "run_id": run_id}
+            exc = job.exception()
+            if exc is not None:
+                sys.stderr.write(f"run {run_id} failed: {exc!r}\n")
+                return {"status": "failed", "run_id": run_id, "error": "The simulation failed; see the API log."}
+            out = job.result()
+            return {**out, "status": "failed" if "error" in out else "done", "run_id": run_id}
+        entry = self.registry.get(run_id)
+        if entry is None:
+            return None
+        return {"status": "recorded", "run_id": run_id, "scenario": entry["scenario"],
+                "seeds": entry["seeds"], "days": entry["days"], "at": entry["at"]}
+
+    def _track(self, run_id: str, future: concurrent.futures.Future) -> None:
+        self._jobs[run_id] = future
+        finished = [rid for rid, job in self._jobs.items() if job.done()]
+        for rid in finished[:max(0, len(self._jobs) - KEEP_JOBS)]:
+            del self._jobs[rid]
 
     def preflight(self, sc_obj: Scenario) -> list[str]:
         """Everything that would make the engine fail or ignore an override, checked before
@@ -357,6 +390,8 @@ class WhatIfService:
                 "run_id": run_id, "scenario": scenario, "days": days, "seeds": seeds,
                 "chip": self.chip(scenario), "result": per_seed, "analysis": analysis,
                 "flows": flow_summary, "flows_seed": flow_seed,
+                # Which models answered (Groq, and the local fallback if Groq ran out of tokens).
+                "models": sorted({m for rs in rows_by_seed for m in coverage(rs, days)["models"]}),
                 "flows_reason": None if flow_summary is not None else
                     "Movement summary unavailable: this run contains fallback or missing decisions.",
                 "cost": {k: ledger[k] for k in ("reasoned", "on_habit", "responses", "cache_hits",

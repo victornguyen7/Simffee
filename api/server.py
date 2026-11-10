@@ -6,7 +6,9 @@
     POST /whatif   {"text": "open at 6 and add croissants", "parent": "baseline", "seeds": [0]}
     POST /run      {"scenario": {...SPEC_FUNCTIONAL 2...}, "seeds": [0]}     # structured, no translation
     GET  /library                                                            # promoted bundle summary + live runs
-    GET  /runs/<run_id>                                                      # a previous live answer
+    GET  /runs/<run_id>    # 202 {"status": "running"} while a timed-out run continues;
+                           # 200 with the full answer ("done"), an error ("failed"), or just
+                           # the registry entry for a run from an earlier process ("recorded")
     GET  /health
 
 Runs on the demo laptop; the key lives in .env; no GPU anywhere. Nothing here writes to
@@ -34,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 
 from api.service import WhatIfService  # noqa: E402
 from engine.cache import CACHE  # noqa: E402
+from engine.loader import SCENARIO_ID  # noqa: E402
 
 SERVICE: WhatIfService | None = None
 DEFAULT_ORIGINS = tuple(f"http://{host}:{port}" for port in (5173, 4173)
@@ -160,10 +163,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, SERVICE.library_summary())
         if path.startswith("/runs/"):
             rid = path[len("/runs/"):]
-            entry = SERVICE.registry.get(rid)
-            if not entry:
+            status = SERVICE.run_status(rid) if SCENARIO_ID.fullmatch(rid) else None
+            if status is None:
                 return self._send(404, {"error": f"no live run {rid!r}"})
-            return self._send(200, {"run_id": rid, **entry})
+            return self._send(202 if status["status"] == "running" else 200, status)
         self._send(404, {"error": "unknown path", "paths": ["/health", "/library", "/runs/<id>", "POST /whatif", "POST /run"]})
 
     def do_POST(self) -> None:  # noqa: N802

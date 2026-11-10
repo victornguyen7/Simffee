@@ -4,8 +4,8 @@ Audit of `main` at `19e6066` (2026-11-10). Each issue below was found by running
 project's checks and scripts, not by reading code alone. Line references point to the
 code at the time of the audit unless marked otherwise.
 
-**Status:** phases 1-5 are done on branch `fix/phase1-2-groq-and-security`, and every
-CI step passes in a local rehearsal. Phases 6-8 are open.
+**Status:** phases 1-6 are done (committed to `main` through phase 5). Phases 7-8 are
+open.
 
 ## Summary
 
@@ -41,9 +41,9 @@ the committed data and the code.
 | # | Issue | Status |
 | --- | --- | --- |
 | 4 | **`public/runs.json` is stale.** Rebuilding it adds `analysis.flows`, `analysis.hero_agreement` and `analysis.question`. *Correction (phase 5):* the audit said the Ask page reads two of these from the bundle, so the static demo was missing a panel. That was wrong: `WhatIfBox.tsx:230` and `:358` read `analysis` from the live API answer, and the only reader of the bundle's `analysis` (`src/pages/Conclusion.tsx`) uses none of the new fields. The stale bundle had no visible effect, but it no longer matched what the code builds. | Fixed (phase 5) |
-| 5 | **Timed-out runs are lost.** The UI says the run "is still running in the background", but nothing ever checks `GET /runs/<id>` for the finished result. | Open (phase 6) |
-| 6 | **"Run 3 seeds" uses the wrong seed list.** It takes seeds from the static bundle (`WhatIfBox.tsx:197`) instead of the server's own list, so it can fail with "no library run to fork from". | Open (phase 6) |
-| 7 | **Without an API key, the Ask page never simulates anything.** The frontend always requests a fresh run, which skips the translation cache, and even the README's example sentences aren't in that cache. With no key you only ever see canned sketches, while the status badge says "cached decisions only". | Open (phase 6) |
+| 5 | **Timed-out runs are lost.** The UI says the run "is still running in the background", but nothing ever checks `GET /runs/<id>` for the finished result. | Fixed (phase 6) |
+| 6 | **"Run 3 seeds" uses the wrong seed list.** It takes seeds from the static bundle (`WhatIfBox.tsx:197`) instead of the server's own list, so it can fail with "no library run to fork from". | Fixed (phase 6) |
+| 7 | **Without an API key, the Ask page never simulates anything.** The frontend always requests a fresh run, which skips the translation cache, and even the README's example sentences aren't in that cache. With no key you only ever see canned sketches, while the status badge says "cached decisions only". | Fixed (phase 6) |
 | 8 | **Bad input crashes the API, and only after a full engine run.** An empty `set` raises IndexError in `chip()` (`api/service.py:391` after phase 2), an unknown shop raises KeyError, and malformed seeds return a 500 instead of a 400. None of this is checked before the run starts. | Fixed (phase 3) |
 
 ### P2: tests, tooling, frontend
@@ -59,7 +59,7 @@ the committed data and the code.
 | 15 | The shop interior page runs its own random JavaScript simulation (`src/sim/world.ts`, with its own price and barista sliders). It isn't connected to the engine's results. | Open (phase 7) |
 | 16 | `runs.json` is fetched two different ways (`src/sim/runs.ts:136` uses an absolute path, the other pages use `BASE_URL`), and up to 4 times. | Open (phase 7) |
 | 17 | The 412 KB sketch pool (`src/sketchPool.json`) is bundled eagerly into the main JavaScript file. | Open (phase 7) |
-| 18 | Every finished answer automatically triggers a fresh AI review call (`WhatIfBox.tsx:178`), which costs money on each run. | Open (phase 6) |
+| 18 | Every finished answer automatically triggers a fresh AI review call (`WhatIfBox.tsx:178`), which costs money on each run. | Fixed (phase 6) |
 
 ### P3: cleanup
 
@@ -74,7 +74,9 @@ the committed data and the code.
 | # | Issue | Status |
 | --- | --- | --- |
 | 22 | `data/shops.json` lists Starbucks' `frappuccino` with no price. `decide.price_for`'s cheapest-item fallback (`min(shop["price"][p] for p in products)`) would raise KeyError on it whenever a twin's usual order is missing at Starbucks. Adding the price would invalidate the whole cache, because base shop data is part of every decision cache key. | Fixed in code (phase 3): the fallback skips unpriced items |
-| 23 | `tools/serve_demo.sh` starts the API with `--timeout 60`, but a typical live what-if takes about 3 minutes (for example, 18 model calls at 2.2 s pacing plus model latency). Most real plans therefore end in the timed-out path from #5, whose result the UI never fetches. | Open (phase 6, with #5) |
+| 23 | `tools/serve_demo.sh` starts the API with `--timeout 60`, but a typical live what-if takes about 3 minutes (for example, 18 model calls at 2.2 s pacing plus model latency). Most real plans therefore end in the timed-out path from #5, whose result the UI never fetches. | Fixed (phase 6) |
+| 24 | The AI review failed once in browser testing, right after a burst of model calls, with an unlabelled "transport failed". It succeeded on retry and couldn't be reproduced. Groq's on-demand tier allows 7,000 input tokens per minute and a review request is about 4,000, so a review straight after a live run competes for that budget. Rate limits are retried and labelled, but this failure carried no label, because unknown transport errors threw away their class. | Made diagnosable (phase 6): unknown errors now carry their exception class, connection errors are labelled, and the review panel says why it's unavailable. Root cause unconfirmed. |
+| 25 | The requested fallback model, `qwen3.8`, exists only in a 27B size (a 17.7 GB download), and this Mac has 8 GB of memory. Ollama 0.40.16 is installed and running, but no model is pulled, so the fallback currently answers "model not found" and runs fail with Groq's quota reason, as designed. | Fixed: `qwen3:4b` (2.5 GB) pulled and set as `SIMFFEE_FALLBACK_MODEL`, with thinking off; verified live (see the fallback section) |
 
 ## Fix plan
 
@@ -85,13 +87,13 @@ the committed data and the code.
 | 3. Input validation | #8, #9: check shops, empty overrides and seeds before running; return 400s; lock the registry. | Malformed requests get a 400 with no engine run | Done |
 | 4. Tests and CI | #10: wrap the script tests so pytest collects them. #11: add a GitHub Actions workflow running pytest, `tsc`, `oxlint`, the build, and a clean-env demo rebuild compared with the committed copy. #12: make the determinism check fail on incomplete runs. | CI runs every check (108 pytest tests, which include the 203 checks in the script suites, plus the pipeline, determinism, bundle and frontend steps) and is green | Done |
 | 5. Fresh data | #4: regenerate `public/runs.json`; the CI comparison from phase 4 keeps it fresh. | The rebuilt and committed bundles differ only in `generated_at` | Done |
-| 6. Ask flow | #5 and #23: check for timed-out results, and give `serve_demo.sh` a timeout that fits a real run. #6: use the server's seed list. #7: support a cached or no-key path, or make the badge honest. #18: run the AI review only on request. | A demo with no key behaves the way the README describes | Open |
+| 6. Ask flow | #5 and #23: check for timed-out results, and give `serve_demo.sh` a timeout that fits a real run. #6: use the server's seed list. #7: support a cached or no-key path, or make the badge honest. #18: run the AI review only on request. | A demo with no key behaves the way the README describes | Done |
 | 7. Frontend polish | #14-#17: fix the ref usage, load `runs.json` once through a shared loader, lazy-load the sketch pool, and connect the shop page to the engine data or label it as a toy. | Lint is clean and the bundle is under 500 KB | Open |
 | 8. Cleanup | #13, #19-#21: prune the cache, delete unused assets, archive the old docs, align the scripts with the docs. | Repo contains only reachable cache entries and current docs | Open |
 
 Phases 1 and 2 had to come first. The later phases are independent and can each be their own PR.
 
-## What phases 1-5 changed
+## What phases 1-6 changed
 
 ### Phase 1: make it run, on Groq
 
@@ -208,7 +210,108 @@ model call.
 - From now on, CI's `check_bundle.py` step fails any change that alters the bundle without
   regenerating it.
 
+### Phase 6: the Ask flow
+
+- **Timed-out runs are collected** (#5):
+  - `WhatIfService` keeps each run's background job, and `run_status()` reports
+    `running`, `done` (with the full answer `/run` would have returned), `failed`, or
+    `recorded` (finished under an earlier server process, so only the registry entry is
+    left).
+  - `GET /runs/<id>` returns 202 while running and 200 otherwise. It validates the id and
+    no longer exposes the run's local folder path.
+  - The Ask page polls every 5 s ("checked N×") and swaps the answer in, including the
+    town view, when it lands. It gives up with a clear message if the API restarts or
+    stops responding three times in a row.
+  - The 20 most recent finished jobs are kept.
+- **`serve_demo.sh --timeout 60` kept** (#23): with polling in place, 60 s just decides
+  when the page switches to "still simulating", which beats a request blocked for 3-4
+  minutes. The reason is now written next to the flag.
+- **"Run 3 seeds"** (#6): uses the server's `library_seeds` from `/health`, falling back to
+  the bundle's.
+- **Honest no-key state** (#7):
+  - The badge now reads "API up, no model key — illustrative sketches only (set
+    GROQ_API_KEY to simulate)", "API in offline mode — …" or "local API not running — …".
+  - The Ask page header says simulating needs a `GROQ_API_KEY`.
+  - A real cached no-key path wasn't viable: the translation cache stores replies, not the
+    original text, and a fresh run's decisions are keyed to a new run id, so a no-key run
+    would mostly produce fallback rows and withheld analysis.
+- **AI review on request** (#18): no automatic review after an answer or a 3-seed rerun. A
+  "check this run with AI" button uses the review cache first (`refresh: false`), and the
+  existing "recheck with AI (fresh call)" button forces a new call.
+- **Failure reasons** (#24): `llm.complete_json` labels connection errors and appends the
+  exception class to unknown transport failures. Decision rows map unknown transport
+  reasons to "transport failed" rather than the misleading "LLM unavailable". The review
+  panel shows a short, provider-text-free reason.
+- **Tests:** `tests/test_ask_flow.py` (9 tests) covers job tracking, failed and crashed
+  runs (no provider text leaks), recorded and unknown runs, the job bound, HTTP polling
+  (202 then 200; malformed ids are 404), and the failure labels.
+
+### Groq to local Ollama fallback (requested after phase 6)
+
+- **Trigger** (`engine/llm.py`): only when Groq refuses for tokens, meaning a daily quota or
+  a rate limit still refused after the existing backoff retries. Authentication errors,
+  timeouts and missing models never switch.
+- **Routing:** the same request goes to a local Ollama server's OpenAI-compatible API
+  (`SIMFFEE_FALLBACK_URL`, default `http://localhost:11434/v1`; `SIMFFEE_FALLBACK_MODEL`,
+  default `qwen3.8`; empty disables it), with its own token budget
+  (`SIMFFEE_FALLBACK_MAX_TOKENS`, 2000) and its own capability flags. Groq is skipped for 15
+  minutes after a quota or 1 minute after a rate limit, then tried again.
+- **Honest provenance:** `take_answered_by()` reports which model answered.
+  - Decisions answered by the fallback are labelled `ollama/<model>` and cached under the
+    fallback's own key, so a replay finds them under that label and never as Groq's.
+  - Groq's cache identity is byte-identical to before, so the committed cache still
+    replays 84/84 and the bundle rebuilds unchanged.
+  - Translations and reviews answered by the fallback are labelled but not cached, since
+    their cache keys name the primary model.
+  - A run that mixes models is analysed, but `provenance_complete` stays false, so it can't
+    become the published bundle.
+- **If the fallback is down too:** the call fails with Groq's reason (the root cause), even
+  during the cool-down, and the fallback's reason is printed once to the server's stderr.
+- **UI:** `/health` reports `fallback_model` and `fallback_active`. The badge reads
+  "live · ollama/qwen3.8 (Groq out of tokens)" while the fallback is active, and an answer
+  whose decisions came from more than one model says "answered by …".
+- **Tests:** `tests/test_fallback.py` (9 tests) covers routing, the cool-down and its
+  expiry, failures that must not switch, the fallback being down, the fallback disabled,
+  real HTTP through the `openai` SDK to a stand-in local server (with a `<think>` block
+  stripped), decision provenance and replay, Groq's cache keys being unchanged, and
+  translation labelling.
+- **Verified live:** a Groq call still answers (559 input / 72 output tokens). With a
+  simulated Groq quota and the real local Ollama (no model pulled), the call fails in
+  0.05 s with Groq's quota reason, and stderr shows
+  `fallback ollama/qwen3.8 ... failed: LLM transport failed (model not found)`. See #25.
+- **Set up with `qwen3:4b`** (#25): Ollama 0.40.16 was found uninstalled mid-session. It was
+  reinstalled from ollama.com after checking its signature (Apple-notarized Developer ID,
+  "Infra Technologies, Inc"), and `qwen3:4b` (2.5 GB, Q4_K_M) was pulled.
+  - First live test: with thinking on, all 3 decisions failed. The model spent the whole
+    2,000-token budget thinking (`finish=length`, empty content, 70-90 s each).
+  - Setting `reasoning_effort: "none"` fixed it (Ollama ignores `think: false` on this
+    endpoint). The default is now `SIMFFEE_FALLBACK_REASONING_EFFORT=none` with an 800-token
+    budget, and both are part of the fallback's cache identity.
+  - Verified through the real code path with Groq's quota refusal simulated: 3/3 valid
+    decisions in 2-4 s (58-70 output tokens), with Groq tried once and then skipped for the
+    cool-down.
+  - A full what-if ("latte to 40k from day 5") ran on the fallback in 103 s: all 18 new
+    decisions were labelled `ollama/qwen3:4b`, with 0 fallback rows, complete analysis, and
+    "answered by" listing both models. It reached the same conclusion Groq did (wins back 0
+    of 6). An offline replay found all 18 in the cache and reproduced them exactly.
+
 ### Verification
+
+- After phase 6:
+  - `pytest` 117 passed (96 subtests); `tsc -b` is clean; lint shows only the 4 known
+    `Shop.tsx` warnings.
+  - Browser test (headless Chromium against the real `serve_demo.sh` and Groq): "cut the
+    latte to 40k but keep the 7am opening" timed out at 61 s, the page showed "Still
+    simulating … (checked 2×)", and the result swapped in at 192 s (18 model calls,
+    $0.0067). The result: the price cut wins back 0 of 6. No `/review` request was made
+    automatically; clicking "check this run with AI" sent one request with
+    `refresh: false`.
+  - "Run 3 seeds" sent `[0, 1, 2]`. The server's and the bundle's seed lists happen to be
+    identical, so this run can't tell the old code from the new; the fix is confirmed by
+    reading the code.
+  - With the API up but no key, and with no API at all, the badge shows the new honest
+    text and the answer is a clearly labelled illustrative sketch.
+  - The review succeeded on retry (2.6 s, `needs_attention`); see #24.
 
 - After phase 5: `tools/check_bundle.py` passes against the regenerated bundle, so the
   whole CI rehearsal is green.

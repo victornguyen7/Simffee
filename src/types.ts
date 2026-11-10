@@ -290,6 +290,8 @@ export interface WhatIfAnswer {
   flows?: Flows | null
   flows_seed?: number
   flows_reason?: string | null
+  /** Models that answered this run's decisions (more than one when the fallback stepped in). */
+  models?: string[]
   review?: AIReview
   cost?: CostRow
   warning?: string | null
@@ -317,6 +319,10 @@ export interface Health {
   translator_model?: string
   reasoning_effort?: string | null
   fresh_runs?: boolean
+  /** The local Ollama model used when Groq is out of tokens, e.g. "ollama/qwen3.8". */
+  fallback_model?: string | null
+  /** True while Groq is being skipped after refusing for tokens. */
+  fallback_active?: boolean
   library_seeds: number[]
   cache_files: number
   live_runs: number

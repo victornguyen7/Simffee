@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { health, reviewRun, runScenario, tailorSketch, whatIf } from '../api'
+import { health, reviewRun, runScenario, runStatus, tailorSketch, whatIf } from '../api'
 import { focusShopOf, type AIReview, type Flows, type Health, type Runs, type WhatIfAnswer } from '../types'
 import { pickMock, POOL_SIZE, SHORTLIST, type MockAnswer, type Picked } from '../mockAnswers'
 
@@ -19,6 +19,10 @@ const EXAMPLES = [
   'Starbucks opens across the street on day 4. I open at 6 and add pastries',
   'add a loyalty card',
 ]
+
+/** How often a timed-out run is checked, and how many failed checks in a row end the wait. */
+const POLL_MS = 5_000
+const POLL_MISSES = 3
 
 const pct = (n: number | null | undefined) => (n == null ? '—' : `${Math.round(n * 100)}%`)
 
@@ -91,6 +95,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
   const [mock, setMock] = useState<Sketch | null>(null)
   const [api, setApi] = useState<Health | null | undefined>(undefined)
   const [submittedText, setSubmittedText] = useState('')
+  const [poll, setPoll] = useState<{ runId: string; checks: number } | null>(null)
   const requestVersion = useRef(0)
   const reviewVersion = useRef(0)
   const inFlight = useRef(false)
@@ -144,6 +149,63 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     })
   }
 
+  // AUDIT_FIX_PLAN #5: a request that outlives the server's --timeout answers with
+  // pending_run_id while the run carries on. Keep asking for it and swap the answer in.
+  const pendingId = answer?.fallback_used && answer.reason === 'timeout' ? answer.pending_run_id : undefined
+  useEffect(() => {
+    if (!pendingId || !answer) return
+    const base = answer
+    const version = requestVersion.current
+    const context = { request_text: base.request_text, translation: base.translation, fresh: base.fresh }
+    let alive = true
+    const current = () => alive && version === requestVersion.current
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let checks = 0
+    let misses = 0
+    const finish = (next: WhatIfAnswer) => {
+      setPoll(null)
+      setAnswer(next)
+    }
+    const tick = async () => {
+      const s = await runStatus(pendingId)
+      if (!current()) return
+      checks += 1
+      misses = s.status === 'unreachable' ? misses + 1 : 0
+      if (s.status === 'running' || (s.status === 'unreachable' && misses < POLL_MISSES)) {
+        setPoll({ runId: pendingId, checks })
+        timer = setTimeout(() => void tick(), POLL_MS)
+        return
+      }
+      if (s.status === 'done') {
+        const next: WhatIfAnswer = { ...s, ...context, unsupported: s.unsupported ?? base.unsupported }
+        finish(next)
+        if (next.result) onAnswer(next)
+        return
+      }
+      if (s.status === 'failed') {
+        finish({ ...base, ...s, ...context, fallback_used: false })
+        showMock(base.request_text ?? '', version)
+        return
+      }
+      finish({
+        ...base,
+        fallback_used: false,
+        error: s.status === 'recorded'
+          ? 'This run finished, but the API has restarted since, so its result is no longer available. Ask again to re-run it.'
+          : s.status === 'unknown'
+            ? 'The API restarted before this run finished. Ask again to re-run it.'
+            : 'The local API stopped responding while this run was in progress.',
+      })
+    }
+    timer = setTimeout(() => void tick(), POLL_MS)
+    return () => {
+      alive = false
+      clearTimeout(timer)
+    }
+    // Restart only when a different run starts pending; `answer` is captured as its base.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingId])
+
   const ask = async (q: string, seeds: number[] = [0]) => {
     const query = q.trim()
     if (!query || inFlight.current) return
@@ -175,7 +237,6 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
       setAnswer(a)
       if (a.error) showMock(query, version)
       if (a.result && !a.fallback_used && !a.error) onAnswer(a)
-      void checkAnswer(a, true, version)
     } catch {
       if (version === requestVersion.current) {
         setAnswer({ scenario: null, request_text: query })
@@ -194,7 +255,8 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     if (!previous?.scenario || inFlight.current) return
     inFlight.current = true
     const version = ++requestVersion.current
-    const seeds = runs.meta.seeds.slice(0, 3)
+    // Forks need a library run per seed: use the seeds the server has, not the static bundle's.
+    const seeds = (api?.library_seeds?.length ? api.library_seeds : runs.meta.seeds).slice(0, 3)
     setAnswer(null)
     setMock(null)
     setBusy(`running ${seeds.length} seeds for confidence…`)
@@ -205,7 +267,6 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         translation: previous.translation, unsupported: a.unsupported ?? previous.unsupported }
       setAnswer(next)
       if (a.result && !a.fallback_used && !a.error) onAnswer(next)
-      void checkAnswer(next, true, version)
       if (a.error) showMock(previous.request_text ?? submittedText, version)
     } catch {
       if (version === requestVersion.current) {
@@ -238,15 +299,19 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         <h3>what if we…</h3>
         <span
           className={`dot ${api === undefined ? 'unknown' : offline ? 'off' : api.llm ? 'on' : 'cached'}`}
-          title={api?.translator_model ? `Decisions: ${api.model}; translation: ${api.translator_model}; reasoning: ${api.reasoning_effort ?? 'model default'}` : undefined}
+          title={api?.translator_model ? `Decisions: ${api.model}; translation: ${api.translator_model}; reasoning: ${api.reasoning_effort ?? 'model default'}${api.fallback_model ? `; fallback when Groq is out of tokens: ${api.fallback_model}` : ''}` : undefined}
         >
           {api === undefined
             ? 'checking the local API'
             : offline
-              ? 'local API not running — cached scenarios only'
+              ? 'local API not running — illustrative sketches only'
               : api.llm
-                ? `live · ${api.model}`
-                : 'API up, model offline — cached decisions only'}
+                ? api.fallback_active && api.fallback_model
+                  ? `live · ${api.fallback_model} (Groq out of tokens)`
+                  : `live · ${api.model}`
+                : api.offline
+                  ? 'API in offline mode — illustrative sketches only'
+                  : 'API up, no model key — illustrative sketches only (set GROQ_API_KEY to simulate)'}
         </span>
       </div>
 
@@ -313,7 +378,9 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
           {a.fallback_used && (
             <p className="warn">
               {a.reason === 'timeout'
-                ? 'This simulation is still running in the background. No completed result is available for this request yet.'
+                ? `Still simulating in the background; the result will appear here when it finishes${
+                    poll && poll.runId === a.pending_run_id ? ` (checked ${poll.checks}×)` : ''
+                  }. A new question will start after this run.`
                 : `No new result is available (${a.reason ?? 'run unavailable'}).`}
               {' '}A previous or cached scenario has not been substituted.
             </p>
@@ -384,6 +451,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
             <p className="cost">
               {a.cost.reasoned} decisions reasoned · {a.cost.on_habit} on habit · {a.cost.responses} model calls
               {a.cost.cache_hits ? ` · ${a.cost.cache_hits} cached` : ''}
+              {(a.models?.length ?? 0) > 1 ? ` · answered by ${a.models?.join(' + ')}` : ''}
               {a.took_ms != null ? ` · ${(a.took_ms / 1000).toFixed(1)} s` : ''}
               {a.cost.cost.usd != null
                 ? ` · $${a.cost.cost.usd.toFixed(4)}${a.cost.cost.verified ? '' : ' (price unverified)'}`
@@ -398,6 +466,11 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
               ) : (
                 <button type="button" className="chip" onClick={() => onAnswer(a)}>
                   show in the town
+                </button>
+              )}
+              {!a.review && !a.error && api?.llm && (
+                <button type="button" className="chip" disabled={!!busy} onClick={() => void checkAnswer(a)}>
+                  check this run with AI
                 </button>
               )}
               {(a.seeds?.length ?? 1) < 3 && a.analysis?.complete && (

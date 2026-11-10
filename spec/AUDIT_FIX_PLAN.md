@@ -4,9 +4,8 @@ Audit of `main` at `19e6066` (2026-11-10). Each issue below was found by running
 project's checks and scripts, not by reading code alone. Line references point to the
 code at the time of the audit unless marked otherwise.
 
-**Status:** phases 1-4 are done on branch `fix/phase1-2-groq-and-security`.
-Phases 5-8 are open. CI's bundle-freshness step fails until phase 5 regenerates
-`public/runs.json` (#4); every other CI step passes.
+**Status:** phases 1-5 are done on branch `fix/phase1-2-groq-and-security`, and every
+CI step passes in a local rehearsal. Phases 6-8 are open.
 
 ## Summary
 
@@ -41,7 +40,7 @@ the committed data and the code.
 
 | # | Issue | Status |
 | --- | --- | --- |
-| 4 | **`public/runs.json` is stale.** Rebuilding it adds `analysis.flows`, `analysis.hero_agreement` and `analysis.question`. The Ask page reads two of those (`src/components/WhatIfBox.tsx:230` and `:358`), so the static demo is missing the baseline movement panel. | Open (phase 5) |
+| 4 | **`public/runs.json` is stale.** Rebuilding it adds `analysis.flows`, `analysis.hero_agreement` and `analysis.question`. *Correction (phase 5):* the audit said the Ask page reads two of these from the bundle, so the static demo was missing a panel. That was wrong: `WhatIfBox.tsx:230` and `:358` read `analysis` from the live API answer, and the only reader of the bundle's `analysis` (`src/pages/Conclusion.tsx`) uses none of the new fields. The stale bundle had no visible effect, but it no longer matched what the code builds. | Fixed (phase 5) |
 | 5 | **Timed-out runs are lost.** The UI says the run "is still running in the background", but nothing ever checks `GET /runs/<id>` for the finished result. | Open (phase 6) |
 | 6 | **"Run 3 seeds" uses the wrong seed list.** It takes seeds from the static bundle (`WhatIfBox.tsx:197`) instead of the server's own list, so it can fail with "no library run to fork from". | Open (phase 6) |
 | 7 | **Without an API key, the Ask page never simulates anything.** The frontend always requests a fresh run, which skips the translation cache, and even the README's example sentences aren't in that cache. With no key you only ever see canned sketches, while the status badge says "cached decisions only". | Open (phase 6) |
@@ -84,15 +83,15 @@ the committed data and the code.
 | 1. Make it run | #1: the offline replay ignores `.env` model settings, or the scripts pin the cache's model and say clearly what's configured versus what's cached. #2: pick one provider and default to a model it actually serves. Update the README. | `serve_demo.sh` works on the maintainer's machine and on a fresh clone | Done |
 | 2. Security | #3: allow only ids matching `^[A-Za-z0-9_-]{1,64}$`, check that the resolved path stays inside the live folder, and limit CORS to the Vite dev server. Add a regression test. | The traversal request is rejected with a 400 | Done |
 | 3. Input validation | #8, #9: check shops, empty overrides and seeds before running; return 400s; lock the registry. | Malformed requests get a 400 with no engine run | Done |
-| 4. Tests and CI | #10: wrap the script tests so pytest collects them. #11: add a GitHub Actions workflow running pytest, `tsc`, `oxlint`, the build, and a clean-env demo rebuild compared with the committed copy. #12: make the determinism check fail on incomplete runs. | CI runs every check (108 pytest tests, which include the 203 checks in the script suites, plus the pipeline, determinism, bundle and frontend steps) and is green | Done; fully green after phase 5 |
-| 5. Fresh data | #4: regenerate `public/runs.json`; the CI comparison from phase 4 keeps it fresh. | The rebuilt and committed bundles differ only in `generated_at` | Open |
+| 4. Tests and CI | #10: wrap the script tests so pytest collects them. #11: add a GitHub Actions workflow running pytest, `tsc`, `oxlint`, the build, and a clean-env demo rebuild compared with the committed copy. #12: make the determinism check fail on incomplete runs. | CI runs every check (108 pytest tests, which include the 203 checks in the script suites, plus the pipeline, determinism, bundle and frontend steps) and is green | Done |
+| 5. Fresh data | #4: regenerate `public/runs.json`; the CI comparison from phase 4 keeps it fresh. | The rebuilt and committed bundles differ only in `generated_at` | Done |
 | 6. Ask flow | #5 and #23: check for timed-out results, and give `serve_demo.sh` a timeout that fits a real run. #6: use the server's seed list. #7: support a cached or no-key path, or make the badge honest. #18: run the AI review only on request. | A demo with no key behaves the way the README describes | Open |
 | 7. Frontend polish | #14-#17: fix the ref usage, load `runs.json` once through a shared loader, lazy-load the sketch pool, and connect the shop page to the engine data or label it as a toy. | Lint is clean and the bundle is under 500 KB | Open |
 | 8. Cleanup | #13, #19-#21: prune the cache, delete unused assets, archive the old docs, align the scripts with the docs. | Repo contains only reachable cache entries and current docs | Open |
 
 Phases 1 and 2 had to come first. The later phases are independent and can each be their own PR.
 
-## What phases 1-4 changed
+## What phases 1-5 changed
 
 ### Phase 1: make it run, on Groq
 
@@ -194,7 +193,30 @@ model call.
   - **Frontend:** `npm ci`, `tsc -b`, `npm run lint`, `npm run build`. Lint doesn't fail on
     warnings yet; that can be tightened once phase 7 clears the `Shop.tsx` warnings.
 
+### Phase 5: fresh data
+
+- `public/runs.json` regenerated with `./tools/build_demo.sh` (offline, 84/84 cache hits,
+  0 fallbacks). The change is purely additive: `analysis.flows`, `analysis.question`,
+  `analysis.hero_agreement` and `analysis.whatif[].flows` were added, and every value
+  already in the bundle is unchanged.
+- The new data matches the project's story: the baseline loses 6 regulars (4 skip coffee,
+  2 go to Starbucks), and restoring the opening hours (`cf_restore_hours`) or the discount
+  (`cf_discount`) wins all 6 back, with zero fallback moves. `hero_agreement` is `null`
+  because it's only computed for the rename ablation, which isn't bundled.
+- Two more rebuilds under `PYTHONHASHSEED` 1 and 98765 match the committed bundle, so
+  CI's freshness check won't be flaky.
+- From now on, CI's `check_bundle.py` step fails any change that alters the bundle without
+  regenerating it.
+
 ### Verification
+
+- After phase 5: `tools/check_bundle.py` passes against the regenerated bundle, so the
+  whole CI rehearsal is green.
+- First GitHub run (run 42841786322, on `15da5ee`, before phase 5 was pushed): the
+  frontend job and the Python tests on 3.11 and 3.13 passed. That's the first confirmation
+  that the code runs on 3.11. The bundle check failed as designed: the committed bundle was
+  still the stale one, and the Linux rebuild differed from it in exactly the 5 fields
+  phase 5 adds, so the rebuild matches the regenerated file.
 
 - After phase 4, rehearsed in a clean copy of the working tree (no `.env`, no credentials,
   no stray cache files):

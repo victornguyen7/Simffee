@@ -2,24 +2,34 @@
 # B1 hard requirement (BACKEND_PLAN 3, 6.2): the same seed replays byte for byte,
 # and a fork shares its parent's opening days so the override is the only
 # difference between branches.
+#
+# Every run must be complete (--require-complete): comparing fallback rows with fallback
+# rows proves nothing about the simulation (AUDIT_FIX_PLAN #12). SEEDS defaults to what the
+# committed cache covers; the replay pins the cache's own model settings (--cache-defaults).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+SEEDS="${SEEDS:-0-2}"
+ENGINE=(python3 -m engine.cli --offline --cache-defaults --require-complete --quiet --cache cache)
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 echo "== replay: baseline seed 0, twice =="
-python3 -m engine.cli --scenario baseline --seeds 0 --out "$TMP/a" --offline --quiet
-python3 -m engine.cli --scenario baseline --seeds 0 --out "$TMP/b" --offline --quiet
+"${ENGINE[@]}" --scenario baseline --seeds 0 --out "$TMP/a"
+"${ENGINE[@]}" --scenario baseline --seeds 0 --out "$TMP/b"
 diff -r "$TMP/a" "$TMP/b" && echo "   identical"
 
-echo "== fork fairness: cf_null days 1-3 == baseline days 1-3 =="
-python3 -m engine.cli --all --seeds 0-4 --out "$TMP/c" --offline --quiet
-python3 - "$TMP/c" <<'PY'
+echo "== fork fairness: forks share their parent's opening days (seeds $SEEDS) =="
+"${ENGINE[@]}" --all --seeds "$SEEDS" --out "$TMP/c"
+python3 - "$TMP/c" "$SEEDS" <<'PY'
 import json, sys
 from pathlib import Path
 
 out = Path(sys.argv[1])
+seeds = sorted(int(p.stem) for p in (out / "baseline").glob("*.jsonl"))
+if not seeds:
+    sys.exit("   FAIL no baseline rows were written")
 
 def rows(scenario, seed):
     path = out / scenario / f"{seed}.jsonl"
@@ -31,7 +41,7 @@ def strip(row):
     return row
 
 failures = 0
-for seed in range(5):
+for seed in seeds:
     base = rows("baseline", seed)
     for scenario, shared_until in (("cf_null", 3), ("cf_discount", 4), ("cf_restore_hours", 4)):
         child = rows(scenario, seed)

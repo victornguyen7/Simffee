@@ -141,5 +141,11 @@ def main():
     return 1 if failures else 0
 
 
+def test_all_checks():
+    """pytest entry point: run every check in main() and fail with the names that failed."""
+    failures.clear()
+    assert main() == 0, "failed checks: " + ", ".join(failures)
+
+
 if __name__ == "__main__":
     sys.exit(main())

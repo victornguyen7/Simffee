@@ -4,8 +4,9 @@ Audit of `main` at `19e6066` (2026-11-10). Each issue below was found by running
 project's checks and scripts, not by reading code alone. Line references point to the
 code at the time of the audit unless marked otherwise.
 
-**Status:** phases 1-3 are done on branch `fix/phase1-2-groq-and-security`.
-Phases 4-8 are open.
+**Status:** phases 1-4 are done on branch `fix/phase1-2-groq-and-security`.
+Phases 5-8 are open. CI's bundle-freshness step fails until phase 5 regenerates
+`public/runs.json` (#4); every other CI step passes.
 
 ## Summary
 
@@ -51,10 +52,10 @@ the committed data and the code.
 | # | Issue | Status |
 | --- | --- | --- |
 | 9 | Smaller API issues: `OPTIONS` returned a 204 with a body; `/health?x=1` returns 404; the run registry is read without a lock while other threads write it. | Fixed (204 in phase 2, rest in phase 3) |
-| 10 | `pytest` doesn't collect 5 test files (`test_api`, `test_analyzer`, `test_generic`, `test_narrate`, `test_translate`, about 900 lines) because they are plain scripts with a `main()`. A green pytest run doesn't include them. | Open (phase 4) |
-| 11 | There is no CI, so nothing would have caught #1, #4 or #10. | Open (phase 4) |
-| 12 | `tools/check_determinism.sh` runs seeds 0-4, but the cache only covers 0-2. It passed while making 77 fallback decisions, so it mostly compares fallbacks with fallbacks. | Open (phase 4) |
-| 13 | Docs and scripts disagree: `build_demo.sh` defaulted to offline although its header suggested otherwise; the seed ranges in comments were inconsistent; `pytest` isn't listed in `requirements.txt`. | Script headers fixed (phase 1); rest open (phase 8) |
+| 10 | `pytest` doesn't collect 5 test files (`test_api`, `test_analyzer`, `test_generic`, `test_narrate`, `test_translate`, about 900 lines) because they are plain scripts with a `main()`. A green pytest run doesn't include them. | Fixed (phase 4) |
+| 11 | There is no CI, so nothing would have caught #1, #4 or #10. | Fixed (phase 4) |
+| 12 | `tools/check_determinism.sh` runs seeds 0-4, but the cache only covers 0-2. It passed while making 77 fallback decisions, so it mostly compares fallbacks with fallbacks. | Fixed (phase 4) |
+| 13 | Docs and scripts disagree: `build_demo.sh` defaulted to offline although its header suggested otherwise; the seed ranges in comments were inconsistent; `pytest` isn't listed in `requirements.txt`. | Script headers fixed (phase 1); `pytest` added via `requirements-dev.txt` (phase 4); rest open (phase 8) |
 | 14 | `src/pages/Shop.tsx` reads refs during render (the 4 lint warnings), so its display can lag behind the simulation after a reset. | Open (phase 7) |
 | 15 | The shop interior page runs its own random JavaScript simulation (`src/sim/world.ts`, with its own price and barista sliders). It isn't connected to the engine's results. | Open (phase 7) |
 | 16 | `runs.json` is fetched two different ways (`src/sim/runs.ts:136` uses an absolute path, the other pages use `BASE_URL`), and up to 4 times. | Open (phase 7) |
@@ -83,7 +84,7 @@ the committed data and the code.
 | 1. Make it run | #1: the offline replay ignores `.env` model settings, or the scripts pin the cache's model and say clearly what's configured versus what's cached. #2: pick one provider and default to a model it actually serves. Update the README. | `serve_demo.sh` works on the maintainer's machine and on a fresh clone | Done |
 | 2. Security | #3: allow only ids matching `^[A-Za-z0-9_-]{1,64}$`, check that the resolved path stays inside the live folder, and limit CORS to the Vite dev server. Add a regression test. | The traversal request is rejected with a 400 | Done |
 | 3. Input validation | #8, #9: check shops, empty overrides and seeds before running; return 400s; lock the registry. | Malformed requests get a 400 with no engine run | Done |
-| 4. Tests and CI | #10: wrap the script tests so pytest collects them. #11: add a GitHub Actions workflow running pytest, `tsc`, `oxlint`, the build, and a clean-env demo rebuild compared with the committed copy. #12: make the determinism check fail on incomplete runs. | CI is green and runs all ~150 checks | Open |
+| 4. Tests and CI | #10: wrap the script tests so pytest collects them. #11: add a GitHub Actions workflow running pytest, `tsc`, `oxlint`, the build, and a clean-env demo rebuild compared with the committed copy. #12: make the determinism check fail on incomplete runs. | CI runs every check (108 pytest tests, which include the 203 checks in the script suites, plus the pipeline, determinism, bundle and frontend steps) and is green | Done; fully green after phase 5 |
 | 5. Fresh data | #4: regenerate `public/runs.json`; the CI comparison from phase 4 keeps it fresh. | The rebuilt and committed bundles differ only in `generated_at` | Open |
 | 6. Ask flow | #5 and #23: check for timed-out results, and give `serve_demo.sh` a timeout that fits a real run. #6: use the server's seed list. #7: support a cached or no-key path, or make the badge honest. #18: run the AI review only on request. | A demo with no key behaves the way the README describes | Open |
 | 7. Frontend polish | #14-#17: fix the ref usage, load `runs.json` once through a shared loader, lazy-load the sketch pool, and connect the shop page to the engine data or label it as a toy. | Lint is clean and the bundle is under 500 KB | Open |
@@ -91,7 +92,7 @@ the committed data and the code.
 
 Phases 1 and 2 had to come first. The later phases are independent and can each be their own PR.
 
-## What phases 1-3 changed
+## What phases 1-4 changed
 
 ### Phase 1: make it run, on Groq
 
@@ -167,7 +168,41 @@ model call.
   from the audit and asserts that the engine is never called for them. With the
   protections disabled, 11 of its subtests fail, so the tests do catch regressions.
 
+### Phase 4: tests and CI
+
+- **Script-style tests collected** (#10): `test_api`, `test_analyzer`, `test_generic`,
+  `test_narrate` and `test_translate` each gained a `test_all_checks()` wrapper. They still
+  run by hand (`python3 tests/test_api.py`), and under pytest a failure names the failing
+  checks. That brings their 203 checks into every pytest run.
+- **`tests/conftest.py`:** pytest strips `GROQ_API_KEY` and the `SIMFFEE_*` model
+  overrides and resets the engine to the cache defaults, so tests can't spend tokens and
+  don't depend on the local `.env`.
+- **`requirements-dev.txt`:** `requirements.txt` plus `pytest`.
+- **Strict determinism check** (#12): `tools/check_determinism.sh` defaults to the seeds the
+  cache covers (`SEEDS=0-2`), replays with `--cache-defaults`, and passes
+  `--require-complete`, so a fallback fails the check. `SEEDS=0-4` now exits 2 instead of
+  printing "OK".
+- **`tools/check_bundle.py`:** compares a rebuilt bundle with `public/runs.json`, ignoring
+  only `meta.generated_at`, and lists every path that differs. It reports exactly the 5
+  stale paths from #4.
+- **CI** (#11, `.github/workflows/ci.yml`): runs on pushes to `main` and on pull requests,
+  with no credentials. Three jobs:
+  - **Python tests:** pytest on Python 3.11 and 3.13 (the README promises 3.11+; only 3.13
+    was available locally, so CI is the first run on 3.11).
+  - **Demo:** `check_pipeline.py`, `check_determinism.sh`, an offline `build_demo.sh`, then
+    `check_bundle.py`.
+  - **Frontend:** `npm ci`, `tsc -b`, `npm run lint`, `npm run build`. Lint doesn't fail on
+    warnings yet; that can be tightened once phase 7 clears the `Shop.tsx` warnings.
+
 ### Verification
+
+- After phase 4, rehearsed in a clean copy of the working tree (no `.env`, no credentials,
+  no stray cache files):
+  - Passed: `pytest` (108 passed, 87 subtests), `check_pipeline.py`,
+    `check_determinism.sh`, `build_demo.sh`, and on the frontend `npm ci` from scratch,
+    `tsc -b`, lint (4 known warnings, exit 0) and the build.
+  - Failed, as intended: `check_bundle.py` exits 1 on the stale `public/runs.json` (#4).
+  - Not yet run on GitHub, and not yet run on Python 3.11.
 
 - After phase 3: `pytest` 103 passed (87 subtests); the 5 script-style tests pass. All 7
   library scenarios pass the new preflight. Three live what-ifs translated through Groq

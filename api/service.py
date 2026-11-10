@@ -19,6 +19,7 @@ from __future__ import annotations
 import concurrent.futures
 import copy
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -36,9 +37,14 @@ from analyzer.flows import flows  # noqa: E402
 from engine import loop, translate  # noqa: E402
 from engine.cache import CACHE  # noqa: E402
 from engine.loader import DATA, Scenario, check_scenario_id, load_chain, load_shops, scenario_from_dict  # noqa: E402
+from engine.resolve import check_overrides  # noqa: E402
 from engine.schema import coverage  # noqa: E402
 from tools import cost_report  # noqa: E402
 from tools.validate import check_file  # noqa: E402
+
+
+# A user scenario longer than this is refused: every extra day is more model calls.
+MAX_DAYS = 28
 
 
 class WhatIfService:
@@ -64,9 +70,12 @@ class WhatIfService:
         self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         self.live_dir.mkdir(parents=True, exist_ok=True)
         self.registry_path = self.live_dir / "registry.json"
+        # Replaced, never mutated (see _register): readers take `self.registry` once and may
+        # iterate it while a run lands, without a lock.
         self.registry: dict[str, dict[str, Any]] = (
             json.loads(self.registry_path.read_text(encoding="utf-8"))
             if self.registry_path.exists() else {})
+        self._registry_lock = threading.Lock()
         self._library_bundle: dict[str, Any] | None = None
 
     # --- library ---------------------------------------------------------------------
@@ -91,8 +100,9 @@ class WhatIfService:
                           for sid, sc in b["scenarios"].items()},
             "analysis": {k: b["analysis"].get(k) for k in
                          ("break_day", "direction", "naive", "actual", "surprise", "impact", "confidence", "whatif", "narration")},
-            "live": {rid: {"label": e["scenario"]["label"], "text": e["scenario"].get("source", {}).get("text"),
-                           "parent": e["scenario"]["parent"], "at": e["at"]}
+            "live": {rid: {"label": e["scenario"].get("label", rid),
+                           "text": (e["scenario"].get("source") or {}).get("text"),
+                           "parent": e["scenario"].get("parent"), "at": e["at"]}
                      for rid, e in self.registry.items()},
         }
 
@@ -112,10 +122,11 @@ class WhatIfService:
     # --- scenarios by id (library files + live registry) ------------------------------
 
     def _scenario_raw(self, sid: str) -> dict[str, Any]:
+        registry = self.registry
         if sid in self.scenario_files:
             return self.scenario_files[sid]
-        if sid in self.registry:
-            return self.registry[sid]["scenario"]
+        if sid in registry:
+            return registry[sid]["scenario"]
         raise KeyError(f"unknown scenario {sid!r}")
 
     def _extra(self) -> dict[str, Scenario]:
@@ -125,6 +136,16 @@ class WhatIfService:
         if sid in self.scenario_files:
             return self.library
         return pathlib.Path(self.registry[sid]["run_dir"])
+
+    def _register(self, run_id: str, entry: dict[str, Any]) -> None:
+        """Swap in a new registry dict and persist it atomically (temp file + rename), so a
+        crash mid-write cannot leave a truncated registry.json that stops the server starting."""
+        with self._registry_lock:
+            registry = {**self.registry, run_id: entry}
+            tmp = self.registry_path.with_name(self.registry_path.name + ".tmp")
+            tmp.write_text(json.dumps(registry, ensure_ascii=False, indent=1), encoding="utf-8")
+            os.replace(tmp, self.registry_path)
+            self.registry = registry
 
     # --- the two entry points --------------------------------------------------------
 
@@ -232,6 +253,10 @@ class WhatIfService:
             sc_obj = scenario_from_dict(scenario)
         except (ValueError, KeyError) as exc:
             return {"error": f"invalid scenario: {exc}"}
+        problems = self.preflight(sc_obj)
+        if problems:
+            return {"error": "invalid scenario: " + "; ".join(problems[:5]), "problems": problems,
+                    "scenario": scenario}
 
         future = self._pool.submit(self._run_and_analyse, scenario, sc_obj, seeds)
         wait = None if deadline is None else max(0.0, deadline - time.monotonic())
@@ -241,6 +266,18 @@ class WhatIfService:
             # The run continues in the background and lands in the registry when done.
             return {"scenario": scenario, "fallback_used": True, "reason": "timeout",
                     "served": self.nearest_library(scenario), "pending_run_id": sid}
+
+    def preflight(self, sc_obj: Scenario) -> list[str]:
+        """Everything that would make the engine fail or ignore an override, checked before
+        any engine run or model call (AUDIT_FIX_PLAN #8)."""
+        try:
+            chain = load_chain(sc_obj.id, self.data, {**self._extra(), sc_obj.id: sc_obj})
+        except (KeyError, ValueError) as exc:
+            return [str(exc.args[0] if exc.args else exc)]
+        days = loop.scenario_days(chain)
+        if days > MAX_DAYS:
+            return [f"runs are limited to {MAX_DAYS} days; this one has {days}"]
+        return check_overrides(self.shops, chain, days)
 
     # --- internals ---------------------------------------------------------------------
 
@@ -295,9 +332,7 @@ class WhatIfService:
             analysis = self._analyse(scenario, chain, out, seeds, days)
             entry = {"scenario": scenario, "run_dir": str(out), "seeds": seeds,
                      "at": ledger["at"], "days": days}
-            self.registry[run_id] = entry
-            self.registry_path.write_text(
-                json.dumps(self.registry, ensure_ascii=False, indent=1), encoding="utf-8")
+            self._register(run_id, entry)
 
             per_seed = {str(s): {"rows": rs, "daily_sales": build_runs.daily_sales(rs, self.shops, days),
                                  "coverage": coverage(rs, days)} for s, rs in zip(seeds, rows_by_seed)}

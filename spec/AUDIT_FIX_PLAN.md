@@ -4,8 +4,8 @@ Audit of `main` at `19e6066` (2026-11-10). Each issue below was found by running
 project's checks and scripts, not by reading code alone. Line references point to the
 code at the time of the audit unless marked otherwise.
 
-**Status:** phases 1 and 2 are done on branch `fix/phase1-2-groq-and-security`.
-Phases 3-8 are open.
+**Status:** phases 1-3 are done on branch `fix/phase1-2-groq-and-security`.
+Phases 4-8 are open.
 
 ## Summary
 
@@ -44,13 +44,13 @@ the committed data and the code.
 | 5 | **Timed-out runs are lost.** The UI says the run "is still running in the background", but nothing ever checks `GET /runs/<id>` for the finished result. | Open (phase 6) |
 | 6 | **"Run 3 seeds" uses the wrong seed list.** It takes seeds from the static bundle (`WhatIfBox.tsx:197`) instead of the server's own list, so it can fail with "no library run to fork from". | Open (phase 6) |
 | 7 | **Without an API key, the Ask page never simulates anything.** The frontend always requests a fresh run, which skips the translation cache, and even the README's example sentences aren't in that cache. With no key you only ever see canned sketches, while the status badge says "cached decisions only". | Open (phase 6) |
-| 8 | **Bad input crashes the API, and only after a full engine run.** An empty `set` raises IndexError in `chip()` (`api/service.py:391` after phase 2), an unknown shop raises KeyError, and malformed seeds return a 500 instead of a 400. None of this is checked before the run starts. | Open (phase 3) |
+| 8 | **Bad input crashes the API, and only after a full engine run.** An empty `set` raises IndexError in `chip()` (`api/service.py:391` after phase 2), an unknown shop raises KeyError, and malformed seeds return a 500 instead of a 400. None of this is checked before the run starts. | Fixed (phase 3) |
 
 ### P2: tests, tooling, frontend
 
 | # | Issue | Status |
 | --- | --- | --- |
-| 9 | Smaller API issues: `OPTIONS` returned a 204 with a body; `/health?x=1` returns 404; the run registry is read without a lock while other threads write it. | 204 body fixed (phase 2); rest open (phase 3) |
+| 9 | Smaller API issues: `OPTIONS` returned a 204 with a body; `/health?x=1` returns 404; the run registry is read without a lock while other threads write it. | Fixed (204 in phase 2, rest in phase 3) |
 | 10 | `pytest` doesn't collect 5 test files (`test_api`, `test_analyzer`, `test_generic`, `test_narrate`, `test_translate`, about 900 lines) because they are plain scripts with a `main()`. A green pytest run doesn't include them. | Open (phase 4) |
 | 11 | There is no CI, so nothing would have caught #1, #4 or #10. | Open (phase 4) |
 | 12 | `tools/check_determinism.sh` runs seeds 0-4, but the cache only covers 0-2. It passed while making 77 fallback decisions, so it mostly compares fallbacks with fallbacks. | Open (phase 4) |
@@ -69,22 +69,29 @@ the committed data and the code.
 | 20 | Unused template assets (`src/assets/react.svg`, `src/assets/vite.svg`, `src/assets/hero.png`, `public/icons.svg`) and 11 historical plan and status docs in `spec/`. | Open (phase 8) |
 | 21 | `runs/` holds 83 MB of old local runs. At audit time `.env` held a `GROQ_API_KEY` that nothing read; since phase 1 the Groq key is the one in use, and the xAI key is commented out and unused. | Open (phase 8) |
 
+### Found while fixing
+
+| # | Issue | Status |
+| --- | --- | --- |
+| 22 | `data/shops.json` lists Starbucks' `frappuccino` with no price. `decide.price_for`'s cheapest-item fallback (`min(shop["price"][p] for p in products)`) would raise KeyError on it whenever a twin's usual order is missing at Starbucks. Adding the price would invalidate the whole cache, because base shop data is part of every decision cache key. | Fixed in code (phase 3): the fallback skips unpriced items |
+| 23 | `tools/serve_demo.sh` starts the API with `--timeout 60`, but a typical live what-if takes about 3 minutes (for example, 18 model calls at 2.2 s pacing plus model latency). Most real plans therefore end in the timed-out path from #5, whose result the UI never fetches. | Open (phase 6, with #5) |
+
 ## Fix plan
 
 | Phase | Fixes | Done when | Status |
 | --- | --- | --- | --- |
 | 1. Make it run | #1: the offline replay ignores `.env` model settings, or the scripts pin the cache's model and say clearly what's configured versus what's cached. #2: pick one provider and default to a model it actually serves. Update the README. | `serve_demo.sh` works on the maintainer's machine and on a fresh clone | Done |
 | 2. Security | #3: allow only ids matching `^[A-Za-z0-9_-]{1,64}$`, check that the resolved path stays inside the live folder, and limit CORS to the Vite dev server. Add a regression test. | The traversal request is rejected with a 400 | Done |
-| 3. Input validation | #8, #9: check shops, empty overrides and seeds before running; return 400s; lock the registry. | Malformed requests get a 400 with no engine run | Open |
+| 3. Input validation | #8, #9: check shops, empty overrides and seeds before running; return 400s; lock the registry. | Malformed requests get a 400 with no engine run | Done |
 | 4. Tests and CI | #10: wrap the script tests so pytest collects them. #11: add a GitHub Actions workflow running pytest, `tsc`, `oxlint`, the build, and a clean-env demo rebuild compared with the committed copy. #12: make the determinism check fail on incomplete runs. | CI is green and runs all ~150 checks | Open |
 | 5. Fresh data | #4: regenerate `public/runs.json`; the CI comparison from phase 4 keeps it fresh. | The rebuilt and committed bundles differ only in `generated_at` | Open |
-| 6. Ask flow | #5: check for timed-out results. #6: use the server's seed list. #7: support a cached or no-key path, or make the badge honest. #18: run the AI review only on request. | A demo with no key behaves the way the README describes | Open |
+| 6. Ask flow | #5 and #23: check for timed-out results, and give `serve_demo.sh` a timeout that fits a real run. #6: use the server's seed list. #7: support a cached or no-key path, or make the badge honest. #18: run the AI review only on request. | A demo with no key behaves the way the README describes | Open |
 | 7. Frontend polish | #14-#17: fix the ref usage, load `runs.json` once through a shared loader, lazy-load the sketch pool, and connect the shop page to the engine data or label it as a toy. | Lint is clean and the bundle is under 500 KB | Open |
 | 8. Cleanup | #13, #19-#21: prune the cache, delete unused assets, archive the old docs, align the scripts with the docs. | Repo contains only reachable cache entries and current docs | Open |
 
 Phases 1 and 2 had to come first. The later phases are independent and can each be their own PR.
 
-## What phases 1 and 2 changed
+## What phases 1-3 changed
 
 ### Phase 1: make it run, on Groq
 
@@ -124,9 +131,51 @@ Phases 1 and 2 had to come first. The later phases are independent and can each 
 - **Tests:** `tests/test_security.py` (11 tests) includes a replay of the original
   traversal attack against a canary directory.
 
+### Phase 3: input validation
+
+Every malformed scenario or request is now refused with a 400 before any engine run or
+model call.
+
+- **Scenario structure** (`engine/loader.py`, `scenario_from_dict`): `overrides` must be a
+  list of objects; an override must change something (no empty `set` with empty `unset`);
+  `shop` must be a string; `unset` must list field names; `from_day` and `days` reject
+  booleans.
+- **Override values** (`engine/resolve.py`, new `check_overrides`):
+  - Every `set` value is checked against the field's type in `shops.json`: prices are
+    numbers >= 0, `open`/`close` are `HH:MM`, `quality` and `marketing.reach` are 0-1,
+    `products` is a non-empty list of distinct names. Replacing a whole object (e.g.
+    `"price": 40000`) is refused.
+  - The chain is dry-resolved for every day, which reports unknown shops and unknown or
+    un-unsettable fields.
+  - A product the scenario adds must have a price, and a shop can't be left with no priced
+    product.
+  - An override that starts after the run ends is refused.
+- **Service** (`api/service.py`):
+  - `WhatIfService.preflight()` runs all of the above before the engine is submitted, and
+    caps user runs at 28 days (`MAX_DAYS`).
+  - The registry is copy-on-write: a finished run swaps in a new dict instead of mutating
+    the one readers may be iterating. `registry.json` is written atomically (temp file plus
+    rename), so a crash mid-write can't leave a file that stops the server starting.
+- **Server** (`api/server.py`):
+  - `parse_seeds` is strict: whole numbers >= 0, ascending ranges, at most 10 seeds.
+    Errors raise `BadRequest`, which is answered with a 400.
+  - `text`, `parent` and `run_id` must be strings.
+  - A malformed `Content-Length` is a 400.
+  - Routing ignores query strings, so `/health?x=1` works.
+- **Engine** (`engine/decide.py`): `price_for` skips unpriced menu items (#22).
+- **Tests:** `tests/test_validation.py` (10 tests, 51 subtests) covers each crash input
+  from the audit and asserts that the engine is never called for them. With the
+  protections disabled, 11 of its subtests fail, so the tests do catch regressions.
+
 ### Verification
 
-- `pytest`: 93 passed (the 82 existing tests, with 7 transport tests rewritten for Groq,
+- After phase 3: `pytest` 103 passed (87 subtests); the 5 script-style tests pass. All 7
+  library scenarios pass the new preflight. Three live what-ifs translated through Groq
+  passed it with no false positives. "Open at 6 and add croissants at 30k" completed (it
+  needed no new decisions); the other two hit the 60-second timeout (#23). One of those,
+  "cut the latte to 40k", rerun with a 400-second timeout, completed with 18 model calls,
+  no fallbacks, in about 3 minutes. A malformed `/run` is refused in about 1 ms.
+- After phase 2: `pytest`: 93 passed (the 82 existing tests, with 7 transport tests rewritten for Groq,
   plus 11 new security tests). The 5 script-style tests pass; `tsc -b` is clean.
 - `build_demo.sh`, run with a deliberately different `SIMFFEE_MODEL` and
   `SIMFFEE_MAX_TOKENS`: 84/84 cache hits, 0 fallbacks.

@@ -17,6 +17,8 @@ Two additive extensions:
 from __future__ import annotations
 
 import copy
+import math
+import re
 from typing import Any
 
 from .loader import Scenario
@@ -128,3 +130,88 @@ def opening_today(chain: list[Scenario], shops: dict[str, dict[str, Any]], day: 
 def display_name(shop: dict[str, Any]) -> str:
     """What the LLM calls this shop. `prompt.shop_label` overrides `name` for text only."""
     return shop.get("prompt", {}).get("shop_label") or shop["name"]
+
+
+# --- preflight ----------------------------------------------------------------------------
+# A scenario is checked before any engine run so a bad override is a 400 at the door, not a
+# crash on day 5 after the model calls have been paid for (AUDIT_FIX_PLAN #8).
+
+_HHMM = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+_UNIT_INTERVAL = frozenset({"quality", "marketing.reach"})
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _value_problem(dotted: str, value: Any, base: dict[str, Any]) -> str | None:
+    """Why `value` cannot be assigned to `dotted` on a shop shaped like `base`, or None."""
+    parts = dotted.split(".")
+    if dotted == EXISTS:
+        ok = isinstance(value, int) and not isinstance(value, bool) and value >= 1
+        return None if ok else "must be a day number >= 1"
+    if dotted == "permanently_closed":
+        return None if isinstance(value, bool) else "must be true or false"
+    if parts[0] in CREATABLE_ROOTS:
+        return None if isinstance(value, str) else "must be text"
+    if dotted in ("open", "close"):
+        return None if isinstance(value, str) and _HHMM.fullmatch(value) else "must be a time like 06:30"
+    if parts[0] == "price" and len(parts) == 2:
+        return None if _is_number(value) and value >= 0 else "must be a price >= 0"
+    found, current = _get_dotted(base, dotted)
+    if not found:
+        return None                      # the dry resolve reports the unknown path
+    if isinstance(current, dict):
+        return f"is a group of fields; set one of them instead (e.g. {dotted}.{next(iter(current), 'x')})"
+    if isinstance(current, bool):
+        return None if isinstance(value, bool) else "must be true or false"
+    if _is_number(current):
+        if not _is_number(value) or value < 0:
+            return "must be a number >= 0"
+        return "must be between 0 and 1" if dotted in _UNIT_INTERVAL and value > 1 else None
+    if isinstance(current, str):
+        return None if isinstance(value, str) and value.strip() else "must be non-empty text"
+    if isinstance(current, list):
+        if dotted == "products":
+            ok = (isinstance(value, list) and value and len(set(map(str, value))) == len(value)
+                  and all(isinstance(v, str) and v for v in value))
+            return None if ok else "must be a non-empty list of distinct product names"
+        ok = isinstance(value, list) and len(value) == len(current) and all(map(_is_number, value))
+        return None if ok else f"must be a list of {len(current)} numbers"
+    return None
+
+
+def check_overrides(shops: dict[str, dict[str, Any]], chain: list[Scenario], days: int) -> list[str]:
+    """Problems that would make the engine fail or silently ignore part of this chain."""
+    problems: list[str] = []
+    leaf = chain[-1]
+    for scenario in chain:
+        for i, ov in enumerate(scenario.overrides):
+            where = f"{scenario.id} override {i} ({ov['shop']})"
+            base = shops.get(ov["shop"])
+            if base is None:
+                problems.append(f"{where}: unknown shop; known shops are {', '.join(sorted(shops))}")
+                continue
+            for dotted, value in ov.get("set", {}).items():
+                why = _value_problem(dotted, value, base)
+                if why:
+                    problems.append(f"{where}: {dotted} {why}")
+            if scenario is leaf and ov["from_day"] > days:
+                problems.append(f"{where}: starts on day {ov['from_day']} but the run has {days} days")
+    if problems:
+        return problems
+    for day in range(1, days + 1):
+        try:
+            today = resolve(shops, chain, day, include_absent=True)
+        except KeyError as exc:
+            return [f"day {day}: {exc.args[0] if exc.args else exc}"]
+        for sid, shop in today.items():
+            products, prices = shop.get("products", []), shop.get("price", {})
+            # shops.json itself lists an unpriced item (Starbucks' frappuccino), and base shop
+            # data is part of every cache key, so only what the scenario adds is held to this.
+            added = [p for p in products if p not in prices and p not in shops[sid].get("products", [])]
+            if added:
+                return [f"day {day}: {sid} adds {', '.join(added)} with no price (set price.{added[0]})"]
+            if products and not any(p in prices for p in products):
+                return [f"day {day}: {sid} has no priced product on its menu"]
+    return []

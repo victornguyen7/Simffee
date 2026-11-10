@@ -43,11 +43,11 @@ def _available(twin: Twin, shop: dict) -> bool:
 
 
 def price_for(twin: Twin, shop: dict) -> int:
-    """What this twin spends at this shop. Falls back to the cheapest item on the
-    menu when their usual order is gone."""
+    """What this twin spends at this shop. Falls back to the cheapest priced item on the
+    menu when their usual order is gone (shops.json lists some items without a price)."""
     price = shop["price"].get(twin.usual_order) if twin.usual_order in shop["products"] else None
     if price is None:
-        price = min(shop["price"][p] for p in shop["products"])
+        price = min(shop["price"][p] for p in shop["products"] if p in shop["price"])
     return int(price)
 
 

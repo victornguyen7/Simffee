@@ -26,6 +26,7 @@ import argparse
 import json
 import pathlib
 import sys
+from urllib.parse import urlsplit
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -41,20 +42,59 @@ ALLOWED_ORIGINS: set[str] = set(DEFAULT_ORIGINS)
 ALLOWED_HOSTS: set[str] = set()       # filled from the bound port in main(); empty = any
 
 
+MAX_SEEDS = 10
+
+
+class BadRequest(ValueError):
+    """A client error: answered with 400 and this message, never a 500."""
+
+
+def _seed(value) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise BadRequest("seeds must be whole numbers, e.g. [0, 1, 2] or \"0-2\"")
+    try:
+        seed = int(value.strip()) if isinstance(value, str) else value
+    except ValueError:
+        raise BadRequest(f"seed {value!r} is not a whole number") from None
+    if seed < 0:
+        raise BadRequest("seeds must be >= 0")
+    return seed
+
+
 def parse_seeds(value) -> list[int]:
+    """[0, 1], "0-2", "0,2" or a single number -> sorted distinct seeds. Raises BadRequest."""
     if value is None:
         return [0]
-    if isinstance(value, list):
-        return sorted({int(v) for v in value})
     out: set[int] = set()
-    for part in str(value).split(","):
-        part = part.strip()
-        if "-" in part:
-            a, b = part.split("-", 1)
-            out.update(range(int(a), int(b) + 1))
-        elif part:
-            out.add(int(part))
+    if isinstance(value, list):
+        out = {_seed(v) for v in value}
+    elif isinstance(value, (int, str)) and not isinstance(value, bool):
+        for part in str(value).split(","):
+            part = part.strip()
+            if "-" in part:
+                a, b = (_seed(x) for x in part.split("-", 1))
+                if b < a or b - a >= MAX_SEEDS:
+                    raise BadRequest(f"seed range {part!r} must ascend and hold at most {MAX_SEEDS} seeds")
+                out.update(range(a, b + 1))
+            elif part:
+                out.add(_seed(part))
+    else:
+        raise BadRequest("seeds must be a list or a string like \"0-2\"")
+    if len(out) > MAX_SEEDS:
+        raise BadRequest(f"at most {MAX_SEEDS} seeds per request")
     return sorted(out) or [0]
+
+
+def _text(body: dict, key: str, required: bool = False) -> str:
+    value = body.get(key)
+    if value is None:
+        value = ""
+    if not isinstance(value, str):
+        raise BadRequest(f"{key} must be a string")
+    value = value.strip()
+    if required and not value:
+        raise BadRequest(f"{key} is required")
+    return value
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -91,7 +131,10 @@ class Handler(BaseHTTPRequestHandler):
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if ctype != "application/json":
             raise ValueError("Content-Type must be application/json")
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            raise ValueError("Content-Length must be a number") from None
         raw = self.rfile.read(n) if n else b"{}"
         try:
             body = json.loads(raw or b"{}")
@@ -110,12 +153,13 @@ class Handler(BaseHTTPRequestHandler):
         assert SERVICE is not None
         if self._refused():
             return
-        if self.path == "/health":
+        path = urlsplit(self.path).path
+        if path == "/health":
             return self._send(200, SERVICE.health())
-        if self.path == "/library":
+        if path == "/library":
             return self._send(200, SERVICE.library_summary())
-        if self.path.startswith("/runs/"):
-            rid = self.path[len("/runs/"):]
+        if path.startswith("/runs/"):
+            rid = path[len("/runs/"):]
             entry = SERVICE.registry.get(rid)
             if not entry:
                 return self._send(404, {"error": f"no live run {rid!r}"})
@@ -130,30 +174,30 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
         except ValueError as exc:
             return self._send(400, {"error": str(exc)})
+        path = urlsplit(self.path).path
         try:
-            if self.path == "/whatif":
-                text = (body.get("text") or "").strip()
-                if not text:
-                    return self._send(400, {"error": "text is required"})
-                out = SERVICE.whatif(text, parent=body.get("parent") or "baseline",
+            if path == "/whatif":
+                text = _text(body, "text", required=True)
+                parent = _text(body, "parent") or "baseline"
+                out = SERVICE.whatif(text, parent=parent,
                                      seeds=parse_seeds(body.get("seeds")), fresh=body.get("fresh") is True)
-            elif self.path == "/run":
+            elif path == "/run":
                 sc = body.get("scenario")
                 if not isinstance(sc, dict) or "id" not in sc or "overrides" not in sc:
                     return self._send(400, {"error": "scenario with id and overrides is required"})
                 out = SERVICE.run(sc, seeds=parse_seeds(body.get("seeds")))
-            elif self.path == "/review":
-                run_id = body.get("run_id")
-                if not isinstance(run_id, str) or not run_id:
-                    return self._send(400, {"error": "run_id is required"})
+            elif path == "/review":
+                run_id = _text(body, "run_id", required=True)
                 out = SERVICE.review(run_id, refresh=body.get("refresh") is True)
-            elif self.path == "/sketch":
+            elif path == "/sketch":
                 sketch = body.get("sketch")
                 if not isinstance(sketch, dict) or not {"headline", "movements", "drivers", "net"} <= sketch.keys():
                     return self._send(400, {"error": "sketch with headline, movements, drivers and net is required"})
-                out = SERVICE.sketch((body.get("text") or "").strip(), sketch)
+                out = SERVICE.sketch(_text(body, "text"), sketch)
             else:
                 return self._send(404, {"error": "unknown path"})
+        except BadRequest as exc:
+            return self._send(400, {"error": str(exc)})
         except Exception as exc:  # never leak a traceback to the demo screen; log it
             self.log_error("%s", repr(exc))
             return self._send(500, {"error": "internal error", "detail": str(exc)[:200]})

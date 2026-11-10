@@ -86,18 +86,28 @@ def scenario_from_dict(raw: dict[str, Any]) -> Scenario:
     if raw.get("parent") is not None:
         check_scenario_id(raw["parent"], "scenario parent")
     overrides = raw.get("overrides", [])
+    if not isinstance(overrides, list):
+        raise ValueError(f"scenario {raw.get('id')!r}: overrides must be a list")
     for i, ov in enumerate(overrides):
+        if not isinstance(ov, dict):
+            raise ValueError(f"scenario {raw.get('id')!r} override {i} must be an object")
         for key in ("from_day", "shop"):
             if key not in ov:
                 raise ValueError(f"scenario {raw.get('id')!r} override {i} missing {key!r}")
-        if not isinstance(ov["from_day"], int) or ov["from_day"] < 1:
+        if not isinstance(ov["from_day"], int) or isinstance(ov["from_day"], bool) or ov["from_day"] < 1:
             raise ValueError(f"scenario {raw.get('id')!r} override {i}: from_day must be an int >= 1")
         if "set" not in ov and "unset" not in ov:
             raise ValueError(f"scenario {raw.get('id')!r} override {i} has neither set nor unset")
         if not isinstance(ov.get("set", {}), dict) or not isinstance(ov.get("unset", []), list):
             raise ValueError(f"scenario {raw.get('id')!r} override {i}: set must be an object, unset a list")
+        if not isinstance(ov["shop"], str):
+            raise ValueError(f"scenario {raw.get('id')!r} override {i}: shop must be a string")
+        if not all(isinstance(k, str) and k for k in ov.get("unset", [])):
+            raise ValueError(f"scenario {raw.get('id')!r} override {i}: unset must list field names")
+        if not ov.get("set") and not ov.get("unset"):
+            raise ValueError(f"scenario {raw.get('id')!r} override {i} changes nothing (empty set and unset)")
     days = raw.get("days")
-    if days is not None and (not isinstance(days, int) or days < 1):
+    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or days < 1):
         raise ValueError(f"scenario {raw.get('id')!r}: days must be an int >= 1")
     return Scenario(
         id=raw["id"],

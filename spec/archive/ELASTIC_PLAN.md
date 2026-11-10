@@ -1,6 +1,6 @@
 # Simffee — Elasticsearch plan ("Find the Signal" track)
 
-2026-09-20 · companion to [SPEC.md](./SPEC.md) and [BACKEND_PLAN.md](./BACKEND_PLAN.md)
+2026-09-20 · companion to [SPEC.md](../SPEC.md) and [BACKEND_PLAN.md](../BACKEND_PLAN.md)
 
 Decisions taken: **synthetic, labeled raw data · local Docker · plan first, build later.**
 
@@ -14,7 +14,7 @@ where they were wrong; this block is the summary.
    invalidates *every* cached decision, not just downstream days. Consequence: **derive runs in
    two modes.** `--compare` (default) writes nothing — it prints derived vs. hand-typed values per
    twin and stores the evidence in the `agents` index only. `--write` is used exactly once,
-   *before* the live fill in [RUN_PLAN.md](./RUN_PLAN.md) §4, or not at all. The demo story
+   *before* the live fill in [RUN_PLAN.md](RUN_PLAN.md) §4, or not at all. The demo story
    ("we found these people in the noise") works in compare mode: the derived numbers and their
    evidence are shown; the engine ran on the same numbers whether a human or a query wrote them.
 2. **Rows carry provenance:** `decision_source` (`autopilot|rule|llm|fallback`), `llm_model`,

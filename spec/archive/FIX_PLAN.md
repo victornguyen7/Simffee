@@ -1,7 +1,7 @@
 # Simffee — Fix plan: getting the demo conclusion out of the engine
 
-2026-09-20 · companion to [SPEC.md](./SPEC.md), [BACKEND_PLAN.md](./BACKEND_PLAN.md),
-[B1_STATUS.md](./B1_STATUS.md), [B2_STATUS.md](./B2_STATUS.md)
+2026-09-20 · companion to [SPEC.md](../SPEC.md), [BACKEND_PLAN.md](../BACKEND_PLAN.md),
+[B1_STATUS.md](B1_STATUS.md), [B2_STATUS.md](B2_STATUS.md)
 
 This is a work order, not a status report. Everything below was measured against the
 working tree as of today, which is **ahead of both status reports**: `engine/llm.py`

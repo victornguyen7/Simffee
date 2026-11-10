@@ -1,7 +1,7 @@
 # B2 — Status report
 
-Companion to [BACKEND_PLAN.md](./BACKEND_PLAN.md). Covers the Analyzer + build pipeline seat only.
-Read alongside [B1_STATUS.md](./B1_STATUS.md).
+Companion to [BACKEND_PLAN.md](../BACKEND_PLAN.md). Covers the Analyzer + build pipeline seat only.
+Read alongside [B1_STATUS.md](B1_STATUS.md).
 
 ## Integration update — 2026-09-20
 

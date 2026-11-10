@@ -1,7 +1,7 @@
 # engine/ — B1, the simulation
 
 Turns `/data` into `{out}/{scenario}/{seed}.jsonl` and per-day state snapshots.
-Contracts live in [`schema.py`](./schema.py); B2 imports that module.
+Contracts live in [`schema.py`](schema.py); B2 imports that module.
 Spec: [../spec/SPEC.md](../spec/SPEC.md) · Plan: [../spec/BACKEND_PLAN.md](../spec/BACKEND_PLAN.md)
 
 ## Run safely
@@ -18,9 +18,9 @@ enter keys locally, and never use a `VITE_` prefix for a server credential.
 Use a new output directory; do not overwrite an existing demo while diagnosing it.
 
 ```bash
-python3 -m engine.cli --all --seeds 0-4 --offline --out /tmp/simffee-check/runs --cache cache
+python3 -m engine.cli --all --seeds 0-2 --offline --cache-defaults --out /tmp/simffee-check/runs --cache cache
 python3 tools/validate.py /tmp/simffee-check/runs
-python3 build_runs.py /tmp/simffee-check/runs --offline --out /tmp/simffee-check/bundle.json
+python3 build_runs.py /tmp/simffee-check/runs --seeds 0-2 --offline --out /tmp/simffee-check/bundle.json
 ```
 
 `--offline` never calls the API. A cache miss produces a flagged fallback, not a
@@ -151,14 +151,17 @@ A real release needs complete trajectories and consistent model/cache provenance
 Run from the repository root:
 
 ```bash
-python3 tests/test_repairs.py -v
-python3 tests/test_b2_sync.py -v
-python3 tests/test_analyzer.py
-python3 tests/test_narrate.py
+pip install -r requirements-dev.txt
+python3 -m pytest                                    # every Python test; no key, no model calls
 python3 tools/check_llm_path.py
 python3 tools/validate.py
 python3 tools/check_pipeline.py --out /tmp/simffee-pipeline-check
+./tools/check_determinism.sh                         # seeds 0-2, fails on any fallback
 ```
+
+The committed cache covers seeds 0-2 of the bundled scenarios (`--all`). The `bundle: false`
+scenarios (`s2_entrant`, `s2_entrant_only`, `abl_rename`) are only partly cached, so offline
+they replay with flagged fallbacks; filling them needs a live run.
 
 The pipeline check uses a clearly labeled deterministic stub, never the API. It
 checks all four scenarios and five seeds, strict bundle construction, prefix and

@@ -2,7 +2,7 @@
 
 2026-09-20 · after `36b724e` · supersedes FIX_PLAN §5.6 and CHANGE_REPORT §7.3 as the work order
 
-Read [CHANGE_REPORT.md](./CHANGE_REPORT.md) for what changed. This document is only *what to do
+Read [CHANGE_REPORT.md](CHANGE_REPORT.md) for what changed. This document is only *what to do
 next*, in order, with the gate that lets you move to the next step.
 
 ## 0. Where we are, in five lines
@@ -160,9 +160,9 @@ In this order — each depends on a compatible cache existing:
 
 1. **Frontend.** Someone has to build screens 1–5 against `public/runs.json`. It is the other
    half of the demo and it is at zero.
-2. **Cost ledger** ([COST_PLAN.md](./COST_PLAN.md) §6 steps 1–2) — needs the live run's real
+2. **Cost ledger** ([COST_PLAN.md](COST_PLAN.md) §6 steps 1–2) — needs the live run's real
    token numbers to be worth anything.
-3. **Elasticsearch** ([ELASTIC_PLAN.md](./ELASTIC_PLAN.md) §7 steps 1–3) — ingest and index do
+3. **Elasticsearch** ([ELASTIC_PLAN.md](ELASTIC_PLAN.md) §7 steps 1–3) — ingest and index do
    not touch twin files; step 4 (`derive --write`) does, and would invalidate the cache you just
    filled. Run derive in *compare* mode first (see ELASTIC_PLAN §3 update).
 4. **Housekeeping** from FIX_PLAN §7: stale file trees, the eight spec gaps, `SPEC 4.3` model

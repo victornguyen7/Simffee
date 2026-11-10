@@ -84,27 +84,27 @@ Versions below are declared dependency ranges or source defaults, not a claim ab
 | Persistence | JSON and JSONL on the local filesystem | Input records, cached decisions, trajectories, daily snapshots, live-run registry, and cost ledgers. |
 | Frontend | React / React DOM `^19.2.8`, TypeScript `~6.0.2` | Dashboard, playback, what-if controls, and town visualization. |
 | Frontend tooling | Vite `^8.3.0`, `@vitejs/plugin-react` `^6.1.1`, Oxlint `^1.81.0`, npm lockfile | Development server, production bundle, type checking, linting. |
-| Testing | Python `unittest`, `unittest.mock`, standalone assertion scripts | Offline engine, API, analysis, translation, and integration checks. No declared pytest dependency. |
+| Testing | `pytest` (in [requirements-dev.txt](requirements-dev.txt)) running `unittest` cases and the script-style suites; GitHub Actions CI | Offline engine, API, analysis, translation, security, validation, fallback, and integration checks. No test calls a model. |
 | Orchestration | Bash scripts in `tools/` | Demo assembly, local serving, determinism checks. |
 
-No implemented Elasticsearch integration, vector store, Redis, container deployment, or cloud infrastructure configuration was found. Elasticsearch is a proposal in [spec/ELASTIC_PLAN.md](spec/ELASTIC_PLAN.md), not part of the runtime stack.
+No implemented Elasticsearch integration, vector store, Redis, container deployment, or cloud infrastructure configuration was found. Elasticsearch is a proposal in [spec/ELASTIC_PLAN.md](spec/archive/ELASTIC_PLAN.md), not part of the runtime stack.
 
 ## 4. Repository map and backend boundaries
 
 | Location | Responsibility |
 | --- | --- |
-| [data/](data/) | Authored shops, synthetic twin records, scenario definitions, allowed translator actions, naive-attribution weights. |
-| [engine/](engine/) | Domain contracts, world resolution, simulation, prompts, model transport, caching, translation, CLI. |
-| [analyzer/](analyzer/) | Break detection, attribution, counterfactual comparisons, flows, confidence heuristics, deterministic narration. |
+| [data/](data) | Authored shops, synthetic twin records, scenario definitions, allowed translator actions, naive-attribution weights. |
+| [engine/](engine) | Domain contracts, world resolution, simulation, prompts, model transport, caching, translation, CLI. |
+| [analyzer/](analyzer) | Break detection, attribution, counterfactual comparisons, flows, confidence heuristics, deterministic narration. |
 | [api/server.py](api/server.py) | HTTP parsing, routing, JSON responses, CORS, server startup. |
 | [api/service.py](api/service.py) | Library access, live-run orchestration, ancestor copying, analysis, timeout response, registry, cost recording. No HTTP implementation inside this layer. |
 | [build_runs.py](build_runs.py) | Validates trajectory files and assembles frontend bundles. Its analysis functions are also reused by the API. |
 | `cache/` | Content-addressed model decisions; `cache/translations/` holds translation replies. Intended to be committed for replay. |
 | `runs/` | Generated trajectories, snapshots, and live outputs; Git-ignored. |
 | [public/runs.json](public/runs.json) | Static bundle consumed by the browser. |
-| [src/](src/) | React application and TypeScript representations of backend output. |
-| [tests/](tests/) and [tools/](tools/) | Regression tests, synthetic fixtures, pipeline checks, validation, cost reporting, demo scripts. |
-| [spec/](spec/) | Product specifications, historical plans, status reports, and future work. Some statements predate the current implementation. |
+| [src/](src) | React application and TypeScript representations of backend output. |
+| [tests/](tests) and [tools/](tools) | Regression tests, synthetic fixtures, pipeline checks, validation, cost reporting, demo scripts. |
+| [spec/](spec) | Product specifications, historical plans, status reports, and future work. Some statements predate the current implementation. |
 
 ### Engine modules
 
@@ -319,7 +319,7 @@ The destination must be new or empty. The script defaults to three seeds, runs s
 The equivalent explicit stages are:
 
 ```bash
-python3 -m engine.cli --all --seeds 0-2 --offline --require-complete --out /tmp/simffee-architecture-demo/runs --cache cache
+python3 -m engine.cli --all --seeds 0-2 --offline --cache-defaults --require-complete --out /tmp/simffee-architecture-demo/runs --cache cache
 python3 tools/validate.py /tmp/simffee-architecture-demo/runs
 python3 build_runs.py /tmp/simffee-architecture-demo/runs --seeds 0-2 --offline --require-complete --out /tmp/simffee-architecture-demo/runs.json
 ```
@@ -337,27 +337,24 @@ Run the commands in separate terminals. The UI still reads the repository's `pub
 
 **Offline caveat:** `engine.cli --offline` never requests model decisions, and `build_runs.py` is always local. In the API, `--offline` is passed to the engine but **not to the text translator**: an uncached `/whatif` can still attempt a provider call. For guaranteed no-network API use, submit structured scenarios through `/run` with the server offline. Remove `--offline` only when live simulation calls and spend are intended.
 
-`tools/serve_demo.sh` is another convenience entry point, but it deletes and rebuilds `runs/library`, starts an API capable of live calls, and overrides the what-if wait timeout to 60 seconds. Do not treat it as a non-destructive or fully offline launcher.
+`tools/serve_demo.sh` is another convenience entry point, but it deletes and rebuilds `runs/library`, starts an API capable of live calls, and sets the what-if wait timeout to 60 seconds (a longer run keeps going, and the Ask page polls `GET /runs/<id>` for its result). Do not treat it as a non-destructive or fully offline launcher.
 
 ### Verification commands
 
 ```bash
-python3 tests/test_repairs.py -v
-python3 tests/test_b2_sync.py -v
-python3 tests/test_environment.py -v
-python3 tests/test_phase_b.py -v
-python3 tests/test_analyzer.py
-python3 tests/test_narrate.py
-python3 tests/test_generic.py
-python3 tests/test_translate.py
-python3 tests/test_api.py
+pip install -r requirements-dev.txt
+python3 -m pytest
 python3 tools/check_llm_path.py
 python3 tools/check_pipeline.py --out /tmp/simffee-architecture-pipeline
+./tools/check_determinism.sh
+./tools/build_demo.sh --out /tmp/simffee-architecture-bundle
+python3 tools/check_bundle.py /tmp/simffee-architecture-bundle/runs.json
+python3 tools/check_links.py
 npm run lint
 npm run build
 ```
 
-These Python checks use fixtures, offline paths, or injected model stubs. Some are standalone scripts, so unittest discovery alone does not execute every test suite. The pipeline destination must be new or empty; it checks generated trajectories, forks, strict bundling, and warm-cache replay across processes. Synthetic test success verifies mechanics, not model realism. `tools/check_translate_live.py` is a separate live-provider check and is not part of this offline list.
+These Python checks use fixtures, offline paths, or injected model stubs. `pytest` collects every suite, including the script-style ones (each has a `test_all_checks()` wrapper and still runs standalone), and `tests/conftest.py` removes credentials and model overrides so no test can call a provider. CI (`.github/workflows/ci.yml`) runs the same list. The pipeline destination must be new or empty; it checks generated trajectories, forks, strict bundling, and warm-cache replay across processes. Synthetic test success verifies mechanics, not model realism. `tools/check_translate_live.py` is a separate live-provider check and is not part of this offline list.
 
 ## 12. Current scope and important limitations
 

@@ -241,3 +241,12 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* AUDIT_FIX_PLAN #15: this page is a stand-alone toy, not the engine; say so. */
+.shop__sandbox {
+  margin: 6px 0 0;
+  max-width: 62ch;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}

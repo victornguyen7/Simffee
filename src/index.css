@@ -231,3 +231,8 @@ input {
   border-color: var(--accent);
   color: var(--text);
 }
+/* Shown while a lazily loaded page (App.tsx) arrives. */
+.page-loading {
+  color: var(--muted);
+  padding: 24px;
+}

@@ -162,12 +162,16 @@ export default function Conclusion() {
                 {whatif.map((fix, index) => {
                   const low = lowConfidence(fix.confidence_detail, fix.confidence)
                   const measured = fix.confidence != null && !fix.confidence_detail.unmeasured
-                  const bestReturns = Math.max(...whatif.filter(actionable).map((candidate) => candidate.returns), -Infinity)
-                  const best = measured && !low && fix.returns === bestReturns
+                  // returns is null when a branch has fallback decisions (analyzer/pairwise.py); such a
+                  // fix can't be "best", and Math.max would otherwise read null as 0.
+                  const bestReturns = Math.max(...whatif.filter(actionable).map((candidate) => candidate.returns ?? -Infinity), -Infinity)
+                  const best = measured && !low && fix.returns != null && fix.returns === bestReturns
                   return (
                     <article className={`conclusion__card conclusion__whatif-card ${best ? 'is-best' : ''} ${low ? 'is-low' : ''}`} key={fix.scenario || index}>
                       <h4>{fix.label}</h4>
-                      <strong className="conclusion__returns">{fix.returns} <span>of {fix.of} come back</span></strong>
+                      <strong className="conclusion__returns">
+                        {fix.returns ?? '—'} <span>{fix.returns == null ? 'not measured (fallback decisions)' : `of ${fix.of} come back`}</span>
+                      </strong>
                       <ul>
                         {fix.returned.map((id) => <li key={id}>{twinName(runs, id)}</li>)}
                       </ul>

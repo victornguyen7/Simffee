@@ -29,7 +29,9 @@ interface Props {
 export default function Shop({ shop }: Props) {
   const theme = INTERIORS[shop]
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const worldRef = useRef<World>(createWorld())
+  // Created once; render reads `view` (state), never the ref (AUDIT_FIX_PLAN #14).
+  const [initialWorld] = useState(() => createWorld())
+  const worldRef = useRef<World>(initialWorld)
   const frameRef = useRef<number>(0)
 
   const [speed, setSpeed] = useState<Speed>(1)
@@ -42,8 +44,9 @@ export default function Shop({ shop }: Props) {
     tick: 0,
     inShop: 0,
     queueLength: 0,
-    stats: worldRef.current.stats,
-    reputation: 1
+    stats: { ...initialWorld.stats },
+    reputation: 1,
+    dayLength: initialWorld.config.dayLength
   })
   const [history, setHistory] = useState<DayStats[]>([])
 
@@ -92,7 +95,8 @@ export default function Shop({ shop }: Props) {
         inShop: world.customers.length,
         queueLength: world.queue.length,
         stats: { ...world.stats },
-        reputation: world.reputation
+        reputation: world.reputation,
+        dayLength: world.config.dayLength
       })
 
       frameRef.current = requestAnimationFrame(loop)
@@ -116,9 +120,8 @@ export default function Shop({ shop }: Props) {
     setHistory([])
   }
 
-  const world = worldRef.current
-  const dayDone = view.tick >= world.config.dayLength && view.inShop === 0
-  const progress = Math.min(1, view.tick / world.config.dayLength)
+  const dayDone = view.tick >= view.dayLength && view.inShop === 0
+  const progress = Math.min(1, view.tick / view.dayLength)
   const avgWait = view.stats.served === 0 ? 0 : view.stats.totalWait / view.stats.served
 
   return (
@@ -131,6 +134,11 @@ export default function Shop({ shop }: Props) {
           <p className="shop__meta">
             {dayDone ? 'closed' : `${Math.round(progress * 100)}% through the day`} · {view.inShop} in the shop ·{' '}
             {view.queueLength} in line
+          </p>
+          <p className="shop__sandbox">
+            Sandbox: a separate toy queue model of this shop's floor, with its own customers, dollar prices and
+            baristas. It does not use the engine's ten twins or any scenario results; those are on the town, model
+            and why pages.
           </p>
         </div>
 

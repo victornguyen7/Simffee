@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import WhatIfBox from '../components/WhatIfBox'
+import { loadRuns } from '../sim/runs'
 import type { Runs, WhatIfAnswer } from '../types'
 import './whatif.css'
 
@@ -10,11 +11,7 @@ export default function WhatIf() {
 
   useEffect(() => {
     let alive = true
-    fetch(`${import.meta.env.BASE_URL}runs.json`)
-      .then((response) => {
-        if (!response.ok) throw new Error(`runs.json failed to load (${response.status})`)
-        return response.json() as Promise<Runs>
-      })
+    loadRuns()
       .then((loaded) => alive && setRuns(loaded))
       .catch((reason: unknown) => {
         if (alive) setError(reason instanceof Error ? reason.message : String(reason))

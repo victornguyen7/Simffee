@@ -1,6 +1,6 @@
 # Simffee — Backend Dev Plan (2 people)
 
-Companion to [SPEC.md](./SPEC.md). Covers the two backend seats only. Frontend is a third person
+Companion to [SPEC.md](SPEC.md). Covers the two backend seats only. Frontend is a third person
 working independently against one contract: `public/runs.json`. They own everything in `src/` and
 `index.html`; nobody on backend touches those files.
 

@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import Town from './pages/Town'
-import Shop from './pages/Shop'
-import Market from './pages/Market'
-import Conclusion from './pages/Conclusion'
-import WhatIf from './pages/WhatIf'
 import type { ShopId } from './sim/runs'
+
+// The town is the landing page; the others load on first visit so the first paint stays small.
+const Shop = lazy(() => import('./pages/Shop'))
+const Market = lazy(() => import('./pages/Market'))
+const Conclusion = lazy(() => import('./pages/Conclusion'))
+const WhatIf = lazy(() => import('./pages/WhatIf'))
 
 type Scene =
   | { name: 'town' }
@@ -51,10 +53,12 @@ function App() {
 
       <main className={`shell__body ${fullBleed ? 'shell__body--full' : ''}`}>
         {scene.name === 'town' && <Town onEnterShop={(shop) => setScene({ name: 'interior', shop })} />}
-        {scene.name === 'interior' && <Shop shop={scene.shop} />}
-        {scene.name === 'market' && <Market />}
-        {scene.name === 'conclusion' && <Conclusion />}
-        {scene.name === 'whatif' && <WhatIf />}
+        <Suspense fallback={<p className="page-loading">Loading…</p>}>
+          {scene.name === 'interior' && <Shop shop={scene.shop} />}
+          {scene.name === 'market' && <Market />}
+          {scene.name === 'conclusion' && <Conclusion />}
+          {scene.name === 'whatif' && <WhatIf />}
+        </Suspense>
       </main>
     </div>
   )

@@ -1,7 +1,7 @@
 # Simffee — LLM cost plan (The Token Company challenge)
 
-2026-09-20 · companion to [SPEC.md](./SPEC.md), [BACKEND_PLAN.md](./BACKEND_PLAN.md),
-[ELASTIC_PLAN.md](./ELASTIC_PLAN.md)
+2026-09-20 · companion to [SPEC.md](../SPEC.md), [BACKEND_PLAN.md](../BACKEND_PLAN.md),
+[ELASTIC_PLAN.md](ELASTIC_PLAN.md)
 
 ## Update — after `36b724e` (Groq, deterministic narration, v2 cache key, strict gates)
 

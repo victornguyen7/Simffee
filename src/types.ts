@@ -102,6 +102,9 @@ export interface Confidence {
   unmeasured: boolean
   reason?: string | null
   partial?: boolean
+  /** Set on analysis.confidence by analyzer/confidence.py (value < 0.5). */
+  low_confidence?: boolean
+  detail?: unknown
 }
 
 export interface Revenue {

@@ -1,6 +1,6 @@
 # Simffee — Spec: functional backend (open-ended what-ifs)
 
-2026-09-20 · branch `version-1-functional` · builds on [SPEC.md](./SPEC.md) (v1, the floor) and
+2026-09-20 · branch `version-1-functional` · builds on [SPEC.md](SPEC.md) (v1, the floor) and
 takes from *Spec v2: Starbucks mở cạnh bên, crowd 500* what makes the backend general. v2 items
 are marked **[v2]**; deferred v2 items are listed in §10 with the reason.
 

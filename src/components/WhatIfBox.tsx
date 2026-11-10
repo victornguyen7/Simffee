@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { health, reviewRun, runScenario, runStatus, tailorSketch, whatIf } from '../api'
 import { focusShopOf, type AIReview, type Flows, type Health, type Runs, type WhatIfAnswer } from '../types'
-import { pickMock, POOL_SIZE, SHORTLIST, type MockAnswer, type Picked } from '../mockAnswers'
+import { pickMock, SHORTLIST, type MockAnswer, type Picked } from '../mockAnswers'
 
 interface Props {
   runs: Runs
@@ -74,8 +74,8 @@ function MockPanel({ mock, tailored, picked }: Sketch) {
     : tailored === 'pending' ? 'Illustrative movement sketch — fitting it to your plan…'
     : 'Illustrative movement sketch — the simulation is unavailable, so this is not a simulated result.'
   const how = picked.shortlisted
-    ? `best of ${picked.shortlisted} sketches (of ${POOL_SIZE}) at ≥70% match to this plan and set-up · ${Math.round(picked.relevance * 100)}% match`
-    : `nothing in the ${POOL_SIZE}-sketch pool matched this plan at 70%; showing one of the ${SHORTLIST} closest`
+    ? `best of ${picked.shortlisted} sketches (of ${picked.poolSize}) at ≥70% match to this plan and set-up · ${Math.round(picked.relevance * 100)}% match`
+    : `nothing in the ${picked.poolSize}-sketch pool matched this plan at 70%; showing one of the ${SHORTLIST} closest`
   return (
     <div className="flows">
       <b>{mock.headline}</b>
@@ -136,17 +136,24 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
 
   /** Pick the most relevant unseen sketch right away, then swap in the model's reworded one if the backend can. */
   const showMock = (query: string, version: number, live: Health | null | undefined = api) => {
-    const picked = pickMock(query, { focus: focusShopOf(runs), shops: runs.shops })
-    const raw = picked.mock
-    if (!live) {
-      setMock({ mock: raw, tailored: 'no', picked })
-      return
-    }
-    setMock({ mock: raw, tailored: 'pending', picked })
-    void tailorSketch(query, raw).then((fitted) => {
-      if (version !== requestVersion.current) return
-      setMock(fitted ? { mock: fitted, tailored: 'yes', picked } : { mock: raw, tailored: 'no', picked })
-    })
+    void pickMock(query, { focus: focusShopOf(runs), shops: runs.shops })
+      .then((picked) => {
+        if (version !== requestVersion.current) return
+        const raw = picked.mock
+        if (!live) {
+          setMock({ mock: raw, tailored: 'no', picked })
+          return
+        }
+        setMock({ mock: raw, tailored: 'pending', picked })
+        void tailorSketch(query, raw).then((fitted) => {
+          if (version !== requestVersion.current) return
+          setMock(fitted ? { mock: fitted, tailored: 'yes', picked } : { mock: raw, tailored: 'no', picked })
+        })
+      })
+      .catch(() => {
+        // The sketch pool failed to load: the answer area falls back to "Can't simulate that yet."
+        if (version === requestVersion.current) setMock(null)
+      })
   }
 
   // AUDIT_FIX_PLAN #5: a request that outlives the server's --timeout answers with

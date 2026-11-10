@@ -1,7 +1,7 @@
 # B1 status report — engine vs. spec
 
 2026-09-19 · covers `engine/`, `tools/` · reconciles the implementation against
-[SPEC.md](./SPEC.md) and [BACKEND_PLAN.md](./BACKEND_PLAN.md)
+[SPEC.md](../SPEC.md) and [BACKEND_PLAN.md](../BACKEND_PLAN.md)
 
 Read this if you are B2 (the row contract and its invariants), the frontend
 person (where `runs.json` will come from), or whoever owns twin tuning (the data

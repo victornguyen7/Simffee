@@ -1,4 +1,3 @@
-import pool from './sketchPool.json'
 import type { Shop } from './types'
 
 /** Hand-written-style sketches of how F&B customers move between shops. Shown on the Ask page when
@@ -30,11 +29,24 @@ interface RawSketch extends MockAnswer {
   segment: string
 }
 
-const SKETCHES = pool.sketches as RawSketch[]
-const LEVERS = pool.levers as Record<string, { tags: string[]; setup: string[] }>
-const SEGMENTS = pool.segments as Record<string, string[]>
+interface Pool {
+  sketches: RawSketch[]
+  levers: Record<string, { tags: string[]; setup: string[] }>
+  segments: Record<string, string[]>
+}
 
-export const POOL_SIZE = SKETCHES.length
+let pool: Promise<Pool> | null = null
+
+/** The ~400 KB pool is only needed when the simulation cannot answer, so it is loaded on first
+ *  use rather than shipped in the main bundle (AUDIT_FIX_PLAN #17). A failed load is retried. */
+const loadPool = (): Promise<Pool> =>
+  (pool ??= import('./sketchPool.json')
+    .then((m) => m.default as unknown as Pool)
+    .catch((reason: unknown) => {
+      pool = null
+      throw reason
+    }))
+
 export const SHORTLIST = 40
 export const RELEVANCE_BAR = 0.7
 
@@ -42,10 +54,10 @@ const W = { topic: 0.5, detail: 0.2, audience: 0.15, setup: 0.15 }
 
 const SEEN_KEY = 'simffee.seenSketches'
 
-const seen = (): number[] => {
+const seen = (poolSize: number): number[] => {
   try {
     const raw = JSON.parse(sessionStorage.getItem(SEEN_KEY) ?? '[]') as unknown
-    return Array.isArray(raw) ? raw.filter((n): n is number => Number.isInteger(n) && n >= 0 && n < POOL_SIZE) : []
+    return Array.isArray(raw) ? raw.filter((n): n is number => Number.isInteger(n) && n >= 0 && n < poolSize) : []
   } catch {
     return []
   }
@@ -111,14 +123,14 @@ function setupSatisfied(needs: string[], setup: SketchSetup | null): boolean {
   })
 }
 
-function score(s: RawSketch, f: Set<string>, lower: string, setup: SketchSetup | null): { r: number; hits: number } {
-  const lever = LEVERS[s.lever]
+function score(p: Pool, s: RawSketch, f: Set<string>, lower: string, setup: SketchSetup | null): { r: number; hits: number } {
+  const lever = p.levers[s.lever]
   const [topic, ...details] = lever.tags
   const hits = details.filter((t) => hit(t, f, lower)).length
   let r = 0
   if (hits || hit(topic, f, lower)) r += W.topic
   r += W.detail * Math.min(hits, 3) / 3
-  if (SEGMENTS[s.segment].some((t) => hit(t, f, lower))) r += W.audience
+  if (p.segments[s.segment].some((t) => hit(t, f, lower))) r += W.audience
   if (setupSatisfied(lever.setup, setup)) r += W.setup
   return { r: Math.round(r * 100) / 100, hits }
 }
@@ -135,16 +147,17 @@ function fill(s: RawSketch, setup: SketchSetup | null): MockAnswer {
 /** Score the whole pool against the plan and the set-up, shortlist the top 40, keep the ones at or
  *  above the 70% bar, and return the best one not shown yet this browser session. When the plan
  *  matches nothing the shortlist is random. */
-export const pickMock = (text: string, setup: SketchSetup | null): Picked => {
+export const pickMock = async (text: string, setup: SketchSetup | null): Promise<Picked> => {
+  const p = await loadPool()
   const lower = text.toLowerCase()
   const f = features(text, setup)
-  const scored = SKETCHES.map((s, i) => ({ i, ...score(s, f, lower, setup), tie: Math.random() }))
+  const scored = p.sketches.map((s, i) => ({ i, ...score(p, s, f, lower, setup), tie: Math.random() }))
   scored.sort((a, b) => b.r - a.r || b.hits - a.hits || a.tie - b.tie)
   const top = scored.slice(0, SHORTLIST)
   const cleared = top.filter((x) => x.r >= RELEVANCE_BAR)
   const candidates = cleared.length ? cleared : top
 
-  let used = seen()
+  let used = seen(p.sketches.length)
   let fresh = candidates.filter((x) => !used.includes(x.i))
   if (!fresh.length) {
     const ids = new Set(candidates.map((x) => x.i))
@@ -153,5 +166,5 @@ export const pickMock = (text: string, setup: SketchSetup | null): Picked => {
   }
   const best = fresh[0]
   remember([...used, best.i])
-  return { mock: fill(SKETCHES[best.i], setup), relevance: best.r, shortlisted: cleared.length, poolSize: POOL_SIZE }
+  return { mock: fill(p.sketches[best.i], setup), relevance: best.r, shortlisted: cleared.length, poolSize: p.sketches.length }
 }

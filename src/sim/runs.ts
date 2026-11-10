@@ -6,136 +6,32 @@
  * can quietly disagree with the real one.
  */
 
+import type { Confidence, Row, Runs } from '../types'
+
+// One description of runs.json, in src/types.ts (AUDIT_FIX_PLAN #26); re-exported here for the
+// pages that read the bundle through this module.
+export type { Analysis, Confidence, Row, Runs, Scenario, Twin, WhatIf } from '../types'
+
+/** The shops that have a drawn interior and a town sprite. Not the same as a data shop id,
+ *  which is any key of `runs.shops` (src/types.ts `ShopId`). */
 export type ShopId = 'simffee' | 'starbucks'
 
-/** What a twin did on one day, under one scenario, on one seed. */
-export interface Row {
-  scenario: string
-  seed: number
-  day: number
-  twin: string
-  mode: string
-  disruption: { score: number; source: string }
-  /** The shop they bought from, or something else entirely if they went without. */
-  choice: string
-  spent: number
-  abandoned: boolean
-  primary_driver: string | null
-  secondary_driver: string | null
-  valence: number
-  /** One sentence in the twin's own voice. Goes straight into a speech bubble. */
-  reasoning: string
-  told: string[]
-  llm_failed: boolean
-}
+let runsJson: Promise<unknown> | null = null
 
-export type Driver =
-  | 'habit'
-  | 'hours'
-  | 'price'
-  | 'distance'
-  | 'wait'
-  | 'product'
-  | 'curiosity'
-  | 'social'
-  | 'quality'
-
-export interface Confidence {
-  value: number | null
-  stability?: number
-  support?: number
-  unmeasured: boolean
-  reason: string | null
-  low_confidence?: boolean
-}
-
-export interface WhatIf {
-  scenario: string
-  label: string
-  returns: number
-  of: number
-  returned: string[]
-  confidence: number | null
-  confidence_detail: Confidence
-}
-
-interface State {
-  habit: Record<string, number>
-  latent_interest: Record<string, number>
-}
-
-export interface EvidenceRow extends Row {
-  state_before: State
-  state_after: State
-  kind: string
-}
-
-export interface Analysis {
-  complete: boolean
-  break_day: number | null
-  drop?: number | null
-  reason?: string
-  naive?: { driver: Driver; magnitude: number; label: string } | null
-  actual?: { driver: Driver; histogram: Record<Driver, number>; switchers: string[] } | null
-  surprise?: boolean | null
-  impact?: {
-    lost_total: number
-    lost_by_decision: number
-    lost_anyway: number
-    per_twin: { twin: string; baseline: string; cf_null: string; attributed: boolean }[]
-  } | null
-  evidence?: EvidenceRow[]
-  confidence?: Confidence
-  narration?: string | null
-  whatif?: WhatIf[]
-}
-
-export interface Scenario {
-  label: string
-  parent: string | null
-  from_day: number
-  seeds: Record<string, { rows: Row[] }>
-}
-
-export interface Twin {
-  id: string
-  name: string
-  home: [number, number]
-  profile: Record<string, unknown>
-  why_excerpt: { q: string; a: string }[]
-  say_do_gap?: unknown
-}
-
-export interface ShopInfo {
-  name: string
-  price: Record<string, number>
-  open: string
-  close: string
-  quality: number
-  avg_wait_min: number
-}
-
-export interface Runs {
-  meta: {
-    twins: number
-    days: number
-    seeds: number[]
-    default_seed: number
-    generated_at: string
-    /** The disclaimer the protocol requires on every screen. */
-    synthetic_label: string
-  }
-  shops: Record<string, ShopInfo>
-  twins: Twin[]
-  scenarios: Record<string, Scenario>
-  analysis: Analysis
-}
-
-/** runs.json sits in public/, so Vite serves it straight from the site root. */
-export async function loadRuns(): Promise<Runs> {
-  const res = await fetch('/runs.json')
-  if (!res.ok) throw new Error(`runs.json failed to load (${res.status})`)
-  return (await res.json()) as Runs
+/** runs.json, fetched once per page load and shared by every page (it is read-only data).
+ *  It sits in public/, so it is served next to the app at BASE_URL. A failed load is not
+ *  cached, so opening another page retries it. */
+export function loadRuns(): Promise<Runs> {
+  runsJson ??= fetch(`${import.meta.env.BASE_URL}runs.json`)
+    .then((res) => {
+      if (!res.ok) throw new Error(`runs.json failed to load (${res.status})`)
+      return res.json() as Promise<unknown>
+    })
+    .catch((reason: unknown) => {
+      runsJson = null
+      throw reason
+    })
+  return runsJson as Promise<Runs>
 }
 
 export function scenarioIds(runs: Runs): string[] {

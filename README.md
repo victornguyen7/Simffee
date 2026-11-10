@@ -94,28 +94,37 @@ variables and their defaults.
 
 | Path | What's there |
 | --- | --- |
-| [engine/](engine/) | Simulation loop, habit/disruption/gossip rules, LLM transport, decision cache, CLI |
-| [analyzer/](analyzer/) | Attribution, counterfactual comparison, flows, confidence, narration |
-| [api/](api/) | Local HTTP API (`server.py` routing, `service.py` orchestration) |
-| [data/](data/) | Shops, twins, scenarios, allowed translator actions |
-| [src/](src/) | React/TypeScript frontend (dashboard, playback, what-if UI, town view) |
-| [tools/](tools/) | Demo build/serve scripts, determinism and pipeline checks |
-| [tests/](tests/) | Python test suite for engine, API, analyzer, translation |
-| [spec/](spec/) | Design spec, roadmap, and status docs |
+| [engine/](engine) | Simulation loop, habit/disruption/gossip rules, LLM transport, decision cache, CLI |
+| [analyzer/](analyzer) | Attribution, counterfactual comparison, flows, confidence, narration |
+| [api/](api) | Local HTTP API (`server.py` routing, `service.py` orchestration) |
+| [data/](data) | Shops, twins, scenarios, allowed translator actions |
+| [src/](src) | React/TypeScript frontend (dashboard, playback, what-if UI, town view) |
+| [tools/](tools) | Demo build/serve scripts; determinism, pipeline, bundle, link and cache checks |
+| [tests/](tests) | Python test suite for engine, API, analyzer, translation |
+| [spec/](spec) | Design spec, roadmap, the [audit and fix plan](spec/AUDIT_FIX_PLAN.md); old status reports in [spec/archive/](spec/archive) |
 
 ## Running tests
 
 ```bash
-python3 tests/test_repairs.py -v
-python3 tests/test_b2_sync.py -v
-python3 tests/test_analyzer.py
-python3 tests/test_narrate.py
-python3 tools/check_llm_path.py
-python3 tools/validate.py
-python3 tools/check_pipeline.py --out /tmp/simffee-pipeline-check
+pip install -r requirements-dev.txt     # requirements.txt + pytest
+python3 -m pytest                       # every Python test, including the script-style suites
+npm run lint && npm run build           # oxlint (warnings fail) + tsc -b + vite build
 ```
 
-Frontend: `npm run lint` and `npm run build` (runs `tsc -b` then `vite build`).
+The tests never call a model or need a key: `tests/conftest.py` strips credentials and model
+overrides from the environment. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs
+the above plus these end-to-end checks, which also work locally:
+
+```bash
+python3 tools/check_pipeline.py --out /tmp/simffee-pipeline   # stubbed engine -> bundle pipeline
+./tools/check_determinism.sh                                  # same seed replays byte for byte
+./tools/build_demo.sh --out /tmp/simffee-demo                 # offline rebuild of the demo bundle
+python3 tools/check_bundle.py /tmp/simffee-demo/runs.json     # ...matches public/runs.json
+python3 tools/check_links.py                                  # no broken relative Markdown links
+```
+
+`python3 tools/prune_cache.py` reports decision-cache entries the current code can no longer
+reach (add `--delete` to remove them).
 
 ## Tech stack
 

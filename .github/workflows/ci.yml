@@ -52,6 +52,8 @@ jobs:
         run: ./tools/build_demo.sh --out "$RUNNER_TEMP/demo"
       - name: Committed public/runs.json matches the rebuild
         run: python tools/check_bundle.py "$RUNNER_TEMP/demo/runs.json"
+      - name: Relative Markdown links resolve
+        run: python tools/check_links.py
 
   frontend:
     name: Frontend typecheck, lint, build

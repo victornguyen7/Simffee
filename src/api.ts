@@ -33,9 +33,12 @@ export async function health(): Promise<Health | null> {
 
 /** Free text -> translated -> run -> analysed. The server's own timeout (--timeout, default 240s)
  *  falls back to the library; this must outlive it plus translation so the fallback answer arrives. */
-export async function whatIf(text: string, seeds: number[], parent = 'baseline'): Promise<WhatIfAnswer> {
-  const answer = await post<WhatIfAnswer>('/whatif', { text, seeds, parent, fresh: true }, 300_000)
-  if (!answer.error && answer.fresh !== true) {
+/*  fresh=false (the default) reuses earlier work: the run id is a hash of the question (case and
+ *  surrounding spaces ignored), so asking the same thing again replays its translation and every
+ *  decision from cache/ in about a second. fresh=true forces a new translation and new model calls. */
+export async function whatIf(text: string, seeds: number[], parent = 'baseline', fresh = false): Promise<WhatIfAnswer> {
+  const answer = await post<WhatIfAnswer>('/whatif', { text, seeds, parent, fresh }, 300_000)
+  if (fresh && !answer.error && answer.fresh !== true) {
     throw new Error('The backend is still running the previous version. Restart it to enable fresh what-if runs.')
   }
   return answer

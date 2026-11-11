@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1162,
+    "output_tokens": 68
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Starbucks is 7 minutes away, but I lose patience after 8 minutes. I'd be stuck in a long queue. I'll skip it.",
+  "secondary_driver": "distance",
+  "valence": 0.2
+}

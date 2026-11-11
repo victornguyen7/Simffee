@@ -33,8 +33,16 @@ echo "== 2/3 API on http://127.0.0.1:8765 =="
 "$PY" -m api.server --library "$LIB" --cache cache --live-dir runs/live --port 8765 --timeout 60 &
 API_PID=$!
 trap 'kill $API_PID 2>/dev/null || true' EXIT
-sleep 1
-curl -sf http://127.0.0.1:8765/health >/dev/null && echo "   API up" || { echo "   API failed to start"; exit 1; }
+# Startup loads the library and twins, which can take a few seconds: poll /health for up to
+# 20 s instead of checking once, and stop early if the server process has already exited.
+for _ in $(seq 1 40); do
+  if curl -sf http://127.0.0.1:8765/health >/dev/null; then echo "   API up"; break; fi
+  if ! kill -0 "$API_PID" 2>/dev/null; then
+    echo "   API exited during startup (see the error above; is port 8765 already in use?)"; exit 1
+  fi
+  sleep 0.5
+done
+curl -sf http://127.0.0.1:8765/health >/dev/null || { echo "   API failed to start within 20 s"; exit 1; }
 
 if [[ $WEB -eq 1 ]]; then
   echo "== 3/3 web on http://localhost:5173 =="

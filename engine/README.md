@@ -72,11 +72,14 @@ committed cache. Model and effective effort are part of decision cache identity.
 exposes both model roles.
 Restart the backend after changing code or environment settings.
 
-The frontend submits `POST /whatif` with `fresh: true`: translation bypasses its cache,
-and a unique scenario ID prevents reuse of earlier what-if decisions while preserving
-previous runs. The parent baseline prefix is still inherited for a fair comparison.
-Fresh requests consume additional API calls and may legitimately produce identical choices.
-API callers omitting `fresh` keep the original cached behavior. `/health.fresh_runs` lets
+The Ask page's **simulate** button submits `POST /whatif` without `fresh`: the scenario ID
+is a hash of the question (case and surrounding spaces ignored), parent and shop set-up, so
+asking the same question again replays its translation and every decision from `cache/` in
+seconds. A question not asked before still makes live calls. **Simulate fresh** sends
+`fresh: true`: translation bypasses its cache, and a unique scenario ID prevents reuse of
+earlier what-if decisions while preserving previous runs. Either way the parent baseline
+prefix is inherited for a fair comparison. Fresh requests consume additional API calls and
+may legitimately produce identical choices. `/health.fresh_runs` lets
 the UI detect an old server instead of silently displaying its cached response. New
 submissions clear the previous answer; failed seed reruns do not merge old result fields.
 

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1159,
+    "output_tokens": 74
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Starbucks is 5 blocks away with a 7-minute wait. I risk missing my 7:15 standup. I'd rather skip coffee than be late to work.",
+  "secondary_driver": "distance",
+  "valence": 0.2
+}

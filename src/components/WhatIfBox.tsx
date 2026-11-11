@@ -213,7 +213,7 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingId])
 
-  const ask = async (q: string, seeds: number[] = [0]) => {
+  const ask = async (q: string, seeds: number[] = [0], fresh = false) => {
     const query = q.trim()
     if (!query || inFlight.current) return
     let live = api
@@ -237,9 +237,10 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
     setSubmittedText(query)
     setAnswer(null)
     setMock(null)
-    setBusy(seeds.length > 1 ? `running ${seeds.length} seeds…` : 'translating and running fresh…')
+    setBusy(seeds.length > 1 ? `running ${seeds.length} seeds…`
+      : fresh ? 'translating and running fresh…' : 'running (reusing cached answers where they exist)…')
     try {
-      const a = await whatIf(query, seeds)
+      const a = await whatIf(query, seeds, 'baseline', fresh)
       if (version !== requestVersion.current) return
       setAnswer(a)
       if (a.error) showMock(query, version)
@@ -336,7 +337,16 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
           onChange={(e) => setText(e.target.value)}
         />
         <button type="submit" className="chip play" disabled={!!busy || !text.trim()}>
-          {busy ? '…' : 'simulate fresh'}
+          {busy ? '…' : 'simulate'}
+        </button>
+        <button
+          type="button"
+          className="chip"
+          disabled={!!busy || !text.trim()}
+          title="Ignore cached answers: new translation and new model calls"
+          onClick={() => void ask(text, [0], true)}
+        >
+          simulate fresh
         </button>
       </form>
       <div className="examples">
@@ -356,12 +366,12 @@ export default function WhatIfBox({ runs, onAnswer, current }: Props) {
         ))}
       </div>
 
-      <p className="muted">New submissions run fresh and may use additional model calls. Identical plans can still produce the same behavior.</p>
+      <p className="muted">Simulate reuses cached answers, so a question you have asked before comes back in seconds; a new question still needs model calls (a few minutes). Simulate fresh ignores the cache for a new sample.</p>
       {busy && <p className="muted">{busy} — previous output has been cleared.</p>}
 
       {a && !busy && (
         <div className="answer">
-          <p className="muted">Result for: “{a.request_text ?? submittedText}”{a.fresh && !a.error ? ' · fresh run' : ''}</p>
+          <p className="muted">Result for: “{a.request_text ?? submittedText}”{a.error ? '' : a.fresh ? ' · fresh run' : a.translation?.cached ? ' · reused cache' : ''}</p>
           {a.error && !mock && <p className="warn">{a.error}</p>}
           {mock && <MockPanel {...mock} />}
 

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1099,
+    "output_tokens": 76
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "Simffee is my known, comfortable choice at 45k. I compare prices and avoid the 65k Starbucks, so I’ll walk to my usual spot for a short wait.",
+  "secondary_driver": "price",
+  "valence": 0.7
+}

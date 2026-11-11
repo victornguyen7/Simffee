@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.3,
+  "_usage": {
+    "input_tokens": 1166,
+    "output_tokens": 74
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Simffee is shut. Shop B takes seven minutes, which is too close to my eight-minute limit. I am tired from skipping the last few days, so I will skip again.",
+  "secondary_driver": "distance",
+  "valence": 0.2
+}

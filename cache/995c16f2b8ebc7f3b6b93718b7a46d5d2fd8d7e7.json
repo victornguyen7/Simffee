@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1082,
+    "output_tokens": 68
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "My break is nine minutes. A seven-minute queue at Starbucks leaves no time to drink. I'd rather skip it and get coffee on my next break.",
+  "secondary_driver": "habit",
+  "valence": 0.4
+}

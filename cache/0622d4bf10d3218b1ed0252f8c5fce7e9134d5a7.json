@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1149,
+    "output_tokens": 74
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Simffee's open at 07:00, too late. Starbucks' 7-minute wait eats my 9-minute break. I'll skip coffee to protect my shift.",
+  "secondary_driver": "hours",
+  "valence": 0.3
+}

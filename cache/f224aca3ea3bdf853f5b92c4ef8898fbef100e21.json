@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1035,
+    "output_tokens": 65
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Starbucks takes 7 minutes. My break is tight. Simffee is 4 minutes. I need consistency to make my shift.",
+  "secondary_driver": "habit",
+  "valence": 0.8
+}

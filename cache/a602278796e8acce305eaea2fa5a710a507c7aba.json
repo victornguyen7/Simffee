@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1097,
+    "output_tokens": 67
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "price",
+  "reasoning": "Starbucks is 20k more than my budget and further away. Simffee is cheap, open, and I've been going lately anyway.",
+  "secondary_driver": "habit",
+  "valence": 0.6
+}

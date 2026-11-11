@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1085,
+    "output_tokens": 66
+  },
+  "_version": 2,
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is shut. I need coffee before my shift and Shop B is open, so I'm going there despite the wait.",
+  "secondary_driver": "curiosity",
+  "valence": 0.6
+}

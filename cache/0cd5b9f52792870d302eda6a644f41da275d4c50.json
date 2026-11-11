@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 856,
+    "output_tokens": 67
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "I need my usual americano to start the day. It fits my budget and wait limit, and I don't have time to try new places.",
+  "secondary_driver": "wait",
+  "valence": 0.5
+}

@@ -4,8 +4,7 @@ Audit of `main` at `19e6066` (2026-11-10). Each issue below was found by running
 project's checks and scripts, not by reading code alone. Line references point to the
 code at the time of the audit unless marked otherwise.
 
-**Status:** all 8 phases are done (committed to `main` through phase 5). Left open: #21 (local
-leftovers, the owner's call) and #27 (a live fill for the non-bundle scenarios).
+**Status:** all 8 phases are done. Left open: #21 (local leftovers, the owner's call).
 
 ## Summary
 
@@ -78,7 +77,7 @@ the committed data and the code.
 | 24 | The AI review failed once in browser testing, right after a burst of model calls, with an unlabelled "transport failed". It succeeded on retry and couldn't be reproduced. Groq's on-demand tier allows 7,000 input tokens per minute and a review request is about 4,000, so a review straight after a live run competes for that budget. Rate limits are retried and labelled, but this failure carried no label, because unknown transport errors threw away their class. | Made diagnosable (phase 6): unknown errors now carry their exception class, connection errors are labelled, and the review panel says why it's unavailable. Root cause unconfirmed. |
 | 25 | The requested fallback model, `qwen3.8`, exists only in a 27B size (a 17.7 GB download), and this Mac has 8 GB of memory. Ollama 0.40.16 is installed and running, but no model is pulled, so the fallback currently answers "model not found" and runs fail with Groq's quota reason, as designed. | Fixed: `qwen3:4b` (2.5 GB) pulled and set as `SIMFFEE_FALLBACK_MODEL`, with thinking off; verified live (see the fallback section) |
 | 26 | Two TypeScript interfaces describe `runs.json`: `Runs` in `src/types.ts` (Town, Ask) and `Runs` in `src/sim/runs.ts` (Market, Conclusion). They can drift apart silently. The shared loader takes a type parameter so both still work. | Fixed (phase 8): one `Runs` type, in `src/types.ts` |
-| 27 | The three `bundle: false` scenarios (`s2_entrant`, `s2_entrant_only`, `abl_rename`) were never fully cached. Offline they replay with 14-31 fallback decisions per seed, both before and after the phase 8 prune. Their analyses (competitor entry, the rename ablation) can't be reproduced without a key. | Open: needs a live fill (roughly 280 Groq calls) if those scenarios matter |
+| 27 | The three `bundle: false` scenarios (`s2_entrant`, `s2_entrant_only`, `abl_rename`) were never fully cached. Offline they replay with 14-31 fallback decisions per seed, both before and after the phase 8 prune. Their analyses (competitor entry, the rename ablation) can't be reproduced without a key. | Fixed 2026-11-11: live Groq fill (`tools/fill_cache.sh`, Groq only, no fallback) completed at 06:55. All seven scenarios, seeds 0-2, now replay complete offline: 316 cache hits, 0 API calls, 0 fallbacks, every decision from `qwen/qwen3.8-27b`. `check_bundle.py` confirms `public/runs.json` still matches the rebuild. |
 
 ## Fix plan
 

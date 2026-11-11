@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1076,
+    "output_tokens": 73
+  },
+  "_version": 2,
+  "choice": "starbucks",
+  "llm_failed": false,
+  "primary_driver": "curiosity",
+  "reasoning": "Starbucks opened today and it's only one block away, unlike my usual place which I've been skipping for days. I'm curious to try the new fall menu.",
+  "secondary_driver": "distance",
+  "valence": 0.3
+}

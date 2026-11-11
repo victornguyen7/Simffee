@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1166,
+    "output_tokens": 75
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is closed. Shop B is 5 blocks and a 7-minute wait, breaking my tight 7:15 routine. I skip again because time costs more than coffee.",
+  "secondary_driver": "wait",
+  "valence": 0.2
+}

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 879,
+    "output_tokens": 61
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "distance",
+  "reasoning": "Three blocks the wrong way is too far for a morning run. I'm sticking to my route and skipping coffee today.",
+  "secondary_driver": "habit",
+  "valence": 0.1
+}

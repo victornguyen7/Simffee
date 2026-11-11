@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 921,
+    "output_tokens": 67
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "I went yesterday, so my routine is satisfied. I have no specific urge to go today, so I will skip it and keep my morning routine intact.",
+  "secondary_driver": null,
+  "valence": 0.1
+}

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1139,
+    "output_tokens": 85
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "wait",
+  "reasoning": "Shop B is 4 blocks away, costs 65,000d, and has a 7-minute wait. I lose patience after 6 minutes and won't pay extra for slow coffee. Skipping is the only option.",
+  "secondary_driver": "price",
+  "valence": 0.2
+}

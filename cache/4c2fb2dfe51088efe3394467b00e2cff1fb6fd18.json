@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 853,
+    "output_tokens": 62
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "I never go to Simffee despite checking it out. I skip it today because I'm curious to break the routine.",
+  "secondary_driver": "curiosity",
+  "valence": 0.1
+}

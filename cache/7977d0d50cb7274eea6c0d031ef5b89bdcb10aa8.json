@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1201,
+    "output_tokens": 69
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "My usual place is closed. I refuse to break my routine or walk three blocks to wait seven minutes. Going without is the only option that fits my schedule.",
+  "secondary_driver": "distance",
+  "valence": 0.2
+}

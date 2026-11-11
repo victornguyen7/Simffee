@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1101,
+    "output_tokens": 56
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "distance",
+  "reasoning": "The five-block walk to my usual place is too much hassle. I am skipping again today.",
+  "secondary_driver": "habit",
+  "valence": 0.1
+}

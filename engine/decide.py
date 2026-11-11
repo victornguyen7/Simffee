@@ -277,6 +277,8 @@ def reappraise(
             cache.put(keys[answered], {**decision, "_model": answered, "_version": 2,
                                        "_temperature": temperature, "_usage": usage}, cache_dir)
             return Decision(**decision, **provenance(answered))
+        except llm.QuotaExhausted:                         # --stop-on-quota: end the run, don't fake a row
+            raise
         except llm.LLMUnavailable as exc:
             return _fallback(twin, regular, shops_today, "LLM unavailable")
         except ValueError as exc:                          # bad JSON or bad enum

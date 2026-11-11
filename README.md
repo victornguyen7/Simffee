@@ -124,7 +124,8 @@ python3 tools/check_links.py                                  # no broken relati
 ```
 
 `python3 tools/prune_cache.py` reports decision-cache entries the current code can no longer
-reach (add `--delete` to remove them).
+reach (add `--delete` to remove them). `./tools/fill_cache.sh` fills missing ones from Groq,
+waiting out the daily token quota between attempts.
 
 ## Tech stack
 

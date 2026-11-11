@@ -161,7 +161,10 @@ python3 tools/check_pipeline.py --out /tmp/simffee-pipeline-check
 
 The committed cache covers seeds 0-2 of the bundled scenarios (`--all`). The `bundle: false`
 scenarios (`s2_entrant`, `s2_entrant_only`, `abl_rename`) are only partly cached, so offline
-they replay with flagged fallbacks; filling them needs a live run.
+they replay with flagged fallbacks until `./tools/fill_cache.sh` completes. That script fills
+the cache from Groq alone (fallback off, `--cache-defaults`), with `--stop-on-quota`: a run
+stops at the first daily-quota refusal (exit 3) instead of sending every remaining request to
+be refused. It retries hourly, and each attempt only makes the missing calls.
 
 The pipeline check uses a clearly labeled deterministic stub, never the API. It
 checks all four scenarios and five seeds, strict bundle construction, prefix and

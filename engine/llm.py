@@ -189,6 +189,16 @@ class LLMUnavailable(RuntimeError):
     """No credentials, or the SDK is not installed."""
 
 
+class QuotaExhausted(RuntimeError):
+    """The provider's daily token quota is spent, no fallback can answer, and the caller set
+    STOP_ON_QUOTA: stop the run rather than send every remaining request to be refused."""
+
+
+# Set by `engine.cli --stop-on-quota` (cache fills): a daily-quota refusal ends the run instead of
+# turning each remaining decision into a flagged fallback. What was answered stays cached.
+STOP_ON_QUOTA = False
+
+
 def client():
     """Lazily built so an all-cached run never needs credentials."""
     global _client, _client_error
@@ -373,6 +383,8 @@ def complete_json(
             return out
         except RuntimeError as exc:
             kind = _out_of_tokens(exc)
+            if kind == "quota" and STOP_ON_QUOTA and not fallback_label():
+                raise QuotaExhausted(str(exc)) from None
             if kind is None or not fallback_label():
                 raise
             _primary_blocked_until = time.monotonic() + PRIMARY_COOLDOWN_S[kind]

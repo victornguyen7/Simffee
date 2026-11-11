@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1117,
+    "output_tokens": 69
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "I need my usual americano. Simffee is within my wait limit and budget. Starbucks is too expensive and the wait is too long for my morning schedule.",
+  "secondary_driver": "price",
+  "valence": 0.5
+}

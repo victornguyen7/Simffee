@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 954,
+    "output_tokens": 70
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "It's 07:30, my usual time. Simffee is close, open, and has a short wait. I stick to what works.",
+  "secondary_driver": "wait",
+  "valence": 0.8
+}

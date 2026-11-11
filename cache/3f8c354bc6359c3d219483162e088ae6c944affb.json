@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 853,
+    "output_tokens": 63
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "curiosity",
+  "reasoning": "I keep meaning to make the walk to Simffee. Since it fits my routine and is open, I’m finally going.",
+  "secondary_driver": "quality",
+  "valence": 0.8
+}

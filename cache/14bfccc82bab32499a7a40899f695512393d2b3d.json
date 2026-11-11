@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1099,
+    "output_tokens": 66
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "price",
+  "reasoning": "I compare prices on everything; 48k beats 65k. It's my usual, open, and the wait is shorter.",
+  "secondary_driver": "habit",
+  "valence": 0.8
+}

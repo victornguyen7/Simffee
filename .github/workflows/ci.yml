@@ -48,6 +48,10 @@ jobs:
         run: python tools/check_pipeline.py --out "$RUNNER_TEMP/pipeline"
       - name: Determinism and fork fairness (complete runs only)
         run: ./tools/check_determinism.sh
+      - name: Every scenario, bundle or not, replays complete from cache/ (#27)
+        run: >-
+          python -m engine.cli --all --include-all --seeds 0-2 --offline --cache-defaults
+          --require-complete --quiet --out "$RUNNER_TEMP/all-scenarios"
       - name: Rebuild the demo bundle offline from cache/
         run: ./tools/build_demo.sh --out "$RUNNER_TEMP/demo"
       - name: Committed public/runs.json matches the rebuild

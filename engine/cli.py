@@ -92,6 +92,9 @@ def main() -> int:
     ap.add_argument("--cache-defaults", action="store_true",
                     help=f"replay with the settings the committed cache was filled with ({llm.DEFAULT_MODEL}, "
                          f"max_tokens {llm.DEFAULT_MAX_TOKENS}, no reasoning override), whatever .env says")
+    ap.add_argument("--stop-on-quota", action="store_true",
+                    help="stop at the first daily-quota refusal instead of flagging every remaining "
+                         "decision as a fallback (exit 3); answered decisions stay cached")
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--require-complete", action="store_true", help="exit 2 on fallbacks or missing/mixed model provenance")
     args = ap.parse_args()
@@ -107,6 +110,7 @@ def main() -> int:
     if args.model:
         llm.MODEL = args.model
         llm.DECISION_MODEL = args.model
+    llm.STOP_ON_QUOTA = args.stop_on_quota
     decide.reset_stats()
     llm.reset_stats()
 
@@ -126,28 +130,33 @@ def main() -> int:
     failed = False
     all_rows = []
     days_by_scenario: dict[str, int] = {}
-    for scenario in scenarios:
-        chain = load_chain(scenario, args.data, extra)
-        # The scenario's own length is what "complete" means; --days only truncates a
-        # diagnostic run and can never make a short run count as complete.
-        full_days = scenario_days(chain)
-        days = args.days or full_days
-        days_by_scenario[scenario] = full_days
-        focus = chain[-1].focus_shop or chain[0].focus_shop or next(iter(shops))
-        for seed in seeds:
-            rows = run(scenario, seed, days=days, data=args.data, out=args.out,
-                       offline=args.offline, cache_dir=args.cache, extra=extra)
-            problems = [p for row in rows for p in validate_row(row, shop_ids)]
-            failed = failed or bool(problems)
-            all_rows.extend(rows)
-            report = coverage(rows, full_days)
-            status = "complete" if report["complete"] else "incomplete"
-            print(f"{scenario} seed {seed}: {status}; reappraisals {report['reappraisals']}, "
-                  f"fallbacks {report['fallbacks']}, models {report['models']}, "
-                  f"missing provenance {report['missing_provenance']}, skips {report['skips']}")
-            if not args.quiet:
-                print(f"\n{scenario} seed {seed} -> {args.out / scenario / f'{seed}.jsonl'}")
-                print(summarise(rows, shop_ids, focus))
+    try:
+        for scenario in scenarios:
+            chain = load_chain(scenario, args.data, extra)
+            # The scenario's own length is what "complete" means; --days only truncates a
+            # diagnostic run and can never make a short run count as complete.
+            full_days = scenario_days(chain)
+            days = args.days or full_days
+            days_by_scenario[scenario] = full_days
+            focus = chain[-1].focus_shop or chain[0].focus_shop or next(iter(shops))
+            for seed in seeds:
+                rows = run(scenario, seed, days=days, data=args.data, out=args.out,
+                           offline=args.offline, cache_dir=args.cache, extra=extra)
+                problems = [p for row in rows for p in validate_row(row, shop_ids)]
+                failed = failed or bool(problems)
+                all_rows.extend(rows)
+                report = coverage(rows, full_days)
+                status = "complete" if report["complete"] else "incomplete"
+                print(f"{scenario} seed {seed}: {status}; reappraisals {report['reappraisals']}, "
+                      f"fallbacks {report['fallbacks']}, models {report['models']}, "
+                      f"missing provenance {report['missing_provenance']}, skips {report['skips']}")
+                if not args.quiet:
+                    print(f"\n{scenario} seed {seed} -> {args.out / scenario / f'{seed}.jsonl'}")
+                    print(summarise(rows, shop_ids, focus))
+    except llm.QuotaExhausted as exc:
+        print(f"\nSTOPPED: {exc}. Decisions answered so far are cached; rerun later to fill the rest.",
+              file=sys.stderr)
+        return 3
     stats = decide.STATS
     transport = llm.STATS
     report = overall_coverage(all_rows, days_by_scenario)

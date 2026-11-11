@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1198,
+    "output_tokens": 65
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is closed. I've skipped the last three mornings because switching is too much hassle. My patience is gone before I even try.",
+  "secondary_driver": "habit",
+  "valence": 0.4
+}

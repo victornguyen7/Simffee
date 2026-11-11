@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 942,
+    "output_tokens": 70
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "curiosity",
+  "reasoning": "I skipped the last two days to see if the urge fades. The curiosity is still there, but I'm committed to observing this behavior first before I actually go.",
+  "secondary_driver": null,
+  "valence": 0.2
+}

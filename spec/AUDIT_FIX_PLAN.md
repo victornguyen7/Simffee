@@ -4,8 +4,7 @@ Audit of `main` at `19e6066` (2026-11-10). Each issue below was found by running
 project's checks and scripts, not by reading code alone. Line references point to the
 code at the time of the audit unless marked otherwise.
 
-**Status:** all 8 phases are done (committed to `main` through phase 5). Left open: #21 (local
-leftovers, the owner's call) and #27 (a live fill for the non-bundle scenarios).
+**Status:** all 8 phases are done, and every issue is closed.
 
 ## Summary
 
@@ -67,7 +66,7 @@ the committed data and the code.
 | --- | --- | --- |
 | 19 | About 98 cache entries can't be hit by the default setup: 37 `groq/compound-mini` and 61 `grok-4.6` decisions. The 92 `grok-4.3` entries are unreachable too, now that the provider is Groq. | Fixed (phase 8): 270 unreachable entries pruned with `tools/prune_cache.py`; 90 remain, all reachable |
 | 20 | Unused template assets (`src/assets/react.svg`, `src/assets/vite.svg`, `src/assets/hero.png`, `public/icons.svg`) and 11 historical plan and status docs in `spec/`. | Fixed (phase 8): 4 assets removed; 8 status/plan docs moved to `spec/archive/` |
-| 21 | `runs/` holds 83 MB of old local runs. At audit time `.env` held a `GROQ_API_KEY` that nothing read; since phase 1 the Groq key is the one in use, and the xAI key is commented out and unused. | Left to the owner (phase 8): local data, not in git; see the phase 8 section |
+| 21 | `runs/` holds 83 MB of old local runs. At audit time `.env` held a `GROQ_API_KEY` that nothing read; since phase 1 the Groq key is the one in use, and the xAI key is commented out and unused. | Fixed 2026-11-11 at the owner's request: local data, not in git; see the phase 8 section |
 
 ### Found while fixing
 
@@ -78,7 +77,7 @@ the committed data and the code.
 | 24 | The AI review failed once in browser testing, right after a burst of model calls, with an unlabelled "transport failed". It succeeded on retry and couldn't be reproduced. Groq's on-demand tier allows 7,000 input tokens per minute and a review request is about 4,000, so a review straight after a live run competes for that budget. Rate limits are retried and labelled, but this failure carried no label, because unknown transport errors threw away their class. | Made diagnosable (phase 6): unknown errors now carry their exception class, connection errors are labelled, and the review panel says why it's unavailable. Root cause unconfirmed. |
 | 25 | The requested fallback model, `qwen3.8`, exists only in a 27B size (a 17.7 GB download), and this Mac has 8 GB of memory. Ollama 0.40.16 is installed and running, but no model is pulled, so the fallback currently answers "model not found" and runs fail with Groq's quota reason, as designed. | Fixed: `qwen3:4b` (2.5 GB) pulled and set as `SIMFFEE_FALLBACK_MODEL`, with thinking off; verified live (see the fallback section) |
 | 26 | Two TypeScript interfaces describe `runs.json`: `Runs` in `src/types.ts` (Town, Ask) and `Runs` in `src/sim/runs.ts` (Market, Conclusion). They can drift apart silently. The shared loader takes a type parameter so both still work. | Fixed (phase 8): one `Runs` type, in `src/types.ts` |
-| 27 | The three `bundle: false` scenarios (`s2_entrant`, `s2_entrant_only`, `abl_rename`) were never fully cached. Offline they replay with 14-31 fallback decisions per seed, both before and after the phase 8 prune. Their analyses (competitor entry, the rename ablation) can't be reproduced without a key. | Open: needs a live fill (roughly 280 Groq calls) if those scenarios matter |
+| 27 | The three `bundle: false` scenarios (`s2_entrant`, `s2_entrant_only`, `abl_rename`) were never fully cached. Offline they replay with 14-31 fallback decisions per seed, both before and after the phase 8 prune. Their analyses (competitor entry, the rename ablation) can't be reproduced without a key. | Fixed 2026-11-11: live Groq fill (`tools/fill_cache.sh`, Groq only, no fallback) completed at 06:55. All seven scenarios, seeds 0-2, now replay complete offline: 316 cache hits, 0 API calls, 0 fallbacks, every decision from `qwen/qwen3.8-27b`. `check_bundle.py` confirms `public/runs.json` still matches the rebuild. |
 
 ## Fix plan
 
@@ -91,7 +90,7 @@ the committed data and the code.
 | 5. Fresh data | #4: regenerate `public/runs.json`; the CI comparison from phase 4 keeps it fresh. | The rebuilt and committed bundles differ only in `generated_at` | Done |
 | 6. Ask flow | #5 and #23: check for timed-out results, and give `serve_demo.sh` a timeout that fits a real run. #6: use the server's seed list. #7: support a cached or no-key path, or make the badge honest. #18: run the AI review only on request. | A demo with no key behaves the way the README describes | Done |
 | 7. Frontend polish | #14-#17: fix the ref usage, load `runs.json` once through a shared loader, lazy-load the sketch pool, and connect the shop page to the engine data or label it as a toy. | Lint is clean and the bundle is under 500 KB | Done |
-| 8. Cleanup | #13, #19-#21: prune the cache, delete unused assets, archive the old docs, align the scripts with the docs. | Repo contains only reachable cache entries and current docs | Done (#21 left to the owner) |
+| 8. Cleanup | #13, #19-#21: prune the cache, delete unused assets, archive the old docs, align the scripts with the docs. | Repo contains only reachable cache entries and current docs | Done |
 
 Phases 1 and 2 had to come first. The later phases are independent and can each be their own PR.
 
@@ -353,10 +352,14 @@ model call.
     never complete).
   - A documented `build_runs.py` command was missing `--seeds 0-2` and failed with "missing
     trajectory". Every documented command was run to confirm it works.
-- **Local leftovers** (#21, not in git): `runs/` is 87 MB, mostly `runs/phase-ab-check`
+- **Local leftovers** (#21, not in git): `runs/` was 87 MB, mostly `runs/phase-ab-check`
   (61 MB), `runs/tutorial-live` (9.6 MB) and `runs/live` (8.6 MB, 14 Ask-page runs).
-  `serve_demo.sh` rebuilds `runs/library` on each start. `.env` still holds the unused
-  Ollama Cloud key and the commented-out xAI key. Deleting them is the owner's call.
+  `serve_demo.sh` rebuilds `runs/library` on each start. `.env` held the unused
+  Ollama Cloud key, the commented-out xAI key and the commented-out grok overrides
+  (`SIMFFEE_MODEL`, `SIMFFEE_MAX_TOKENS`).
+  - Closed 2026-11-11 at the owner's request: the three folders were deleted (`runs/` is now
+    7.7 MB), and `.env` keeps only `GROQ_API_KEY`, `SIMFFEE_FALLBACK_MODEL` and
+    `SIMFFEE_MIN_INTERVAL`. The old keys still need revoking with their providers.
 
 ### Verification
 

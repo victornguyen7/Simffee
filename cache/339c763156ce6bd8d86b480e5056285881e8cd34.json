@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1104,
+    "output_tokens": 67
+  },
+  "_version": 2,
+  "choice": "simffee",
+  "llm_failed": false,
+  "primary_driver": "habit",
+  "reasoning": "Three days in a row, the habit is set. Shop B is a distraction; Simffee is open, cheap, and the wait is short.",
+  "secondary_driver": "price",
+  "valence": 0.8
+}

@@ -1,0 +1,15 @@
+{
+  "_model": "qwen/qwen3.8-27b",
+  "_temperature": 0.7,
+  "_usage": {
+    "input_tokens": 1141,
+    "output_tokens": 77
+  },
+  "_version": 2,
+  "choice": "none",
+  "llm_failed": false,
+  "primary_driver": "hours",
+  "reasoning": "Simffee is shut, ruining my 7:15 arrival. Shop B is too far, costly, and slow. I skip to stay on schedule for standup, just like Day 4.",
+  "secondary_driver": "distance",
+  "valence": 0.2
+}

@@ -96,6 +96,39 @@ class Routing(FallbackCase):
         self.assertFalse(llm.fallback_active())
 
 
+class StopOnQuota(FallbackCase):
+    """`engine.cli --stop-on-quota` (cache fills): a spent daily quota ends the run."""
+
+    def test_daily_quota_stops_only_when_asked_and_nothing_can_answer(self):
+        cases = [
+            (dict(STOP_ON_QUOTA=True, FALLBACK_MODEL=""), QUOTA, llm.QuotaExhausted),
+            (dict(STOP_ON_QUOTA=False, FALLBACK_MODEL=""), QUOTA, RuntimeError),    # old behaviour
+            (dict(STOP_ON_QUOTA=True, FALLBACK_MODEL=""), MINUTE, RuntimeError),    # per-minute: not daily
+        ]
+        for settings, error, expected in cases:
+            with self.subTest(settings=settings, error=str(error)[:40]), \
+                    patch.multiple(llm, **settings), patch.object(llm, "_create_with_backoff", side_effect=error), \
+                    self.assertRaises(RuntimeError) as caught:
+                llm.complete_json("system", "user", {}, 0.7)
+            self.assertIs(type(caught.exception), expected)
+
+    def test_a_fallback_still_answers_instead_of_stopping(self):
+        with patch.object(llm, "STOP_ON_QUOTA", True), patch.object(llm, "_create_with_backoff", side_effect=QUOTA), \
+                patch.object(llm, "_create_fallback", return_value=reply()):
+            parsed, _ = llm.complete_json("system", "user", {}, 0.7)
+        self.assertEqual(parsed["choice"], "starbucks")
+
+    def test_decision_layer_lets_the_stop_through(self):
+        from tests.test_repairs import Repairs
+        fixture = Repairs("test_cache_invalidates_each_decision_input")
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        with patch.object(llm, "complete_json", side_effect=llm.QuotaExhausted("LLM transport failed (quota: daily token limit)")), \
+                self.assertRaises(llm.QuotaExhausted):
+            fixture.decision()
+        self.assertEqual(list((fixture.out / "cache").glob("*.json")), [])     # nothing faked into the cache
+
+
 class FakeOllama(BaseHTTPRequestHandler):
     """Speaks just enough of Ollama's OpenAI-compatible API for the real SDK path."""
     seen: list = []
